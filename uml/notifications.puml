@@ -1,0 +1,45 @@
+@startuml
+
+class Repository << (T,yellow) >>
+class Descriptor << (T,#00FF00) >>
+
+title Notifications
+
+enum NotificationType {
+  NEW_CONTACT
+  NEW_CONTACT
+  UPDATED_CONTACT
+  UPDATED_AVATAR_CONTACT
+  DELETED_CONTACT
+  MISSED_AUDIO_CALL
+  MISSED_VIDEO_CALL
+  RESET_CONVERSATION
+  NEW_TEXT_MESSAGE
+  NEW_IMAGE_MESSAGE
+  NEW_AUDIO_MESSAGE
+  NEW_VIDEO_MESSAGE
+  NEW_FILE_MESSAGE
+  NEW_GEOLOCATION
+  NEW_GROUP_INVITATION
+  NEW_GROUP_JOINED
+  NEW_CONTACT_INVITATION
+  DELETED_GROUP
+}
+
+class Notification << (T,#00FF00) >> {
+  +long <<PK>> id;
+  +long notificationId;
+  +UUID uuid;
+  +long creationDate;
+  +NotificationType type;
+  +int flags;
+}
+
+note right
+- Le seul attribut modifiable est `flags` pour acquitter la notification.
+end note
+
+Notification "0..*" --> "1" Repository : subject
+Notification "0..*" --> "0..1" Descriptor : descriptor
+
+@enduml

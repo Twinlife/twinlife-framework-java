@@ -1,0 +1,47 @@
+@startuml
+
+class Repository << (T,yellow) >>
+class TwincodeOutbound << (T,cyan) >>
+
+title Keys and secrets
+
+class TwincodeKeys << (T,#FF0000) >> {
+  +long <<PK>> id;
+  +long creationDate;
+  +long modificationDate;
+  -long nonceSequence;
+  -int flags;
+  -byte[] signingKey;
+  -byte[] encryptionKey;
+}
+
+note left
+Clefs de chiffrement et authentification associés à un twincode.
+- le nonceSequence est incrémenté à chaque fois qu'un nonce
+  doit être généré,
+- les signingKey et encryptionKey sont soit des clefs publiques
+  soit des clefs privées (indiqué par les flags)
+end note
+
+class SecretKeys << (T,#FF0000) >> {
+  +long <<PK>> id;
+  +long <<PK>> peerTwincodeId;
+  +long creationDate;
+  +long modificationDate;
+  -long secretUpdateDate;
+  -long nonceSequence;
+  -int flags;
+  -byte[] secret1;
+  -byte[] secret2;
+}
+
+note left
+Secrets pour le chiffrement des SDPs.
+- les secret1 et secret2 sont spécifique au couple {id, peerTwincodeId}
+- le nonceSequence est incrémenté à chaque fois qu'un nonce
+  doit être généré,
+- si `peerTwincodeId` est NULL, alors les secrets ont été envoyés
+  par le peer et `id` doit représenter un twincode du peer.
+end note
+
+@enduml

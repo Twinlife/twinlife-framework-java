@@ -1,0 +1,37 @@
+@startuml
+
+!include repository.puml
+
+title Conversations
+
+note top
+Model des conversations
+end note
+
+class Conversation << (T,#00FF00) >> {
+  +long <<PK>> id;
+  +UUID uuid;
+  +long creationDate;
+  +UUID resourceId;
+  +UUID peerResourceId;
+  +long permissions;
+  +long joinPermissions;
+  +long lastConnectDate;
+  +long lastRetryDate;
+  +long flags;
+}
+
+note right
+Représente une conversation pour un contact ou un membre du groupe:
+- Les attributs `uuid`, `creationDate`, `resourceId` ne sont pas modifiés,
+- Les attributs `peerResourceId` et `permissions` sont rarement modifiées.
+- Les attributs `lastConnectDate` et `lastRetryDate` sont utiles
+  pour les tentatives de connexions.
+end note
+
+Conversation "0..1" --> "1" Repository : subject
+Conversation "0..1" -> "1" TwincodeOutbound : peerTwincodeOutbound
+Conversation "0..*" -> "1" Repository : invitedContact
+Conversation "0..*" -> "1" Conversation : groupId
+
+@enduml

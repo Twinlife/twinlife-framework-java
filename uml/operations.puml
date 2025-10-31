@@ -1,0 +1,31 @@
+@startuml
+
+class Conversation << (T,#00FF00) >>
+class Descriptor << (T,#00FF00) >>
+
+title Operations
+
+note top
+Model des operations
+end note
+
+class Operation << (T,#00FF00) >> {
+  +long <<PK>> id;
+  +long creationDate;
+  +int type;
+  +long chunkStart;
+  +byte[] content;
+}
+
+note right
+- Les références à la conversation et le descripteur sont
+  suffisantes pour la plutpart des opérations.
+- Le `chunkStart` est utilisé par l'envoi des fichiers
+- Certaines operations ont besoin d'information supplémentaires
+  mises en binaire dans `content`
+end note
+
+Operation "0..*" --> "1" Conversation : cid
+Operation "0..*" --> "0..1" Descriptor : descriptor
+
+@enduml

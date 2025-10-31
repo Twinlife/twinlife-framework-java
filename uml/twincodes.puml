@@ -1,0 +1,48 @@
+@startuml
+
+!include images.puml
+
+title Twincodes
+
+class TwincodeOutbound << (T,cyan) >> {
+  +long <<PK>> id;
+  +UUID twincodeId;
+  +long creationDate;
+  +long modificationDate;
+  +String name;
+  +String description;
+  +String capabilities;
+  -byte[] attributes;
+  -long refreshDate;
+  -long refreshPeriod;
+  -long refreshTimestamp;
+  -int flags;
+}
+
+note right
+- Les attributs principaux (name, avatarId, capabilities, description)
+  sont disponibles directement.
+- Les attributs secondaires (plus rares), sont mis dans un Blob.
+end note
+
+TwincodeOutbound "0..*" --> "1" Image : avatarId
+
+class TwincodeInbound << (T,cyan) >> {
+  +long <<PK>> id;
+  +UUID twincodeId;
+  +UUID factoryId;
+  +String capabilities;
+  +long modificationDate;
+  -byte[] attributes;
+}
+
+TwincodeInbound "0..1" --> "1" TwincodeOutbound : twincodeOutbound
+
+note right
+- Le twincodeInbound n'est jamais modifié.
+- Il est toujours associé à un twincodeOutbound (relation `associated-with`).
+- Le `capabilities` pourrait être ajouté pour permettre au serveur de controller des appels entrants.
+- Le `factoryId` n'est pas toujours connu et permet de supprimer le twincode IN+OUT.
+end note
+
+@enduml

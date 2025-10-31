@@ -1,0 +1,41 @@
+@startuml
+
+!include twincodes.puml
+
+title Repository: Space, SpaceSettings, Profile, Contact, Invitation, CallReceiver, Group, AccountMigration, ...
+
+class Repository << (T,yellow) >> {
+  +long <<PK>> id;
+  +UUID uuid;
+  +UUID schemaId;
+  +int schemaVersion;
+  +long creationDate;
+  +long modificationDate;
+  +String name;
+  +String description;
+  -int flags;
+  -byte[] attributes;
+  -byte[] stats;
+}
+
+Repository "0..1" --> "1" TwincodeInbound : twincodeInbound
+Repository "0..1" --> "1" TwincodeOutbound : twincodeOutbound
+Repository "0..1" --> "0" TwincodeOutbound : peerTwincodeOutbound
+Repository "0..*" --> "0..1" Repository : owner
+note right on link
+  Pour un Profile, Contact, Group, CallReceiver
+  Invitation le `owner` est le Space.
+  Pour un Space, le owner est le `SpaceSettings`.
+  Les autres objects n'ont pas de `owner`.
+end note
+
+note left
+Utilisé pour représenter SpaceSettings, Space, Profile, Contact, Group,
+CallReceiver, Invitation, AccountMigration:
+- Les champs `uuid`, `schemaId` et `creationDate` ne sont jamais modifiés,
+- Les attributs spécifiques sont sérialisés dans `attributes`,
+- Des stats associées à l'objet sont sérialisées dans `stats`,
+- Les champs `attributes` et `stats` sont internes.
+end note
+
+@enduml

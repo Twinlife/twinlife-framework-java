@@ -1,0 +1,69 @@
+@startuml
+
+class Conversation << (T,#00FF00) >>
+class TwincodeOutbound << (T,cyan) >>
+class Notification << (T,#00FF00) >>
+
+title Descripteurs
+
+class Descriptor << (T,#00FF00) >> {
+  +long <<PK>> id;
+  +long sequenceId;
+  +int descriptorType;
+  +long creationDate;
+  +long sendDate;
+  +long receiveDate;
+  +long readDate;
+  +long updateDate;
+  +long peerDeleteDate;
+  +long expireTimeout;
+  +int flags;
+  +long value;
+  +String content;
+}
+
+note left
+Représente un descripteur recu/envoyé sur une conversation.
+- le message est interprété en fonction du type de descripteur
+- le compteur `id` est toujours incrémenté
+- un index sur `cid` et `creationDate` permet de récupérer les
+  descripteurs dans l'ordre d'affichage
+end note
+
+Descriptor "0..*" --> "1" Conversation : cid
+Descriptor "0..*" --> "1" TwincodeOutbound : twincodeOutbound
+Descriptor "0..*" --> "1" TwincodeOutbound : sentTo
+Descriptor "0..*" --> "0..1" Descriptor : replyTo
+
+class Annotation << (T,#00FF00) >> {
+  +int <<PK>> kind;
+  +long value;
+  +long creationDate;
+}
+
+note left
+Représente des annotations.
+- les annotations du device ont le peerTwincodeOutbound à NULL
+end note
+
+Annotation "0..*" --> "1" Conversation : cid <<PK>>
+Annotation "0..*" --> "1" Descriptor : descriptor <<PK>>
+Annotation "0..*" --> "0" TwincodeOutbound : peerTwincodeOutbound <<PK>>
+Annotation "0..1" --> "0" Notification : notificationId
+
+class Invitation << (T,#00FF00) >> {
+}
+
+Invitation "0..*" --> "1" Descriptor : id <<PK>>
+Invitation "0..*" --> "0..*" TwincodeOutbound : inviterMember
+Invitation "0..*" --> "0..1" TwincodeOutbound : joinedMember
+Invitation "0..*" --> "1" Conversation : groupId
+
+note right
+Information pour une invitation envoyée.
+- permet de comptabiliser plus facilement le nombre de membres et la limite
+- seul le joinedMember est mis à jour
+- le status de l'invitation est porté par le descripteur avec les flags
+end note
+
+@enduml

@@ -1,0 +1,191 @@
+plugins {
+    id 'com.android.library'
+    alias libs.plugins.kotlin.android
+}
+
+android {
+    compileSdkVersion 35
+    namespace 'org.twinlife.twinlife'
+    buildFeatures {
+        buildConfig = true
+    }
+    defaultConfig {
+        minSdkVersion 21
+        targetSdkVersion 35
+        buildConfigField "String", "VERSION", '"2.12.3"'
+
+        // Enable reporting power management information
+        buildConfigField "boolean", "ENABLE_POWER_MANAGEMENT_REPORT", "true"
+
+        // Indicate that the legacy application was not using the Android Keystore.
+        buildConfigField "boolean", "LEGACY_NO_KEYSTORE", "false"
+
+        // Default setting for the message/file copy allowed.
+        buildConfigField "boolean", "DEFAULT_COPY_ALLOWED", "false"
+
+        // Max number of group members.
+        buildConfigField "int", "MAX_GROUP_MEMBERS", "12"
+
+        // Disable the generation of CHECKS and internal development assertions.
+        buildConfigField "boolean", "ENABLE_CHECKS", "false"
+
+        // Enable/disable the print and dump of internal and possibly sensitive information.
+        buildConfigField "boolean", "ENABLE_DUMP", "false"
+        
+        // The delay in seconds to renew secret keys used for SDPs encryption (30 days)
+        buildConfigField "int", "SECRET_RENEW_DELAY", "2592000"
+
+        // Name of parameter for invitation links
+        buildConfigField "String", "INVITATION_PARAM_ID", '"twincodeId"'
+    }
+
+    flavorDimensions = ["product", "tier"]
+
+    productFlavors {
+        twinme {
+            dimension "product"
+            buildConfigField "boolean", "LEGACY_NO_KEYSTORE", "true"
+        }
+        skred {
+            dimension "product"
+
+            buildConfigField "boolean", "DEFAULT_COPY_ALLOWED", "true"
+            buildConfigField "int", "MAX_GROUP_MEMBERS", "20"
+            buildConfigField "String", "INVITATION_PARAM_ID", '"skredcodeId"'
+        }
+
+        //Skred and Twinme
+        free {
+            dimension "tier"
+        }
+
+        //Twinme+
+        '+' {
+            dimension "tier"
+
+            buildConfigField "int", "MAX_GROUP_MEMBERS", "20"
+            buildConfigField "boolean", "LEGACY_NO_KEYSTORE", "true"
+        }
+    }
+
+    // Only define necessary variants
+    variantFilter { variant ->
+        def names = variant.flavors*.name
+
+        if (names.contains("skred")) {
+            if(names.contains("+")) {
+                // skred doesn't have a "plus" variant
+                setIgnore(true)
+            }
+        }
+    }
+
+    libraryVariants.configureEach { variant ->
+        def flavors = variant.productFlavors
+        def product = flavors[0].name
+        def paid = flavors[1].name
+        def buildType = variant.buildType.name
+
+        // Setup common source set for twinme and twinme+ (twinmeRelease and twinmeDebug)
+        if(product == 'twinme'){
+            def twinmeSrcSet = product + buildType.capitalize()
+
+            def srcSet = product + paid.capitalize() + buildType.capitalize()
+
+            android.sourceSets."$srcSet".java.srcDirs += "src/$twinmeSrcSet/java"
+            android.sourceSets."$srcSet".resources.srcDirs += "src/$twinmeSrcSet/resources"
+            android.sourceSets."$srcSet".res.srcDirs += "src/$twinmeSrcSet/res"
+
+            // Add release source set to twinme(+) staging,
+            // to avoid duplicate twinmeRelease/twinmeStaging directories
+            if(buildType == "staging"){
+                android.sourceSets."$srcSet".java.srcDirs += "src/twinmeRelease/java"
+                android.sourceSets."$srcSet".resources.srcDirs += "src/twinmeRelease/resources"
+                android.sourceSets."$srcSet".res.srcDirs += "src/twinmeRelease/res"
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            // Disable the EventMonitor to keep the application quiet.
+            buildConfigField "boolean", "ENABLE_EVENT_MONITOR", "false"
+
+            // Enable the application signature verification by getFingerprint().
+            buildConfigField "boolean", "ENABLE_SIGNATURE_CHECK", "true"
+
+            // Disable the generation of INFO logs.
+            buildConfigField "boolean", "ENABLE_INFO_LOG", "false"
+
+            // Disable the generation of CHECKS and internal development assertions.
+            buildConfigField "boolean", "ENABLE_CHECKS", "false"
+        }
+        staging {
+            initWith buildTypes.release
+
+            // Disable the application signature verification by getFingerprint().
+            buildConfigField "boolean", "ENABLE_SIGNATURE_CHECK", "false"
+        }
+        debug {
+            // Enable the EventMonitor to help troubleshooting issues.
+            buildConfigField "boolean", "ENABLE_EVENT_MONITOR", "true"
+
+            // Disable the application signature verification by getFingerprint().
+            buildConfigField "boolean", "ENABLE_SIGNATURE_CHECK", "false"
+
+            // Enable the generation of INFO logs.
+            buildConfigField "boolean", "ENABLE_INFO_LOG", "true"
+
+            // Enable the generation of CHECKS for internal development assertions:
+            // this will raise fatal exceptions and voluntary crashes that WE MUST FIX.
+            buildConfigField "boolean", "ENABLE_CHECKS", "true"
+
+            // Enable the dump of database key during startup to help.
+            // We should not enable this for production.
+            buildConfigField "boolean", "ENABLE_DUMP", "true"
+
+            // The delay in seconds to renew secret keys used for SDPs encryption (5 minutes)
+            buildConfigField "int", "SECRET_RENEW_DELAY", "300"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'src/android/AndroidManifest.xml'
+            java.srcDirs = ['src/main/java', 'src/webrtc/java', 'src/android/java']
+            jniLibs.srcDirs = ['libs']
+        }
+    }
+}
+dependencies {
+    api fileTree(include: ['*.jar'], dir: 'libs')
+    implementation project(':webrtc-framework')
+    implementation libs.androidx.exifinterface
+    implementation libs.androidx.collection
+    testImplementation libs.junit.jupiter
+}
+
+// Needed to configure JUnit in an Android library project.
+afterEvaluate { project ->
+    android.libraryVariants.each { variant ->
+        println variant.name
+        println tasks
+        tasks.getByName("test${variant.name.capitalize()}UnitTest") {
+            useJUnitPlatform()
+
+            maxHeapSize = '1G'
+
+            testLogging {
+                events "passed"
+            }
+        }
+    }
+}

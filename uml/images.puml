@@ -1,0 +1,30 @@
+@startuml
+
+title Image
+
+class Image << (T,cyan) >> {
+  +long <<PK>> id;
+  +UUID uuid;
+  +long creationDate;
+  +long modificationDate;
+  -long uploadRemain1;
+  -long uploadRemain2;
+  -int flags;
+  -byte[] imageSHAs;
+  +byte[] thumbnail;
+}
+
+Image "0..*" --> "1" Image : copiedFrom
+
+note right
+- flags possibles
+  - locale image
+  - owner image
+  - deleted image
+  - remote image
+  - need fetch flag
+  - image fetch failed
+  - image validated
+end note
+
+@enduml
