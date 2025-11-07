@@ -795,7 +795,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
             }
             if (twincodeId == null) {
                 SNIProxyDescriptor proxyDescriptor = SNIProxyDescriptor.create(path);
-                if (proxyDescriptor != null) {
+                if (proxyDescriptor != null && Utils.isValidHostname(proxyDescriptor.getAddress())) {
                     label = path;
                     options = proxyDescriptor.getDescriptor();
                     complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(TwincodeURI.Kind.Proxy, Twincode.NOT_DEFINED, options, null, uri.toString(), label));

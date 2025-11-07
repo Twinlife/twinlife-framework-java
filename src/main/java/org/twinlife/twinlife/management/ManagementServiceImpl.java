@@ -33,6 +33,7 @@ import org.twinlife.twinlife.Hostname;
 import org.twinlife.twinlife.JobService;
 import org.twinlife.twinlife.ManagementService;
 import org.twinlife.twinlife.PackageInfo;
+import org.twinlife.twinlife.SNIProxyDescriptor;
 import org.twinlife.twinlife.TurnServer;
 import org.twinlife.twinlife.TwinlifeAssertPoint;
 import org.twinlife.twinlife.TwinlifeImpl;
@@ -449,8 +450,10 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
             stringBuilder.append(",proxy:");
             if (proxy.isUserProxy()) {
                 stringBuilder.append("2");
-            } else {
+            } else if (proxy instanceof SNIProxyDescriptor) {
                 stringBuilder.append("1");
+            } else {
+                stringBuilder.append("3");
             }
         }
 

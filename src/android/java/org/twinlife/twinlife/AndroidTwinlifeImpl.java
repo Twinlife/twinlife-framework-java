@@ -19,7 +19,6 @@ import android.content.Context;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
 import android.content.pm.SigningInfo;
-import android.database.Cursor;
 import android.os.Build;
 import android.os.Environment;
 import android.util.Log;
@@ -44,6 +43,7 @@ import java.security.MessageDigest;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 
+import net.sqlcipher.Cursor;
 import net.sqlcipher.DatabaseErrorHandler;
 import net.sqlcipher.database.SQLiteDatabase;
 import net.sqlcipher.database.SQLiteDatabase.CursorFactory;

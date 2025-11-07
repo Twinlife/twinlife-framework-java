@@ -131,7 +131,7 @@ public class TwinlifeServiceConnectionImpl implements ServiceConnection {
     @Nullable
     public static byte[] decrypt(@NonNull byte[] ivEncryptedData, int length) {
 
-        return KeyChain.decrypt(KeyChain.getDefaultSecretKey(), ivEncryptedData, length);
+        return KeyChain.decrypt(KeyChain.getDefaultSecretKey(), ivEncryptedData, length, false);
     }
     //
     // Private Methods

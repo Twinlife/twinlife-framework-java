@@ -12,7 +12,11 @@ public enum AndroidAssertPoint implements AssertPoint {
     KEYCHAIN,
     KEYCHAIN_USE_DEFAULT,
     KEYCHAIN_DECRYPT,
-    KEYCHAIN_ENCRYPT;
+    KEYCHAIN_ENCRYPT,
+    KEYCHAIN_REMOVE,
+    KEYCHAIN_BAD_JELLY_BEAN,
+    KEYCHAIN_CREATE,
+    KEYCHAIN_CREATE_GCM;
 
     public int getIdentifier() {
 

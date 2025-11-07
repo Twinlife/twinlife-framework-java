@@ -4,15 +4,15 @@ plugins {
 }
 
 android {
-    compileSdkVersion 35
+    compileSdkVersion libs.versions.compile.sdk.version.get()
     namespace 'org.twinlife.twinlife'
     buildFeatures {
         buildConfig = true
     }
     defaultConfig {
-        minSdkVersion 21
-        targetSdkVersion 35
-        buildConfigField "String", "VERSION", '"2.12.3"'
+        minSdkVersion libs.versions.min.sdk.version.get() as int
+        targetSdkVersion libs.versions.target.sdk.version.get() as int
+        buildConfigField "String", "VERSION", '"2.12.4"'
 
         // Enable reporting power management information
         buildConfigField "boolean", "ENABLE_POWER_MANAGEMENT_REPORT", "true"

@@ -34,6 +34,8 @@ public class WebSocketConnection extends Connection implements Observer {
     private static final boolean INFO = Logger.INFO;
 
     private static final int MAX_PROXIES = 6;
+    private static final int PROXY_START_DELAY = ((5000 / 8) << 12) & 0x003FF000;      // around 5000ms, see wscontainer.h in libwebsockets
+    private static final int PROXY_FIRST_START_DELAY = ((500 / 8) << 22) & 0x7FC00000; // around 500ms
 
     private final Twinlife mTwinlife;
     private final Container mContainer;
@@ -140,7 +142,7 @@ public class WebSocketConnection extends Connection implements Observer {
         // followed by one SNI proxy to increase the chance to try different proxy modes.
         final long now = System.currentTimeMillis();
         if (mShuffledProxyDescriptors.length > 0 && mShuffledDeadline < now) {
-            mShuffledDeadline = now + (long) (mRandom.nextInt(4 * 3600)) * 1000L; // Note: we cannot use nextLong()
+            mShuffledDeadline = now + 3 * 3600 * 1000L + (long) (mRandom.nextInt(4 * 3600)) * 1000L; // Note: we cannot use nextLong()
             final List<KeyProxyDescriptor> ksList = new ArrayList<>(mKeyProxies);
             final List<SNIProxyDescriptor> sList = new ArrayList<>(mSNIProxies);
             final int length = mShuffledProxyDescriptors.length;
@@ -148,15 +150,11 @@ public class WebSocketConnection extends Connection implements Observer {
                 ProxyDescriptor proxyDescriptor = null;
                 if ((i & 0x01) != 0 && !ksList.isEmpty()) {
                     int j = mRandom.nextInt(ksList.size());
-                    if (j < ksList.size()) {
-                        proxyDescriptor = ksList.remove(j);
-                    }
+                    proxyDescriptor = ksList.remove(j);
                 }
                 if (!sList.isEmpty() && (proxyDescriptor == null || (i & 0x01) == 0)) {
                     int j = mRandom.nextInt(sList.size());
-                    if (j < sList.size()) {
-                        proxyDescriptor = sList.remove(j);
-                    }
+                    proxyDescriptor = sList.remove(j);
                 }
                 mShuffledProxyDescriptors[i] = proxyDescriptor;
             }
@@ -231,8 +229,9 @@ public class WebSocketConnection extends Connection implements Observer {
         int method = mConfig.isSecure() ? Container.CONFIG_SECURE : 0;
         method |= Container.CONFIG_DIRECT_CONNECT;
         if (proxyOffset > 0) {
-            method |= Container.CONFIG_FIRST_PROXY;
+            method |= Container.CONFIG_FIRST_PROXY | PROXY_FIRST_START_DELAY;
         }
+        method |= PROXY_START_DELAY;
         int proxyCount = Math.min(mProxies.length, MAX_PROXIES + proxyOffset);
         SocketProxyDescriptor[] proxies = new SocketProxyDescriptor[proxyCount];
         for (int i = 0; i < proxyCount; i++) {

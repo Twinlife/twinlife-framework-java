@@ -391,7 +391,7 @@ public class ConnectivityServiceImpl extends BaseServiceImpl<ConnectivityService
                 if (!found) {
                     // Important note: the proxyDescriptor instance can contain a SNI configuration that is random
                     // and therefore we may not find in mProxyDescriptors the instance that the WebSocketConnection
-                    // is giving us, and we must record in mLastProxyDescriptor the instance we have and not what we recieved.
+                    // is giving us, and we must record in mLastProxyDescriptor the instance we have and not what we received.
                     if (mProxyDescriptors != null) {
                         for (ProxyDescriptor proxy : mProxyDescriptors) {
                             index++;

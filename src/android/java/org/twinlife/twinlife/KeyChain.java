@@ -43,6 +43,8 @@ import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
 import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.security.auth.x500.X500Principal;
@@ -56,9 +58,12 @@ import javax.security.auth.x500.X500Principal;
  *   For Android 4.3, it was using an RSA key with default size and starting with Android 4.4 it was using
  *   a 2048-bit RSA key.  This RSA key is still used on Android 5.x (support for Android 4.x has been dropped
  *   on twinme and Skred in 2023).
- * - starting with Android 6.0 (M), we could use the new keystore API and the encryption uses AES-CBC with
+ * - starting with Android 6.0 (M), we could use the new keystore API and the encryption uses AES-CBC or AES-GCM with
  *   a 256-bit key.  Back in 2018, some Android implementation were broken and we had to sometimes fallback
  *   in using the RSA key.
+ * - we changed the encryption from AES/CBC to AES/GCM to detect tampering (mostly due to bugs and not attacks)
+ *   Due to this, we handle the migration of encryption but because Android Keystore is buggy we also have to
+ *   fallback to previous encryption mechanisms.
  * At the time we created this implementation, the AndroidX Crypto library with the encrypted shared preference
  * was not available.  Since that encrypted shared preference library is deprecated now, we are still not using it
  * (and it is the reason why we don't and won't use it).
@@ -70,6 +75,8 @@ final class KeyChain {
 
     private static final String AndroidKeyStore = "AndroidKeyStore";
     private static final String TWINLIFE_SECRET_KEY = "TwinlifeSecretKey";
+    private static final String TWINLIFE_GCM_KEY = "TwinlifeGCMKey";
+    private static final String AES_GCM = "AES/GCM/NoPadding";
     private static final String AES_MODE = "AES/CBC/PKCS7Padding";
     private static final String RSA_MODE = "RSA/ECB/PKCS1Padding";
     private static final String TWINLIFE_SECURED_PREFERENCES = "TwinlifeSecuredPreferences";
@@ -78,16 +85,21 @@ final class KeyChain {
     private static final int IV_LENGTH_BYTES = 16;
     private static final byte[] UUID1 = {-112, -102, 4, -13, 88, 2, 69, -13, -77, 50, -83, 81, 22, 76, -14, -89};
     private static final byte[] UUID2 = {1, -115, -24, -96, 27, -27, 74, -49, -74, -34, 90, 106, 102, 103, 8, 126};
+    private static final int GCM_TAG_LENGTH = 128; // bits
+    private static final int IV_GCM_SIZE = 12; // bytes (recommended for GCM)
 
     @NonNull
     private final Context mContext;
     @NonNull
     private final Key mSecuredKey;
+    @Nullable
+    private final Key mOldSecuredKey;
     @NonNull
     private final String mKeyPrefix;
     private final boolean mCreated;
     private final boolean mIsDefaultSecretKey;
     private final Twinlife mTwinlife;
+    private final boolean mIsGCMKey;
 
     //
     // Private Methods
@@ -103,29 +115,81 @@ final class KeyChain {
         mTwinlife = twinlife;
 
         Key securedKey = null;
+        Key oldSecuredKey = null;
         boolean created = false;
+        boolean hasOldKey;
+        boolean hasGCMKey = false;
+        boolean badJellyBean = false;
         try {
             final KeyStore keyStore = KeyStore.getInstance(AndroidKeyStore);
             keyStore.load(null);
 
-            securedKey = getSecureKey(keyStore, sharedPreferences, twinlife);
-            if (securedKey == null) {
-                // Generate a secure key: the secure key must be inserted in the AndroidKeyStore.
-                // We then retry getting the secure key to make sure we can extract it from the keystore and use it.
-                // If this fails, we try another method until all possible methods have been checked.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    generateSecuredKeyM();
-                    securedKey = getSecureKey(keyStore, sharedPreferences, twinlife);
-                }
+            // Get or create the AES-GCM encryption key.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                for (int retry = 0; retry < 5 && securedKey == null; retry++) {
+                    hasGCMKey = keyStore.containsAlias(TWINLIFE_GCM_KEY);
 
-                // Android 5.x up to Android 6.0 if there are issues with generateSecureKeyM().
-                if (securedKey == null && Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-                    generateSecuredKeyJellyBeanMR2(context, sharedPreferences);
-                    securedKey = getSecureKey(keyStore, sharedPreferences, twinlife);
+                    // Generate a secure key: the secure key must be inserted in the AndroidKeyStore.
+                    // We then retry getting the secure key to make sure we can extract it from the keystore and use it.
+                    // If this fails, we try another method until all possible methods have been checked.
+                    if (!hasGCMKey) {
+                        hasGCMKey = generateGCMKeyM(twinlife);
+                        created = hasGCMKey;
+                    }
+                    try {
+                        final Entry entry = keyStore.getEntry(TWINLIFE_GCM_KEY, null);
+                        if (entry instanceof SecretKeyEntry) {
+                            final SecretKeyEntry secretKeyEntry = (SecretKeyEntry) entry;
+                            securedKey = secretKeyEntry.getSecretKey();
+                            hasGCMKey = securedKey != null;
+                        }
+
+                    } catch (Exception exception) {
+                        // Note: a NullPointerException is sometimes raised by keyStore.getEntry() despite our alias that is NEVER null.
+                        // This is a bug in some OEM firmware.
+                        Log.e(LOG_TAG, "getSecureKey: exception=" + exception);
+                        twinlife.exception(AndroidAssertPoint.KEYCHAIN, exception, AssertPoint.createMarker(retry));
+                    }
+
+                    // Something wrong occurred with the key: remove it to get a new one.
+                    if (securedKey == null) {
+                        try {
+                            keyStore.deleteEntry(TWINLIFE_GCM_KEY);
+                        } catch (Exception exception) {
+                            Log.e(LOG_TAG, "getSecureKey: exception=" + exception);
+                            twinlife.exception(AndroidAssertPoint.KEYCHAIN_REMOVE, exception, AssertPoint.createMarker(retry));
+                        }
+
+                        // Android Keystore is sometimes buggy and unreliable, some OEM have issues to generate random numbers
+                        // pause a few milliseconds and retry (as per some obscure recommendation).
+                        try {
+                            Thread.sleep(500);
+                        } catch (Exception ignored) {
+
+                        }
+                    }
                 }
-                created = securedKey != null;
             }
 
+            // Get the old key if it exists, we will use the old AES/CBC encryption mode.
+            hasOldKey = keyStore.containsAlias(TWINLIFE_SECRET_KEY);
+            if (hasOldKey) {
+                oldSecuredKey = getSecureKey(keyStore, sharedPreferences, twinlife);
+            }
+
+            // Android 5.x up to Android 6.0 if there are issues with generateSecureKeyM().
+            if (securedKey == null && oldSecuredKey == null && Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                badJellyBean = generateSecuredKeyJellyBeanMR2(context, sharedPreferences, twinlife);
+                oldSecuredKey = getSecureKey(keyStore, sharedPreferences, twinlife);
+                created = oldSecuredKey != null;
+            }
+
+            // If the GCM encryption key does not exist, use the old key.
+            if (securedKey == null && oldSecuredKey != null) {
+                securedKey = oldSecuredKey;
+                oldSecuredKey = null;
+                hasGCMKey = false;
+            }
         } catch (Exception exception) {
             Log.e(LOG_TAG, "KeyChain exception", exception);
 
@@ -134,19 +198,31 @@ final class KeyChain {
 
         mIsDefaultSecretKey = securedKey == null;
         if (mIsDefaultSecretKey) {
-            mTwinlife.assertion(AndroidAssertPoint.KEYCHAIN_USE_DEFAULT, null);
+            if (!badJellyBean) {
+                mTwinlife.assertion(AndroidAssertPoint.KEYCHAIN_USE_DEFAULT, null);
+            }
             securedKey = getDefaultSecretKey();
+            hasGCMKey = false;
         }
+        mIsGCMKey = hasGCMKey;
         mSecuredKey = securedKey;
+        mOldSecuredKey = oldSecuredKey;
         mCreated = created;
 
         // To migrate safely from the legacy storage with the default secret key and use
-        // a key from the Android Keystore, the entries are prefixed by 'ks.':
-        // - the 'ks.TwinlifeSecuredConfiguration' is encrypted by the Android keystore key,
+        // a key from the Android Keystore, the entries are prefixed by 'gs.':
+        // - the 'gs.TwinlifeSecuredConfiguration' is encrypted by the Android keystore key using AES/GCM,
+        // - the 'ks.TwinlifeSecuredConfiguration' is encrypted by the Android keystore key using AES/CBC/PKCS7Padding,
         // - the 'TwinlifeSecuredConfiguration' if it exists, is encrypted by the default secret key
         //   when `LEGACY_NO_KEYSTORE` is true, but it is encrypted with the Android keystore key
-        //   for others (Skred).
-        mKeyPrefix = BuildConfig.LEGACY_NO_KEYSTORE ? "ks." : "";
+        //   for others (Skred).  Encryption mode is AES/CBC/PKCS7Padding.
+        // - if we failed to create the Keychain key and we fallback to using the default secret key
+        //   continue using the old value without the 'gs.' prefix.  On some devices, the Keystore is
+        //   buggy and some NullPointerException is raised by the getEntry().  Occurrence found:
+        //   72.3%	android.5.x
+        //   26.0%	android.13
+        //   2.2%	android.12
+        mKeyPrefix = mIsGCMKey ? "gs." : BuildConfig.LEGACY_NO_KEYSTORE && !mIsDefaultSecretKey ? "ks." : "";
     }
 
     @Nullable
@@ -176,17 +252,11 @@ final class KeyChain {
                         }
                     }
                 }
-
-                // Something wrong occurred with the key: remove it to get a new one.
-                try {
-                    keyStore.deleteEntry(TWINLIFE_SECRET_KEY);
-                } catch (Exception lException) {
-                    Log.e(LOG_TAG, "getSecureKey: exception=" + lException);
-                }
             }
-            return null;
 
         } catch (Exception exception) {
+            // Note: a NullPointerException is sometimes raised by keyStore.getEntry() despite our alias that is NEVER null.
+            // This is a bug on some OEM firmware.
             Log.e(LOG_TAG, "getSecureKey: exception=" + exception);
             twinlife.exception(AndroidAssertPoint.KEYCHAIN, exception, null);
         }
@@ -202,29 +272,51 @@ final class KeyChain {
         final SharedPreferences sharedPreferences = mContext.getSharedPreferences(TWINLIFE_SECURED_PREFERENCES, Context.MODE_PRIVATE);
         String securedData = sharedPreferences.getString(mKeyPrefix + key, null);
         if (securedData == null) {
-            if (!BuildConfig.LEGACY_NO_KEYSTORE) {
+            // No keyprefix means we failed to create a key in the keychain, there is nothing to migrate.
+            if (mKeyPrefix.isEmpty()) {
                 return null;
             }
 
-            // If the old entry that was encrypted by using the default secret key exists, use it and
-            // save it with the new encryption key defined in the Android keystore.
-            securedData = sharedPreferences.getString(key, null);
+            // Handle keychain migration:
+            // - for legacy twinme, if we have an old encryption key, look for the ks.<key> content,
+            //   BUT if there is no ks.<key>, look for <key> and use the default encryption key.
+            // - for legacy Skred, look for <key> and use either the old encryption key if it exists
+            //   of the default encryption key.
+            final Key decryptKey;
+            if (BuildConfig.LEGACY_NO_KEYSTORE && mOldSecuredKey != null) {
+                securedData = sharedPreferences.getString("ks." + key, null);
+                if (securedData != null) {
+                    decryptKey = mOldSecuredKey;
+                } else {
+                    securedData = sharedPreferences.getString(key, null);
+                    decryptKey = getDefaultSecretKey();
+                }
+            } else {
+                securedData = sharedPreferences.getString(key, null);
+                decryptKey = mOldSecuredKey != null ? mOldSecuredKey : getDefaultSecretKey();
+            }
             if (securedData == null) {
                 return null;
             }
 
-            byte[] data = decrypt(getDefaultSecretKey(), Base64.decode(securedData, Base64.DEFAULT), 0);
+            byte[] data = decrypt(decryptKey, Base64.decode(securedData, Base64.DEFAULT), 0, false);
+            if (BuildConfig.LEGACY_NO_KEYSTORE && data == null) {
+                securedData = sharedPreferences.getString(key, null);
+                data = decrypt(getDefaultSecretKey(), Base64.decode(securedData, Base64.DEFAULT), 0, false);
+            }
             if (data == null) {
-                mTwinlife.assertion(AndroidAssertPoint.KEYCHAIN_DECRYPT, null);
+                mTwinlife.assertion(AndroidAssertPoint.KEYCHAIN_DECRYPT, AssertPoint.createMarker(1));
                 return null;
             }
-            if (!mIsDefaultSecretKey) {
-                updateKeyChain(key, data);
-            }
+            updateKeyChain(key, data);
             return data;
         }
 
-        return decrypt(mSecuredKey, Base64.decode(securedData, Base64.DEFAULT), 0);
+        final byte[] data = decrypt(mSecuredKey, Base64.decode(securedData, Base64.DEFAULT), 0, mIsGCMKey);
+        if (data == null) {
+            mTwinlife.assertion(AndroidAssertPoint.KEYCHAIN_DECRYPT, AssertPoint.createMarker(2));
+        }
+        return data;
     }
 
     @SuppressLint("ApplySharedPref")
@@ -303,6 +395,11 @@ final class KeyChain {
             } catch (KeyStoreException ex) {
                 Log.d(LOG_TAG, "Cannot remove key from keystore: " + ex.getMessage());
             }
+            try {
+                keyStore.deleteEntry(TWINLIFE_GCM_KEY);
+            } catch (KeyStoreException ex) {
+                Log.d(LOG_TAG, "Cannot remove key from keystore: " + ex.getMessage());
+            }
 
         } catch (Exception exception) {
             Log.d(LOG_TAG, "Cannot remove key from keystore: " + exception.getMessage());
@@ -310,7 +407,31 @@ final class KeyChain {
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
-    private static void generateSecuredKeyM() {
+    private static boolean generateGCMKeyM(@NonNull Twinlife twinlife) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "generateGCMKeyM");
+        }
+
+        try {
+            KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, AndroidKeyStore);
+            KeyGenParameterSpec.Builder keySpec = new KeyGenParameterSpec.Builder(TWINLIFE_GCM_KEY, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT);
+            keySpec.setBlockModes(KeyProperties.BLOCK_MODE_GCM);
+            keySpec.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE);
+            keySpec.setKeySize(256);
+
+            keyGenerator.init(keySpec.build());
+            SecretKey secretKey = keyGenerator.generateKey();
+            return secretKey != null;
+
+        } catch (Exception exception) {
+            Log.e(LOG_TAG, "generateSecuredKeyM: exception=" + exception);
+            twinlife.exception(AndroidAssertPoint.KEYCHAIN_CREATE_GCM, exception, null);
+            return false;
+        }
+    }
+
+    /* @RequiresApi(Build.VERSION_CODES.M)
+    private static void generateSecuredKeyM(@NonNull Twinlife twinlife) {
         if (DEBUG) {
             Log.d(LOG_TAG, "generateSecuredKeyM");
         }
@@ -326,17 +447,18 @@ final class KeyChain {
             keyGenerator.generateKey();
         } catch (Exception exception) {
             Log.e(LOG_TAG, "generateSecuredKeyM: exception=" + exception);
+            twinlife.exception(AndroidAssertPoint.KEYCHAIN_CREATE, exception, null);
         }
-    }
+    }*/
 
     @SuppressLint("ApplySharedPref")
-    private static void generateSecuredKeyJellyBeanMR2(@NonNull Context context, @NonNull SharedPreferences sharedPreferences) {
+    private static boolean generateSecuredKeyJellyBeanMR2(@NonNull Context context, @NonNull SharedPreferences sharedPreferences, @NonNull Twinlife twinlife) {
         if (DEBUG) {
             Log.d(LOG_TAG, "generateSecuredKeyJellyBeanMR2");
         }
 
         if (sharedPreferences.getBoolean(TWINLIFE_BAD_JELLY_BEAN, false)) {
-            return;
+            return false;
         }
 
         KeyPairGeneratorSpec.Builder builder = new KeyPairGeneratorSpec.Builder(context);
@@ -360,11 +482,12 @@ final class KeyChain {
                 edit.putString(TWINLIFE_SECURED_KEY, Base64.encodeToString(encryptedData, Base64.DEFAULT));
                 edit.remove(TWINLIFE_BAD_JELLY_BEAN);
                 edit.commit();
-                return;
+                return true;
             }
 
         } catch (Exception exception) {
             Log.e(LOG_TAG, "generateSecuredKeyJellyBeanMR2: exception=" + exception);
+            twinlife.exception(AndroidAssertPoint.KEYCHAIN_BAD_JELLY_BEAN, exception, null);
         }
 
         // Cleanup when something is wrong and mark it as a failed environment.
@@ -373,6 +496,7 @@ final class KeyChain {
         edit.putBoolean(TWINLIFE_BAD_JELLY_BEAN, true);
         edit.remove(TWINLIFE_SECURED_KEY);
         edit.commit();
+        return false;
     }
 
     static Key getDefaultSecretKey() {
@@ -449,25 +573,25 @@ final class KeyChain {
         }
 
         try {
-            Cipher cipher = Cipher.getInstance(AES_MODE);
+            final Cipher cipher = Cipher.getInstance(mIsGCMKey ? AES_GCM : AES_MODE);
             cipher.init(Cipher.ENCRYPT_MODE, mSecuredKey);
+            final byte[] encryptedData = cipher.doFinal(data);
             byte[] iv = cipher.getIV();
-            byte[] encryptedData = cipher.doFinal(data);
-            byte[] ivEncryptedData = new byte[iv.length + encryptedData.length];
-            System.arraycopy(iv, 0, ivEncryptedData, 0, IV_LENGTH_BYTES);
-            System.arraycopy(encryptedData, 0, ivEncryptedData, IV_LENGTH_BYTES, encryptedData.length);
+            final byte[] ivEncryptedData = new byte[iv.length + encryptedData.length];
+            System.arraycopy(iv, 0, ivEncryptedData, 0, iv.length);
+            System.arraycopy(encryptedData, 0, ivEncryptedData, iv.length, encryptedData.length);
             return ivEncryptedData;
+
         } catch (Exception exception) {
             Log.e(LOG_TAG, "encrypt: exception=" + exception);
 
             mTwinlife.exception(AndroidAssertPoint.KEYCHAIN_ENCRYPT, exception, null);
         }
-
         return null;
     }
 
     @Nullable
-    static byte[] decrypt(@NonNull Key securedKey, @NonNull byte[] ivEncryptedData, int length) {
+    static byte[] decrypt(@NonNull Key securedKey, @NonNull byte[] ivEncryptedData, int length, boolean useGCM) {
         if (DEBUG) {
             Log.d(LOG_TAG, "decrypt: ivEncryptedData=" + Arrays.toString(ivEncryptedData));
         }
@@ -476,18 +600,27 @@ final class KeyChain {
             length = ivEncryptedData.length;
         }
         try {
-            byte[] iv = new byte[IV_LENGTH_BYTES];
-            System.arraycopy(ivEncryptedData, 0, iv, 0, IV_LENGTH_BYTES);
-            byte[] encryptedData = new byte[length - IV_LENGTH_BYTES];
-            System.arraycopy(ivEncryptedData, IV_LENGTH_BYTES, encryptedData, 0, encryptedData.length);
-            Cipher cipher = Cipher.getInstance(AES_MODE);
-            cipher.init(Cipher.DECRYPT_MODE, securedKey, new IvParameterSpec(iv));
+            final Cipher cipher;
+            final byte[] iv;
+            if (useGCM) {
+                iv = new byte[IV_GCM_SIZE];
+                System.arraycopy(ivEncryptedData, 0, iv, 0, IV_GCM_SIZE);
+                cipher = Cipher.getInstance(AES_GCM);
+                GCMParameterSpec spec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
+                cipher.init(Cipher.DECRYPT_MODE, securedKey, spec);
+            } else {
+                iv = new byte[IV_LENGTH_BYTES];
+                System.arraycopy(ivEncryptedData, 0, iv, 0, IV_LENGTH_BYTES);
+                cipher = Cipher.getInstance(AES_MODE);
+                cipher.init(Cipher.DECRYPT_MODE, securedKey, new IvParameterSpec(iv));
+            }
 
+            final byte[] encryptedData = new byte[length - iv.length];
+            System.arraycopy(ivEncryptedData, iv.length, encryptedData, 0, encryptedData.length);
             return cipher.doFinal(encryptedData);
         } catch (Exception exception) {
             Log.e(LOG_TAG, "decrypt: exception=" + exception);
         }
-
         return null;
     }
 

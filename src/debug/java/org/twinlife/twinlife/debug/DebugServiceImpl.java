@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2023 twinlife SA.
+ *  Copyright (c) 2018-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -9,12 +9,12 @@
 package org.twinlife.twinlife.debug;
 
 
-import android.database.Cursor;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import android.util.Log;
 
+import net.sqlcipher.Cursor;
 import net.sqlcipher.database.SQLiteDatabase;
 
 import org.twinlife.twinlife.Connection;
