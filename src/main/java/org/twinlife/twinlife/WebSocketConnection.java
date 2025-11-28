@@ -22,7 +22,6 @@ import org.libwebsockets.Session;
 import org.libwebsockets.SocketProxyDescriptor;
 import org.twinlife.twinlife.util.Logger;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -318,18 +317,22 @@ public class WebSocketConnection extends Connection implements Observer {
     }
 
     @Override
-    public void sendDataPacket(byte[] packet) throws IOException {
+    public boolean sendDataPacket(byte[] packet) {
         if (DEBUG) {
             Log.d(LOG_TAG, "sendPacket packet.length=" + packet.length);
         }
 
-        if (mSession != null) {
-            mSession.sendMessage(packet, true);
+        synchronized (mConnectionLock) {
+            if (mSession != null) {
+                return mSession.sendMessage(packet, true);
+            } else {
+                return false;
+            }
         }
     }
 
     @Override
-    public void onConnect(long sessionId, ConnectionStats[] stats, int active) {
+    public void onConnect(long sessionId, @NonNull ConnectionStats[] stats, int active) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onConnect sessionId=" + sessionId + " stats=" + stats
                     + " active=" + active);

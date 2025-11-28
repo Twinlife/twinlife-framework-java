@@ -82,6 +82,7 @@ final class KeyChain {
     private static final String TWINLIFE_SECURED_PREFERENCES = "TwinlifeSecuredPreferences";
     private static final String TWINLIFE_SECURED_KEY = "TwinlifeSecuredKey";
     private static final String TWINLIFE_BAD_JELLY_BEAN = "TwinlifeBadJellyBean";
+    private static final String TWINLIFE_BAD_JELLY_BEAN2 = "TwinlifeBadJellyBean2";
     private static final int IV_LENGTH_BYTES = 16;
     private static final byte[] UUID1 = {-112, -102, 4, -13, 88, 2, 69, -13, -77, 50, -83, 81, 22, 76, -14, -89};
     private static final byte[] UUID2 = {1, -115, -24, -96, 27, -27, 74, -49, -74, -34, 90, 106, 102, 103, 8, 126};
@@ -457,7 +458,7 @@ final class KeyChain {
             Log.d(LOG_TAG, "generateSecuredKeyJellyBeanMR2");
         }
 
-        if (sharedPreferences.getBoolean(TWINLIFE_BAD_JELLY_BEAN, false)) {
+        if (sharedPreferences.getBoolean(TWINLIFE_BAD_JELLY_BEAN2, false)) {
             return false;
         }
 
@@ -465,7 +466,7 @@ final class KeyChain {
         builder.setAlias(TWINLIFE_SECRET_KEY);
         Calendar start = Calendar.getInstance();
         Calendar end = Calendar.getInstance();
-        end.add(Calendar.YEAR, 30);
+        end.set(Calendar.YEAR, 2049); // Do not exceed 2049 as exceed DERUTCTime in ASN.1 DER encoding.
         builder.setSubject(new X500Principal("CN=" + TWINLIFE_SECRET_KEY));
         builder.setSerialNumber(BigInteger.TEN).setStartDate(start.getTime()).setEndDate(end.getTime());
         builder.setKeySize(4096);
@@ -481,6 +482,7 @@ final class KeyChain {
             if (encryptedData != null) {
                 edit.putString(TWINLIFE_SECURED_KEY, Base64.encodeToString(encryptedData, Base64.DEFAULT));
                 edit.remove(TWINLIFE_BAD_JELLY_BEAN);
+                edit.remove(TWINLIFE_BAD_JELLY_BEAN2);
                 edit.commit();
                 return true;
             }
@@ -493,7 +495,7 @@ final class KeyChain {
         // Cleanup when something is wrong and mark it as a failed environment.
         // It seems that some Samsung devices running Android 4.3..Android 5.1 are having problems on their keystore.
         // Other devices don't have the issue.  Mark the fact that we failed.
-        edit.putBoolean(TWINLIFE_BAD_JELLY_BEAN, true);
+        edit.putBoolean(TWINLIFE_BAD_JELLY_BEAN2, true);
         edit.remove(TWINLIFE_SECURED_KEY);
         edit.commit();
         return false;

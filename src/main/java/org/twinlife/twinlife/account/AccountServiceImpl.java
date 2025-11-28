@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012-2023 twinlife SA.
+ *  Copyright (c) 2012-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -32,6 +32,7 @@ import org.twinlife.twinlife.util.Logger;
 import org.twinlife.twinlife.util.Utf8;
 import org.twinlife.twinlife.util.Utils;
 
+import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -402,7 +403,9 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             byte[] packet = createAccountIQ.serialize(mSerializerFactory);
 
             packetTimeout(requestId, DEFAULT_REQUEST_TIMEOUT, true);
-            mConnection.sendDataPacket(packet);
+            if (!mConnection.sendDataPacket(packet)) {
+                throw new IOException("Offline");
+            }
 
         } catch (Exception exception) {
             if (Logger.INFO) {
@@ -594,7 +597,6 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
 
     /**
      * Generate a new password and change it on the Openfire server.
-     *
      * The new password is saved by onChangePassword() when the response is received.
      */
     private void changePassword() {
@@ -659,7 +661,9 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             byte[] packet = mAuthChallenge.serialize(mSerializerFactory);
 
             packetTimeout(requestId, AUTH_REQUEST_TIMEOUT, true);
-            mConnection.sendDataPacket(packet);
+            if (!mConnection.sendDataPacket(packet)) {
+                throw new IOException("Offline");
+            }
 
         } catch (Exception exception) {
             if (Logger.INFO) {
@@ -764,7 +768,9 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             // We must not use BaseServiceImpl::sendPacket() because we are not signed-in yet!
             byte[] packet = authRequestIQ.serialize(mSerializerFactory);
             packetTimeout(requestId, AUTH_REQUEST_TIMEOUT, true);
-            mConnection.sendDataPacket(packet);
+            if (!mConnection.sendDataPacket(packet)) {
+                throw new IOException("offline");
+            }
 
         } catch (GeneralSecurityException exception) {
             if (Logger.INFO) {

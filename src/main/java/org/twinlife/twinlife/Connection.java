@@ -102,9 +102,9 @@ public abstract class Connection {
      * Sends the specified packet to the server.
      *
      * @param packet the packet to send.
-     * @exception IOException raised if there is a connection error.
+     * return true if the packet was sent and false if the connection was closed.
      */
-    public abstract void sendDataPacket(byte[] packet) throws IOException;
+    public abstract boolean sendDataPacket(byte[] packet);
 
     /**
      * Closes the connection.

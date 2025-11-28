@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2024 twinlife SA.
+ *  Copyright (c) 2013-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -428,25 +428,14 @@ public abstract class BaseServiceImpl <Observer extends BaseService.ServiceObser
             if (mSignIn) {
                 byte[] packet = iq.serializeCompact(mSerializerFactory);
                 packetTimeout(requestId, timeout, true);
-                try {
-                    mConnection.sendDataPacket(packet);
-
+                if (mConnection.sendDataPacket(packet)) {
                     mSendCount.incrementAndGet();
                     return ErrorCode.SUCCESS;
-
-                } catch (Exception exception) {
-                    if (Logger.INFO) {
-                        Logger.info(LOG_TAG, "sendPacket", exception, " iq=", iq);
-                    }
-
-                    onErrorPacket(new BinaryErrorPacketIQ(requestId, ErrorCode.TWINLIFE_OFFLINE));
-                    return ErrorCode.TWINLIFE_OFFLINE;
                 }
-            } else {
-                mSendDisconnectedCount.incrementAndGet();
-                onErrorPacket(new BinaryErrorPacketIQ(requestId, ErrorCode.TWINLIFE_OFFLINE));
-                return ErrorCode.TWINLIFE_OFFLINE;
             }
+            mSendDisconnectedCount.incrementAndGet();
+            onErrorPacket(new BinaryErrorPacketIQ(requestId, ErrorCode.TWINLIFE_OFFLINE));
+            return ErrorCode.TWINLIFE_OFFLINE;
         } catch (Exception ex) {
             onErrorPacket(new BinaryErrorPacketIQ(requestId, ErrorCode.LIBRARY_ERROR));
             return ErrorCode.TWINLIFE_OFFLINE;
@@ -461,19 +450,12 @@ public abstract class BaseServiceImpl <Observer extends BaseService.ServiceObser
         try {
             if (mSignIn) {
                 byte[] packet = iq.serializeCompact(mSerializerFactory);
-                try {
-                    mConnection.sendDataPacket(packet);
-
+                if (mConnection.sendDataPacket(packet)) {
                     mSendCount.incrementAndGet();
-
-                } catch (Exception exception) {
-                    if (Logger.INFO) {
-                        Logger.info(LOG_TAG, "sendResponse", exception, " iq=", iq);
-                    }
+                    return;
                 }
-            } else {
-                mSendDisconnectedCount.incrementAndGet();
             }
+            mSendDisconnectedCount.incrementAndGet();
         } catch (Exception ex) {
             if (Logger.INFO) {
                 Logger.info(LOG_TAG, "sendResponse", ex, " iq=", iq);
