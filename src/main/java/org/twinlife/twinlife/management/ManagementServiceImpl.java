@@ -21,6 +21,7 @@ import android.util.Log;
 
 import org.libwebsockets.ConnectionStats;
 import org.twinlife.twinlife.AssertPoint;
+import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.ProxyDescriptor;
 import org.twinlife.twinlife.Configuration;
 import org.twinlife.twinlife.Connection;
@@ -102,7 +103,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
     private static final String PREFERENCES_PUSH_NOTIFICATION_TOKEN = "PushNotificationToken";
 
     private static final int MAX_EVENTS = 16;
-    private static final int MAX_ASSERTIONS = 8;
+    private static final int MAX_ASSERTIONS = 16;
 
     private static final long MIN_UPDATE_TTL = 120; // 2mn
 
@@ -148,11 +149,26 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
     }
 
     static class PendingRequest {
+
+        PendingRequest() {
+        }
+    }
+
+    static class EventsRequest extends PendingRequest {
         @NonNull
         final List<Event> events;
 
-        PendingRequest(@NonNull List<Event> events) {
+        EventsRequest(@NonNull List<Event> events) {
             this.events = events;
+        }
+    }
+
+    static class FeedbackRequest extends PendingRequest {
+        @NonNull
+        final Consumer<Boolean> complete;
+
+        FeedbackRequest(@NonNull Consumer<Boolean> complete) {
+            this.complete = complete;
         }
     }
 
@@ -167,6 +183,8 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
     private final UUID mApplicationId;
     private volatile Configuration mConfiguration;
     private JobService.Job mRefreshJob;
+    private int mAssertionCount;
+    private long mFirstAssertionTime;
 
     public ManagementServiceImpl(@NonNull TwinlifeImpl twinlifeImpl, @NonNull Connection connection,
                                  @NonNull UUID applicationId) {
@@ -174,6 +192,8 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
         setServiceConfiguration(new ManagementServiceConfiguration());
         mApplicationId = applicationId;
+        mAssertionCount = 0;
+        mFirstAssertionTime = 0;
 
         mSerializerFactory.addSerializer(IQ_VALIDATE_CONFIGURATION_SERIALIZER);
         mSerializerFactory.addSerializer(IQ_SET_PUSH_TOKEN_SERIALIZER);
@@ -623,7 +643,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
     @Override
     public void sendFeedback(@NonNull String email, @NonNull String subject, @NonNull String description,
-                             @Nullable String logReport) {
+                             @Nullable String logReport, @NonNull Consumer<Boolean> complete) {
         if (DEBUG) {
             Log.d(LOG_TAG, "sendFeedback: email=" + email + " subject=" + subject
                     + " description=" + description + " logReport=" + logReport);
@@ -637,8 +657,12 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
             stringBuilder.append(logReport);
         }
 
-        FeedbackIQ feedbackIQ = new FeedbackIQ(IQ_FEEDBACK_SERIALIZER, newRequestId(), email, subject, description, stringBuilder.toString());
-
+        final long requestId = newRequestId();
+        final FeedbackIQ feedbackIQ = new FeedbackIQ(IQ_FEEDBACK_SERIALIZER, requestId, email, subject, description, stringBuilder.toString());
+        final PendingRequest pendingRequest = new FeedbackRequest(complete);
+        synchronized (this) {
+            mPendingRequests.put(requestId, pendingRequest);
+        }
         sendDataPacket(feedbackIQ, DEFAULT_REQUEST_TIMEOUT);
     }
 
@@ -679,10 +703,25 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
             stackTrace = false;
         }
 
+        final long now = System.currentTimeMillis();
         final long requestId = newRequestId();
         final AssertionIQ assertionIQ = new AssertionIQ(IQ_ASSERTION_SERIALIZER, requestId, mApplicationId,
                 new Version(mTwinlifeImpl.getApplicationVersion()), assertPoint, values, stackTrace, exception);
         synchronized (mAssertions) {
+            // Limit to MAX_ASSERTIONS the number of assertions we can report during the last 5 seconds
+            // This is a simplified token bucket algorithm but we want to keep consecutive assertions
+            // even if the rate is higher than the limit and fills the 5s time slot completely.
+            final long dt = now - mFirstAssertionTime;
+            if (dt > 5000) {
+                mAssertionCount = 0;
+                mFirstAssertionTime = now;
+            }
+            mAssertionCount++;
+            if (mAssertionCount >= MAX_ASSERTIONS) {
+                return;
+            }
+
+            // And in case we are not connected, also limit the queue to MAX_ASSERTIONS.
             if (mAssertions.size() >= MAX_ASSERTIONS) {
                 return;
             }
@@ -900,7 +939,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
         long requestId = newRequestId();
         LogEventIQ logEventIQ = new LogEventIQ(IQ_LOG_EVENT_SERIALIZER, requestId, events);
-        PendingRequest pendingRequest = new PendingRequest(events);
+        PendingRequest pendingRequest = new EventsRequest(events);
         synchronized (this) {
             mPendingRequests.put(requestId, pendingRequest);
         }
@@ -927,6 +966,15 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
         final long requestId = iq.getRequestId();
         receivedIQ(requestId);
+
+        final PendingRequest pendingRequest;
+        synchronized (this) {
+            pendingRequest = mPendingRequests.remove(requestId);
+        }
+        if (pendingRequest instanceof FeedbackRequest) {
+            final FeedbackRequest feedbackRequest = (FeedbackRequest) pendingRequest;
+            feedbackRequest.complete.onGet(ErrorCode.SUCCESS, Boolean.TRUE);
+        }
     }
 
     protected void onErrorPacket(@NonNull BinaryErrorPacketIQ iq) {
@@ -936,19 +984,22 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
         receivedIQ(iq.getRequestId());
 
-        PendingRequest request;
+        PendingRequest pendingRequest;
         synchronized (this) {
-            request = mPendingRequests.remove(iq.getRequestId());
-            if (request == null) {
-
+            pendingRequest = mPendingRequests.remove(iq.getRequestId());
+            if (pendingRequest == null) {
                 return;
             }
         }
 
         // Prepare to send again the events if we failed due to network error.
         final ErrorCode errorCode = iq.getErrorCode();
-        if (errorCode == ErrorCode.TWINLIFE_OFFLINE || errorCode == ErrorCode.TIMEOUT_ERROR) {
-            mEvents.get().addAll(request.events);
+        if (pendingRequest instanceof FeedbackRequest) {
+            final FeedbackRequest feedbackRequest = (FeedbackRequest) pendingRequest;
+            feedbackRequest.complete.onGet(errorCode, Boolean.FALSE);
+        } else if (pendingRequest instanceof EventsRequest && (errorCode == ErrorCode.TWINLIFE_OFFLINE || errorCode == ErrorCode.TIMEOUT_ERROR)) {
+            final EventsRequest eventsRequest = (EventsRequest) pendingRequest;
+            mEvents.get().addAll(eventsRequest.events);
         }
     }
 

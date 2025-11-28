@@ -919,17 +919,19 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
                     first++;
                 }
                 sep = path.indexOf('.');
-                if (sep <= 0) {
+                if (sep == 0) {
                     complete.onGet(ErrorCode.BAD_REQUEST, null);
                     return;
                 }
-                label = path.substring(first, sep);
+                label = sep > 0 ? path.substring(first, sep) : path.substring(first);
                 twincodeId = Utils.toUUID(label);
-                pubKey = path.substring(sep + 1);
-                sep = pubKey.indexOf('.');
                 if (sep > 0) {
-                    options = pubKey.substring(sep + 1);
-                    pubKey = pubKey.substring(0, sep);
+                    pubKey = path.substring(sep + 1);
+                    sep = pubKey.indexOf('.');
+                    if (sep > 0) {
+                        options = pubKey.substring(sep + 1);
+                        pubKey = pubKey.substring(0, sep);
+                    }
                 }
             } else {
                 String param = uri.getQueryParameter(TwincodeURI.PARAM_ID);

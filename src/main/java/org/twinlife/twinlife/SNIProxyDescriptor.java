@@ -19,9 +19,9 @@ public class SNIProxyDescriptor extends ProxyDescriptor {
     @Nullable
     private final String mCustomSNI;
 
-    public SNIProxyDescriptor(@NonNull String address, int port, @Nullable String customSNI, boolean isUser) {
+    public SNIProxyDescriptor(@NonNull String address, int port, int stunPort, @Nullable String customSNI, boolean isUser) {
 
-        super(address, port);
+        super(address, port, stunPort);
         mIsUser = isUser;
         mCustomSNI = customSNI;
     }
@@ -30,12 +30,13 @@ public class SNIProxyDescriptor extends ProxyDescriptor {
     public static SNIProxyDescriptor create(@NonNull String proxy) {
         try {
             final String[] parts = proxy.split("[,/]");
-            if (parts.length > 2) {
+            if (parts.length > 3) {
                 return null;
             }
-            final String customSNI = parts.length == 2 ? parts[1] : null;
+            final String customSNI = parts.length >= 2 ? parts[1] : null;
             int sep = parts[0].indexOf(':');
             int port = 443;
+            int stunPort = 0;
             String address = parts[0];
             if (sep > 0) {
                 port = Integer.parseInt(parts[0].substring(sep + 1));
@@ -44,8 +45,14 @@ public class SNIProxyDescriptor extends ProxyDescriptor {
                 }
                 address = parts[0].substring(0, sep);
             }
+            if (parts.length == 3) {
+                stunPort = Integer.parseInt(parts[2]);
+                if (stunPort <= 0 || stunPort >= 65536) {
+                    return null;
+                }
+            }
             if (!address.isEmpty()) {
-                return new SNIProxyDescriptor(address, port, customSNI, true);
+                return new SNIProxyDescriptor(address, port, stunPort, customSNI, true);
             }
             if (Logger.ERROR) {
                 Logger.error(LOG_TAG, "User proxy: ",proxy, " has no address");
@@ -64,7 +71,8 @@ public class SNIProxyDescriptor extends ProxyDescriptor {
     public String getDescriptor() {
 
         final String proxy = super.getDescriptor();
-        return (mCustomSNI != null) ? proxy + "," + mCustomSNI : proxy;
+        final int stunPort = getSTUNPort();
+        return ((mCustomSNI != null) ? proxy + "," + mCustomSNI : proxy) + (stunPort > 0 ? "," + stunPort : "");
     }
 
     @Nullable

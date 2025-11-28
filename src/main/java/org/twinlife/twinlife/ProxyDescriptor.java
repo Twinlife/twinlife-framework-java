@@ -18,11 +18,13 @@ public class ProxyDescriptor {
     private final String mAddress;
     private final int mPort;
     private ErrorCategory mLastError;
+    private final int mStunPort;
 
-    public ProxyDescriptor(@NonNull String address, int port) {
+    public ProxyDescriptor(@NonNull String address, int port, int stunPort) {
 
         mAddress = address;
         mPort = port;
+        mStunPort = stunPort;
     }
 
     @NonNull
@@ -34,6 +36,11 @@ public class ProxyDescriptor {
     public int getPort() {
 
         return mPort;
+    }
+
+    public int getSTUNPort() {
+
+        return mStunPort;
     }
 
     @NonNull

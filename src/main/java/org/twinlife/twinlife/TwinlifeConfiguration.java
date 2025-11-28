@@ -75,14 +75,16 @@ public class TwinlifeConfiguration {
         proxies = new ProxyDescriptor[keyProxyCount + sniProxyCount];
         for (int i = 0; i < keyProxyCount; i++) {
             int port = reader.readInt();
+            int stunPort = reader.readInt();
             String addr = readIP(reader);
             String key = reader.readString();
-            proxies[i] = new KeyProxyDescriptor(addr, port, key);
+            proxies[i] = new KeyProxyDescriptor(addr, port, stunPort, key);
         }
         for (int i = 0; i < sniProxyCount; i++) {
             int port = reader.readInt();
+            int stunPort = reader.readInt();
             String addr = readIP(reader);
-            proxies[i + keyProxyCount] = new SNIProxyDescriptor(addr, port, null, false);
+            proxies[i + keyProxyCount] = new SNIProxyDescriptor(addr, port, stunPort, null, false);
         }
         int tokenCount = reader.readInt();
         tokens = new String[tokenCount];

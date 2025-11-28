@@ -18,7 +18,7 @@ public class ProxyDescriptor1 extends ProxyDescriptor {
 
     public ProxyDescriptor1(@NonNull String address, int port, @Nullable String username, @Nullable String password) {
 
-        super(address, port);
+        super(address, port, 0);
 
         mUsername = username;
         mPassword = password;

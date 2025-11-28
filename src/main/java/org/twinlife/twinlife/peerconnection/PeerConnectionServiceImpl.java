@@ -28,6 +28,7 @@ import org.twinlife.twinlife.AssertPoint;
 import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.Hostname;
 import org.twinlife.twinlife.JobService;
+import org.twinlife.twinlife.ProxyDescriptor;
 import org.twinlife.twinlife.PushNotificationContent;
 import org.twinlife.twinlife.Offer;
 import org.twinlife.twinlife.OfferToReceive;
@@ -250,7 +251,16 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
 
         super.onUpdateConfiguration(configuration);
 
-        List<IceServer> iceServers = new ArrayList<>(configuration.turnServers.length);
+        final List<IceServer> iceServers = new ArrayList<>(configuration.turnServers.length);
+
+        // If a proxy is used for the connection to the signaling server, look for a possible STUN
+        // port and configure the ICE server.  We can only do this for stun and not turn/turns.
+        final ProxyDescriptor activeProxyDescriptor = mConnection.getActiveProxyDescriptor();
+        if (activeProxyDescriptor != null && activeProxyDescriptor.getSTUNPort() > 0) {
+            IceServer.Builder serverBuilder = IceServer.builder("stun:" + activeProxyDescriptor.getAddress() + ":" + activeProxyDescriptor.getSTUNPort());
+            serverBuilder.setTlsCertPolicy(PeerConnection.TlsCertPolicy.TLS_CERT_POLICY_INSECURE_NO_CHECK);
+            iceServers.add(serverBuilder.createIceServer());
+        }
         for (TurnServer turnServer : configuration.turnServers) {
             IceServer.Builder serverBuilder = IceServer.builder(turnServer.url);
             if (turnServer.url.startsWith("turns")) {

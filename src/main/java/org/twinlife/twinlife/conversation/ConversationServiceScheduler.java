@@ -330,6 +330,14 @@ public class ConversationServiceScheduler implements JobService.Observer {
             Log.d(LOG_TAG, "onTwinlifeOnline");
         }
 
+        // Invalidate a possible job that was created in the past.  If it is still enabled, the runJob()
+        // could be executed immediately when that job has expired and because we are also online,
+        // this would execute `scheduleOperations()` and we could try to start creating outgoing P2P
+        // connections before the DELAY_AFTER_ONLINE below (we want to accept first incoming P2P).
+        if (mScheduleJob != null) {
+            mScheduleJob.cancel();
+            mScheduleJob = null;
+        }
         prepareOperationsBeforeSchedule();
         if (mJobService.isForeground()) {
             scheduleOperations();
@@ -955,8 +963,9 @@ public class ConversationServiceScheduler implements JobService.Observer {
      *
      * @param conversationImpl the conversation object.
      * @param operation the operation to add.
+     * @param delay the initial delay to wait before starting the operation
      */
-    void addOperationAndSchedule(@NonNull ConversationImpl conversationImpl, @NonNull Operation operation, boolean schedule) {
+    void addOperationAndSchedule(@NonNull ConversationImpl conversationImpl, @NonNull Operation operation, boolean schedule, long delay) {
         if (DEBUG) {
             Log.d(LOG_TAG, "addOperation: conversationImpl=" + conversationImpl + " operation=" + operation);
         }
@@ -964,6 +973,7 @@ public class ConversationServiceScheduler implements JobService.Observer {
         OperationList operations;
         final boolean canExecute;
         final DatabaseIdentifier conversationId = conversationImpl.getDatabaseId();
+        final long now = System.currentTimeMillis();
         synchronized (this) {
             final boolean isActive;
             operations = mConversationId2Operations.get(conversationId);
@@ -986,6 +996,16 @@ public class ConversationServiceScheduler implements JobService.Observer {
                     mWaitingOperations.remove(operations);
                     canExecute = false;
                 }
+            }
+
+            // When a delay is defined, we don't want to trigger an execution of the operations for that conversation immediately,
+            // and we have to wait that delay before trying to connect.  This is used when a SYNCHRONIZE operation is added when we
+            // received a conversation::synchronize invocation.  We may also receive after that invocation an incoming P2P
+            // for the same conversation and if we try to execute the SYNCHRONIZE, we will create an outgoing P2P before
+            // trying to accept the incoming P2P: it will be rejected with BUSY.  There is no way to be aware whether such
+            // incoming P2P is pending or not and the small delay is here to avoid that.
+            if (delay > 0 && operations.getDeadline() <= now) {
+                operations.setDeadline(now + delay);
             }
             operations.addOperation(operation);
             if (!isActive) {
@@ -1015,13 +1035,14 @@ public class ConversationServiceScheduler implements JobService.Observer {
      *
      * @param conversationImpl the conversation object.
      * @param operation the operation to add.
+     * @param delay the initial delay to wait before starting the operation
      */
-    void addOperation(@NonNull ConversationImpl conversationImpl, @NonNull Operation operation) {
+    void addOperation(@NonNull ConversationImpl conversationImpl, @NonNull Operation operation, long delay) {
         if (DEBUG) {
             Log.d(LOG_TAG, "addOperation: conversationImpl=" + conversationImpl + " operation=" + operation);
         }
 
-        addOperationAndSchedule(conversationImpl, operation, true);
+        addOperationAndSchedule(conversationImpl, operation, true, delay);
     }
 
     /**
@@ -1037,7 +1058,7 @@ public class ConversationServiceScheduler implements JobService.Observer {
 
         // If the conversation is opened, add the operation immediately.
         if (conversationImpl.getState() == State.OPEN) {
-            addOperation(conversationImpl, operation);
+            addOperation(conversationImpl, operation, 0);
             return;
         }
 

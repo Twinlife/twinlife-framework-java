@@ -17,7 +17,7 @@ import java.util.Map;
 @SuppressWarnings("unused")
 public interface ManagementService extends BaseService<ManagementService.ServiceObserver> {
 
-    String VERSION = "2.2.0";
+    String VERSION = "2.2.1";
 
     String PUSH_NOTIFICATION_APNS_VARIANT = "APNS";
     String PUSH_NOTIFICATION_FIREBASE_VARIANT = "Firebase";
@@ -56,7 +56,7 @@ public interface ManagementService extends BaseService<ManagementService.Service
     boolean hasPushNotification();
 
     void sendFeedback(@NonNull String email, @NonNull String subject, @NonNull String description,
-                      @Nullable String logReport);
+                      @Nullable String logReport, @NonNull Consumer<Boolean> complete);
 
     void error(@NonNull ErrorCode errorCode, @Nullable String errorParameter);
 

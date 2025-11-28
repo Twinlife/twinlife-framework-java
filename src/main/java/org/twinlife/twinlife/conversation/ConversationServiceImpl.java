@@ -942,7 +942,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
             SynchronizeConversationOperation synchronizeConversationOperation = new SynchronizeConversationOperation(conversationImpl);
             mServiceProvider.storeOperation(synchronizeConversationOperation);
-            mScheduler.addOperation(conversationImpl, synchronizeConversationOperation);
+            mScheduler.addOperation(conversationImpl, synchronizeConversationOperation, 500);
         } else {
             mScheduler.scheduleConversationOperations(conversationImpl);
         }
@@ -1145,7 +1145,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
             mServiceProvider.storeOperation(resetConversationOperation);
             if (clearMode == ClearMode.CLEAR_BOTH) {
-                mScheduler.addOperation(conversationImpl, resetConversationOperation);
+                mScheduler.addOperation(conversationImpl, resetConversationOperation, 0);
             } else {
                 mScheduler.addDeferrableOperation(conversationImpl, resetConversationOperation);
             }
@@ -1448,10 +1448,10 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         for (Map.Entry<ConversationImpl, Object> pending : pendingOperations.entrySet()) {
             final Object value = pending.getValue();
             if (value instanceof Operation) {
-                mScheduler.addOperationAndSchedule(pending.getKey(), (Operation) value, false);
+                mScheduler.addOperationAndSchedule(pending.getKey(), (Operation) value, false, 0);
             } else if (value instanceof List) {
                 for (Object operation : (List<?>) value) {
-                    mScheduler.addOperationAndSchedule(pending.getKey(), (Operation) operation, false);
+                    mScheduler.addOperationAndSchedule(pending.getKey(), (Operation) operation, false, 0);
                 }
             }
         }
@@ -1496,7 +1496,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             conversationImpl.setIsActive(true);
 
             final PushCommandOperation pushCommandOperation = new PushCommandOperation(conversationImpl, commandDescriptorImpl);
-            mScheduler.addOperation(conversationImpl, pushCommandOperation);
+            mScheduler.addOperation(conversationImpl, pushCommandOperation, 0);
         }
 
         // Notify push operation was queued.
@@ -1631,7 +1631,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             conversationImpl.touch();
 
             final PushTransientObjectOperation pushTransientObjectOperation = new PushTransientObjectOperation(conversationImpl, transientObjectDescriptorImpl);
-            mScheduler.addOperation(conversationImpl, pushTransientObjectOperation);
+            mScheduler.addOperation(conversationImpl, pushTransientObjectOperation, 0);
         }
 
         // Notify push operation was queued.
@@ -2282,7 +2282,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                         UpdateDescriptorTimestampType.READ, descriptorId, descriptorImpl.getReadTimestamp());
                 mServiceProvider.storeOperation(updateDescriptorTimestampOperation);
                 if (descriptorImpl.getExpireTimeout() > 0) {
-                    mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation);
+                    mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation, 0);
                 } else {
                     mScheduler.addDeferrableOperation(conversationImpl, updateDescriptorTimestampOperation);
                 }
@@ -2667,7 +2667,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                             UpdateDescriptorTimestampType.PEER_DELETE, descriptorId, System.currentTimeMillis());
                     mServiceProvider.storeOperation(updateDescriptorTimestampOperation);
                     if (descriptorImpl.getExpireTimeout() > 0) {
-                        mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation);
+                        mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation, 0);
                     } else {
                         mScheduler.addDeferrableOperation(conversationImpl, updateDescriptorTimestampOperation);
                     }
@@ -2989,7 +2989,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                 UpdateDescriptorTimestampOperation.UpdateDescriptorTimestampType.DELETE, fileDescriptorImpl.getDescriptorId(),
                 fileDescriptorImpl.getDeletedTimestamp());
         mServiceProvider.storeOperation(updateDescriptorTimestampOperation);
-        mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation);
+        mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation, 0);
     }
 
     @NonNull
@@ -3923,7 +3923,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                 conversationImpl.clearNeedSynchronize();
                 SynchronizeConversationOperation synchronizeConversationOperation = new SynchronizeConversationOperation(conversationImpl);
                 mServiceProvider.storeOperation(synchronizeConversationOperation);
-                mScheduler.addOperation(conversationImpl, synchronizeConversationOperation);
+                mScheduler.addOperation(conversationImpl, synchronizeConversationOperation, 500);
 
             } else if (errorCode == ErrorCode.ITEM_NOT_FOUND) {
                 final GroupConversationImpl group = conversationImpl.getGroup();

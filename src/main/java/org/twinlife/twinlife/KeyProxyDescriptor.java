@@ -76,9 +76,9 @@ public class KeyProxyDescriptor extends ProxyDescriptor {
         return null;
     }
 
-    public KeyProxyDescriptor(@NonNull String address, int port, @Nullable String key) {
+    public KeyProxyDescriptor(@NonNull String address, int port, int stunPort, @Nullable String key) {
 
-        super(address, port);
+        super(address, port, stunPort);
 
         mKey = key;
     }

@@ -93,7 +93,7 @@ public class WebSocketConnection extends Connection implements Observer {
                     mKeyProxies.add((KeyProxyDescriptor) proxy);
                 } else if (proxy instanceof SNIProxyDescriptor) {
                     String sni = createSNI(site, domains, tld);
-                    mSNIProxies.add(new SNIProxyDescriptor(proxy.getAddress(), proxy.getPort(), sni, false));
+                    mSNIProxies.add(new SNIProxyDescriptor(proxy.getAddress(), proxy.getPort(), proxy.getSTUNPort(), sni, false));
                 }
             }
 

@@ -228,7 +228,7 @@ class GroupConversationManager {
                                 permissions, memberPubKey, signedOffTwincode.getId(), signature);
                         mServiceProvider.storeOperation(groupOperation);
 
-                        mScheduler.addOperation(conversationImpl, groupOperation);
+                        mScheduler.addOperation(conversationImpl, groupOperation, 0);
                     }
                 }
             }
@@ -387,7 +387,7 @@ class GroupConversationManager {
 
         final GroupInviteOperation groupOperation = new GroupInviteOperation(Operation.Type.INVITE_GROUP, conversationImpl, invitation);
         mServiceProvider.storeOperation(groupOperation);
-        mScheduler.addOperation(conversationImpl, groupOperation);
+        mScheduler.addOperation(conversationImpl, groupOperation, 0);
 
         // Notify invitation was queued.
         for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
@@ -470,7 +470,7 @@ class GroupConversationManager {
 
         final GroupJoinOperation groupOperation = new GroupJoinOperation(conversationImpl, invitation);
         mServiceProvider.storeOperation(groupOperation);
-        mScheduler.addOperation(conversationImpl, groupOperation);
+        mScheduler.addOperation(conversationImpl, groupOperation, 0);
 
         // Notify invitation was accepted or refused.
         ConversationService.GroupConversation lGroup = groupConversation;
@@ -603,7 +603,7 @@ class GroupConversationManager {
                     UpdateDescriptorTimestampOperation.UpdateDescriptorTimestampType.DELETE, invitation.getDescriptorId(),
                     invitation.getDeletedTimestamp());
             mServiceProvider.storeOperation(updateDescriptorTimestampOperation);
-            mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation);
+            mScheduler.addOperation(conversationImpl, updateDescriptorTimestampOperation, 0);
         }
         return ErrorCode.SUCCESS;
     }
@@ -730,7 +730,7 @@ class GroupConversationManager {
                 final GroupUpdateOperation groupOperation = new GroupUpdateOperation(conversationImpl,
                         groupTwincode.getId(), memberTwincodeId, permissions);
                 mServiceProvider.storeOperation(groupOperation);
-                mScheduler.addOperation(conversationImpl, groupOperation);
+                mScheduler.addOperation(conversationImpl, groupOperation, 0);
             } else {
                 // Change this member's permissions and save it.
                 conversationImpl.setPermissions(permissions);
@@ -741,7 +741,7 @@ class GroupConversationManager {
                     final GroupUpdateOperation groupOperation = new GroupUpdateOperation(conversationImpl,
                             groupTwincode.getId(), peer.getPeerTwincodeOutboundId(), permissions);
                     mServiceProvider.storeOperation(groupOperation);
-                    mScheduler.addOperation(conversationImpl, groupOperation);
+                    mScheduler.addOperation(conversationImpl, groupOperation, 0);
                 }
             }
         }
@@ -1012,7 +1012,7 @@ class GroupConversationManager {
             final GroupOperation groupOperation = new GroupJoinOperation(conversationImpl, invitation);
             mServiceProvider.storeOperation(groupOperation);
 
-            mScheduler.addOperation(conversationImpl, groupOperation);
+            mScheduler.addOperation(conversationImpl, groupOperation, 0);
 
         } else if (result == ConversationServiceProvider.Result.STORED) {
             conversationImpl.setIsActive(true);
@@ -1307,7 +1307,7 @@ class GroupConversationManager {
                             member.permissions, member.publicKey, signedOffTwincodeId, signature);
                     mServiceProvider.storeOperation(groupOperation);
 
-                    mScheduler.addOperation(conversationImpl, groupOperation);
+                    mScheduler.addOperation(conversationImpl, groupOperation, 0);
                 }
             }
         }
@@ -1588,7 +1588,7 @@ class GroupConversationManager {
             Log.e(LOG_TAG, "ask-join-group " + groupOperation.getGroupId() + " memberTwincodeId=" + groupOperation.getMemberId()
                     + " permissions=" + groupConversation.getPermissions());
 
-            mScheduler.addOperation(memberConversation, groupOperation);
+            mScheduler.addOperation(memberConversation, groupOperation, 0);
         }
         return result;
     }
