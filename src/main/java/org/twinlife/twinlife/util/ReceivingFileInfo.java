@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2021 twinlife SA.
+ *  Copyright (c) 2020-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -55,15 +55,15 @@ public class ReceivingFileInfo {
             }
         }
 
-        // We are receving a first block and the file exists: remove it so that we start a fresh file.
-        if (offset == 0 && mFile.exists()) {
+        // We are receiving a first block and the file exists: remove it so that we start a fresh file.
+        if (offset == 0 && mFile.exists() && mFile.length() > 0) {
             if (Logger.WARN) {
                 Logger.warn(LOG_TAG, "Removing old file ", mFile);
             }
             Utils.deleteFile(LOG_TAG, mFile);
         }
 
-        // Open the file in read/write mode so that we can procceed after interruption.
+        // Open the file in read/write mode so that we can proceed after interruption.
         mOutputFile = new RandomAccessFile(file.getPath(), "rw");
         mPosition = 0;
 
@@ -137,11 +137,9 @@ public class ReceivingFileInfo {
 
     /**
      * Close the receiving file stream and verify the SHA256 signature.
-     *
-     * If there is a write error, the file is removed.
-     * If the signature is invalid, the file is removed.
-     * If the signature is correct, the modification date is updated.
-     *
+     * - If there is a write error, the file is removed.
+     * - If the signature is invalid, the file is removed.
+     * - If the signature is correct, the modification date is updated.
      * @param expectSha256 the expected SHA256 signature.
      * @return true if the file was received correctly.
      */
@@ -177,7 +175,6 @@ public class ReceivingFileInfo {
 
     /**
      * Close the receiving file stream without verification.
-     *
      * If there is a write error, the file is removed.
      *
      * @return true if the file was received correctly.
@@ -200,7 +197,6 @@ public class ReceivingFileInfo {
 
     /**
      * Cancel receiving the file.
-     *
      * The file is not removed because we may want to restart the transfer.
      */
     public void cancel() {

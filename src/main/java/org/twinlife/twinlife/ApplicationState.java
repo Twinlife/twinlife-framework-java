@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2021-2022 twinlife SA.
+ *  Copyright (c) 2021-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -21,5 +21,11 @@ public enum ApplicationState {
     WAKEUP_ALARM,
 
     // Application is wakeup by a push notification.
-    WAKEUP_PUSH
+    WAKEUP_PUSH,
+
+    //
+    BACKGROUND_IDLE,
+
+    // Application is suspended (waiting for a wakeup or be in the foreground)
+    SUSPENDED
 }

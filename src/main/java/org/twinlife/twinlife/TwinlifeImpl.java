@@ -667,9 +667,9 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         return mDatabaseService;
     }
 
-    public void shutdown() {
+    public void suspend() {
         if (INFO) {
-            Log.i(LOG_TAG, "shutdown");
+            Log.i(LOG_TAG, "suspend");
         }
 
         for (BaseServiceImpl<?> baseService : mBaseServiceImpls) {
@@ -997,7 +997,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         ConfigurationService configurationService = getConfigurationService();
         mTwinlifeSecuredConfiguration.erase(configurationService);
 
-        shutdown();
+        suspend();
     }
 
     /**
@@ -1264,20 +1264,6 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
 
     @NonNull
     public abstract ImageTools getImageTools();
-
-    protected int connectInternal() {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "connectInternal");
-        }
-
-        final Connection webSocketConnection = mWebSocketConnection;
-        if (webSocketConnection == null) {
-            return Integer.MAX_VALUE;
-        }
-
-        webSocketConnection.connect();
-        return 20000;
-    }
 
     @Override
     public void onConnect() {

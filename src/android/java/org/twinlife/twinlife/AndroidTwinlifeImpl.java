@@ -598,6 +598,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
                     Log.i(LOG_TAG, "network not connected");
                 }
 
+                final ApplicationState state = jobService.getState();
                 if (!jobService.isIdle()) {
                     // The Android ConnectivityManager is not always reliable and we have seen cases where it does not inform
                     // us about the network connectivity.  If we are not idle (app in foreground or we received a Firebase push),
@@ -625,11 +626,14 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
                 do {
                     // Decide how much time we have to wait in the libwebsocket service() loop.
                     long timeout;
-                    if (jobService.isIdle()) {
-                        if (connectionStatus == ConnectionStatus.NO_SERVICE) {
-                            jobService.scheduleAlarm();
+                    ApplicationState state = jobService.getState();
+                    if (state == ApplicationState.SUSPENDED) {
+                        final long now = System.currentTimeMillis();
+                        long deadline = jobService.scheduleAlarm();
+                        timeout = deadline - now;
+                        if (timeout <= 0) {
+                            timeout = 60 * 1000;
                         }
-                        timeout = 60 * 1000;
                     } else if (connectionStatus == ConnectionStatus.NO_SERVICE) {
                         final long now = System.currentTimeMillis();
                         timeout = mReconnectionTime - now;
@@ -639,7 +643,10 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
                             timeout = 10000;
                         }
                     } else {
-                        timeout = 10000;
+                        timeout = 60 * 10000;
+                    }
+                    if (INFO) {
+                        Log.i(LOG_TAG, "Connection status " + connectionStatus + " state " + state + " timeout " + timeout);
                     }
                     webSocketConnection.service((int) timeout);
 

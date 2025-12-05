@@ -206,7 +206,7 @@ public class WebSocketConnection extends Connection implements Observer {
         }
 
         if (INFO) {
-            Log.i(LOG_TAG, "connecting to " + mConfig.getHost());
+            Log.i(LOG_TAG, "connecting to " + mConfig.getHost() + " as session " + mSessionId);
         }
         mCreateSocketCounter.incrementAndGet();
 
@@ -261,17 +261,21 @@ public class WebSocketConnection extends Connection implements Observer {
         }
 
         if (INFO) {
-            Log.i(LOG_TAG, "disconnecting from " + mConfig.getHost());
+            Log.i(LOG_TAG, "disconnecting " + mSessionId + " from " + mConfig.getHost());
         }
 
-        Session session;
+        final boolean closed;
         synchronized (mConnectionLock) {
             mDisconnecting = mIsConnected;
             mIsConnected = false;
-            session = mSession;
-            mSession = null;
+            if (mSession != null) {
+                closed = mSession.close();
+                mSession = null;
+            } else {
+                closed = true;
+            }
         }
-        if (session == null || !session.close()) {
+        if (!closed) {
             mConnectionListener.onDisconnect(ErrorCategory.ERR_NONE);
             synchronized (mConnectionLock) {
                 mDisconnecting = false;
@@ -356,7 +360,8 @@ public class WebSocketConnection extends Connection implements Observer {
 
         if (INFO) {
             Log.i(LOG_TAG, "connected to " + mConnectStats.ipAddr
-                    + (proxyDescriptor != null ? " with proxy " + proxyDescriptor.getDescriptor() : ""));
+                    + (proxyDescriptor != null ? " with proxy " + proxyDescriptor.getDescriptor() : "")
+                    + " as session " + mSessionId);
         }
         final ConnectivityService connectivityService = mTwinlife.getConnectivityService();
         connectivityService.setProxyDescriptor(proxyDescriptor);
@@ -373,7 +378,7 @@ public class WebSocketConnection extends Connection implements Observer {
         final ErrorCategory errorCategory = ErrorCategory.toErrorCategory(error);
 
         if (INFO) {
-            Log.i(LOG_TAG, "connection to " + mConfig.getHost() + " failed: " + errorCategory);
+            Log.i(LOG_TAG, "connection " + mSessionId + " to " + mConfig.getHost() + " failed: " + errorCategory);
         }
         recordError(errorCategory);
         synchronized (mConnectionLock) {
@@ -401,17 +406,13 @@ public class WebSocketConnection extends Connection implements Observer {
         }
 
         synchronized (mConnectionLock) {
-            if (mSessionId != sessionId) {
-                return;
-            }
-
             mSession = null;
             mConnecting = false;
             mIsConnected = false;
             mDisconnecting = true;
         }
         if (INFO) {
-            Log.i(LOG_TAG, "connection to " + mConfig.getHost() + " closed explicitly");
+            Log.i(LOG_TAG, "connection " + mSessionId + " to " + mConfig.getHost() + " closed explicitly");
         }
         onClose();
 

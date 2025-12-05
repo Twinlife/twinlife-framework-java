@@ -217,7 +217,7 @@ public class TwinlifeContextImpl implements TwinlifeContext {
             Log.d(LOG_TAG, "shutdown");
         }
 
-        mTwinlifeImpl.shutdown();
+        mTwinlifeImpl.suspend();
 
         getJobService().setObserver(new JobService.Observer() {
             @Override
@@ -316,6 +316,16 @@ public class TwinlifeContextImpl implements TwinlifeContext {
 
         if (mTwinlifeImpl != null) {
             mTwinlifeImpl.disconnect();
+        }
+    }
+
+    public final void suspend() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "suspend");
+        }
+
+        if (mTwinlifeImpl != null) {
+            mTwinlifeImpl.suspend();
         }
     }
 

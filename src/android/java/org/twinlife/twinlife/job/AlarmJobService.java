@@ -62,4 +62,15 @@ public class AlarmJobService extends JobService {
             Log.d(LOG_TAG, "onNetworkChanged params=" + params);
         }
     }
+
+    @Override
+    public void onTimeout(int startId) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onTimeout " + startId);
+        }
+
+        if (mJobService != null) {
+            mJobService.cancelJob(startId);
+        }
+    }
 }

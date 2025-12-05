@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2023 twinlife SA.
+ *  Copyright (c) 2018-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -26,6 +26,7 @@ import org.twinlife.twinlife.JobService;
 import org.twinlife.twinlife.PeerConnectionService;
 import org.twinlife.twinlife.TwinlifeContext;
 import org.twinlife.twinlife.ApplicationState;
+import org.twinlife.twinlife.TwinlifeContextImpl;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -113,13 +114,13 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         @Override
         public void run() {
             if (INFO) {
-                Log.i(LOG_TAG, "Running job " + mName);
+                Log.i(LOG_TAG, "Running job " + mName + " state " + mApplicationState);
             }
 
             try {
                 mWork.run();
                 if (INFO) {
-                    Log.i(LOG_TAG, "Job " + mName + " terminated");
+                    Log.i(LOG_TAG, "Job " + mName + " terminated state " + mApplicationState);
                 }
 
             } catch (Exception ex) {
@@ -237,7 +238,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         @Override
         public void run() {
             if (INFO) {
-                Log.i(LOG_TAG, "Running job ForegroundServiceJobImpl");
+                Log.i(LOG_TAG, "Running job ForegroundServiceJobImpl state " + mApplicationState);
             }
 
             try {
@@ -247,7 +248,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
                 }
                 mFinish.run();
                 if (INFO) {
-                    Log.i(LOG_TAG, "Job ForegroundServiceJobImpl");
+                    Log.i(LOG_TAG, "Job ForegroundServiceJobImpl state " + mApplicationState);
                 }
 
             } catch (Exception ex) {
@@ -269,8 +270,9 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     private final CopyOnWriteArrayList<Observer> mObservers = new CopyOnWriteArrayList<>();
     private ForegroundServiceJobImpl mForegroundServiceStopJob;
     protected boolean mOnline;
-    private boolean mInForeground;
     private boolean mForegroundServiceRunning;
+    private long mForegroundServiceStartTime;
+    private ApplicationState mApplicationState;
     protected boolean mAlarmServiceRunning;
     private long mFCMCount;
     private long mFCMDowngradeCount;
@@ -321,13 +323,13 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         mApplication = application;
         mApplication.registerActivityLifecycleCallbacks(mLifecycleCallbacks);
         mOnline = false;
-        mInForeground = false;
         mForegroundServiceRunning = false;
         mAlarmServiceRunning = false;
         mNetworkLockCount = 0;
         mMessageDeadline = Long.MAX_VALUE;
         mAlarmCount = 0;
         jobService = this;
+        mApplicationState = ApplicationState.BACKGROUND;
 
         PowerManager powerManager = (PowerManager) application.getSystemService(Context.POWER_SERVICE);
         if (powerManager != null) {
@@ -369,19 +371,19 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     @Override
     public synchronized boolean isForeground() {
         if (DEBUG) {
-            Log.d(LOG_TAG, "isForeground" + (mInForeground ? " YES" : " NO"));
+            Log.d(LOG_TAG, "isForeground state=" + mApplicationState);
         }
 
-        return mInForeground;
+        return mApplicationState == ApplicationState.FOREGROUND;
     }
 
     @Override
     public synchronized boolean isIdle() {
         if (DEBUG) {
-            Log.d(LOG_TAG, "isIdle" + (!mInForeground && !mForegroundServiceRunning ? " YES" : " NO"));
+            Log.d(LOG_TAG, "isIdle state=" + mApplicationState);
         }
 
-        return !mInForeground && !mForegroundServiceRunning && mNetworkLockCount == 0;
+        return mApplicationState != ApplicationState.FOREGROUND && mNetworkLockCount == 0;
     }
 
     /**
@@ -393,18 +395,10 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     @NonNull
     public synchronized ApplicationState getState() {
         if (DEBUG) {
-            Log.d(LOG_TAG, "getState" + (!mInForeground && !mForegroundServiceRunning ? " YES" : " NO"));
+            Log.d(LOG_TAG, "getState " + mApplicationState);
         }
 
-        if (mInForeground) {
-            return ApplicationState.FOREGROUND;
-        } else if (mForegroundServiceRunning) {
-            return ApplicationState.WAKEUP_PUSH;
-        } else if (mAlarmServiceRunning) {
-            return ApplicationState.WAKEUP_ALARM;
-        } else {
-            return ApplicationState.BACKGROUND;
-        }
+        return mApplicationState;
     }
 
     @Override
@@ -485,6 +479,10 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
                 mFCMTotalDelay += now - sentTime;
             }
             mForegroundServiceRunning = true;
+            mForegroundServiceStartTime = now;
+            if (mApplicationState != ApplicationState.FOREGROUND && mApplicationState != ApplicationState.WAKEUP_ALARM) {
+                mApplicationState = ApplicationState.WAKEUP_PUSH;
+            }
 
             // If we have a FOREGROUND priority job, schedule it immediately.
             for (final JobImpl job : mJobList) {
@@ -606,6 +604,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         }
 
         boolean needLock;
+        ApplicationState state;
         synchronized (this) {
             mNetworkLockCount++;
             if (mNetworkLockCount == 1 && mWifiLock != null) {
@@ -613,11 +612,12 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             } else {
                 needLock = false;
             }
+            state = mApplicationState;
         }
         if (needLock) {
             mWifiLock.acquire();
 
-            if (!mInForeground) {
+            if (state != ApplicationState.FOREGROUND) {
                 for (Observer observer : mObservers) {
                     mExecutor.execute(observer::onBackgroundNetworkStart);
                 }
@@ -749,6 +749,9 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             mPendingAlarm = complete;
             mAlarmCount++;
 
+            if (mApplicationState != ApplicationState.FOREGROUND && mApplicationState != ApplicationState.WAKEUP_PUSH) {
+                mApplicationState = ApplicationState.WAKEUP_ALARM;
+            }
             if (mNetworkLock == null) {
                 mNetworkLock = allocateNetworkLock();
             }
@@ -818,9 +821,9 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     /**
      * Schedule an alarm to wakeup the application when network conditions and alarm time are met.
      */
-    public abstract void scheduleAlarm();
+    public abstract long scheduleAlarm();
 
-    protected abstract void schedule(int jobId);
+    protected abstract long schedule(int jobId);
 
     /**
      * Get the twinlife context and make sure Twinlife library is initialized.
@@ -920,7 +923,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         mNetworkLockCount--;
         if (mNetworkLockCount == 0) {
 
-            if (!mInForeground) {
+            if (mApplicationState != ApplicationState.FOREGROUND) {
                 for (Observer observer : mObservers) {
                     mExecutor.execute(observer::onBackgroundNetworkStop);
                 }
@@ -984,12 +987,13 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
 
     private void stopForegroundService() {
         if (DEBUG) {
-            Log.d(LOG_TAG, "stopForegroundService");
+            Log.d(LOG_TAG, "stopForegroundService state=" + mApplicationState);
         }
 
         ForegroundServiceJobImpl stopJob;
         boolean mustDisconnect;
         long now = System.currentTimeMillis();
+        final boolean hasWakeup = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasPush();
         synchronized (this) {
             stopJob = mForegroundServiceStopJob;
 
@@ -997,28 +1001,22 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
                 mWifiLock.release();
             }
 
-            if (mNetworkLockCount > 0 && (stopJob == null || now < stopJob.mDeadline)) {
-
-                return;
+            mustDisconnect = mApplicationState != ApplicationState.FOREGROUND;
+            if (mustDisconnect) {
+                if (!hasWakeup && mNetworkLockCount > 0 && (stopJob == null || now < stopJob.mDeadline)) {
+                    return;
+                }
+                mForegroundServiceStopJob = null;
+                mForegroundServiceRunning = false;
             }
-            mForegroundServiceStopJob = null;
-            mForegroundServiceRunning = false;
-            mustDisconnect = !mInForeground;
+            if (mApplicationState == ApplicationState.WAKEUP_PUSH) {
+                mApplicationState = ApplicationState.BACKGROUND_IDLE;
+            }
         }
 
         // Disconnect from Twinlife server if there is no need to be connected.
-        final TwinlifeContext twinlifeContext = mTwinlifeContext;
-        if (mustDisconnect && twinlifeContext != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasPush()) {
-            // Android O introduced restrictions on starting foreground services
-            // which prevents us from processing incoming calls reliably.
-            // So we disconnect from the server a few seconds after entering background,
-            // this way the device will receive a firebase push which can start the service without
-            // hitting these restrictions.
-            mDisconnectTask = mExecutor.schedule(() -> {
-                if (isIdle()) {
-                    twinlifeContext.disconnect();
-                }
-            }, STOP_FOREGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
+        if (mustDisconnect) {
+            disconnect();
         }
 
         // We can stop the foreground service.
@@ -1027,18 +1025,58 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         }
     }
 
+    /**
+     * Disconnect from Twinlife server if there is no need to be connected.
+     */
+    private void disconnect() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "disconnect");
+        }
+
+        final TwinlifeContextImpl twinlifeContext = (TwinlifeContextImpl) mTwinlifeContext;
+        if (twinlifeContext != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasPush()) {
+            // Android O introduced restrictions on starting foreground services
+            // which prevents us from processing incoming calls reliably.
+            // So we disconnect from the server a few seconds after entering background,
+            // this way the device will receive a firebase push which can start the service without
+            // hitting these restrictions.
+            mDisconnectTask = mExecutor.schedule(() -> {
+                synchronized (this) {
+                    mDisconnectTask = null;
+                    if (mApplicationState == ApplicationState.FOREGROUND) {
+                        return;
+                    }
+                    mApplicationState = ApplicationState.SUSPENDED;
+                }
+                if (INFO) {
+                    Log.i(LOG_TAG, "Disconnecting state " + mApplicationState);
+                }
+
+                // Suspend the service and the opened P2P data connections.
+                twinlifeContext.suspend();
+
+                // Give 500ms to close and disconnect from the server.
+                mDisconnectTask = mExecutor.schedule(() -> {
+                    if (mApplicationState == ApplicationState.SUSPENDED) {
+                        twinlifeContext.disconnect();
+                    }
+                }, STOP_FOREGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
+
+            }, STOP_FOREGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
+        }
+    }
+
     void onEnterForeground() {
         if (DEBUG) {
             Log.d(LOG_TAG, "onEnterForeground");
         }
-
-        mInForeground = true;
 
         synchronized (this) {
             if (mDisconnectTask != null) {
                 mDisconnectTask.cancel(false);
                 mDisconnectTask = null;
             }
+            mApplicationState = ApplicationState.FOREGROUND;
         }
 
         for (Observer observer : mObservers) {
@@ -1059,7 +1097,9 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             Log.d(LOG_TAG, "onEnterBackground");
         }
 
-        mInForeground = false;
+        synchronized (this) {
+            mApplicationState = ApplicationState.BACKGROUND;
+        }
 
         for (Observer observer : mObservers) {
             mExecutor.execute(observer::onEnterBackground);
@@ -1077,12 +1117,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             // So we disconnect from the server a few seconds after entering background,
             // this way the device will receive a firebase push which can start the service without
             // hitting these restrictions.
-            mDisconnectTask = mExecutor.schedule(() -> {
-                final TwinlifeContext twinlifeContext = mTwinlifeContext;
-                if (twinlifeContext != null && isIdle()) {
-                    twinlifeContext.disconnect();
-                }
-            }, BACKGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
+            mDisconnectTask = mExecutor.schedule(this::disconnect, BACKGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -1143,6 +1178,9 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             mPendingAlarmId = 0;
             mPendingAlarm = null;
             mNetworkLock = null;
+            if (mApplicationState == ApplicationState.WAKEUP_ALARM) {
+                mApplicationState = ApplicationState.BACKGROUND_IDLE;
+            }
         }
 
         schedule(alarmId);
@@ -1171,16 +1209,20 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
                 return true;
 
             case FOREGROUND:
-                return mInForeground || mForegroundServiceRunning;
+                return mApplicationState == ApplicationState.FOREGROUND
+                        || mApplicationState == ApplicationState.WAKEUP_PUSH
+                        || mApplicationState == ApplicationState.WAKEUP_ALARM;
 
             case UPDATE:
-                return mOnline && mInForeground;
+                return mOnline && mApplicationState == ApplicationState.FOREGROUND;
 
             case MESSAGE:
                 return mOnline;
 
             case REPORT:
-                return mOnline && (mInForeground || mForegroundServiceRunning);
+                return mOnline && (mApplicationState == ApplicationState.FOREGROUND
+                        || mApplicationState == ApplicationState.WAKEUP_PUSH
+                        || mApplicationState == ApplicationState.WAKEUP_ALARM);
 
             default:
                 return false;
@@ -1235,6 +1277,10 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
                 long deadline = job.getDeadline();
 
                 if (mMessageDeadline > deadline) {
+                    if (DEBUG) {
+                        Log.e(LOG_TAG, "Using message deadline " + deadline
+                                + " (" + (deadline - System.currentTimeMillis()) + " ms) from job " + job);
+                    }
                     mMessageDeadline = deadline;
                 }
             }

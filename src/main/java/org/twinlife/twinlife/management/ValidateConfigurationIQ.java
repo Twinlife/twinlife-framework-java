@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2021-2024 twinlife SA.
+ *  Copyright (c) 2021-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -82,6 +82,8 @@ class ValidateConfigurationIQ extends BinaryPacketIQ {
                     break;
 
                 case BACKGROUND:
+                case BACKGROUND_IDLE:
+                case SUSPENDED:
                     encoder.writeInt(1);
                     break;
 

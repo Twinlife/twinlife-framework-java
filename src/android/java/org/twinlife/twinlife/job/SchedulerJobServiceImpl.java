@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2024 twinlife SA.
+ *  Copyright (c) 2018-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -22,18 +22,14 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Job service implementation based on the Android Job Service.
- *
  * - A reconnect job (JOB_RECONNECT_ID) is setup with a short delay to try reconnecting to the
  *   server as soon as we have the network connection.  This job is scheduled when we loose the
  *   connection and the network: it waits for the network to be available again.  There are many
  *   cases when we don't detect this situation and sometimes this job is not scheduled.
- *
  * - A long running job (JOB_CONNECT_ID) is setup to trigger a connection several times a day.
  *   It is a backup job in case the JOB_RECONNECT_ID was not scheduled.  When a push mechanism
  *   exists (Firebase), we can expect a push to wakeup the application and we use a long timer (2h).
  *   Otherwise, we must probe the server for new messages more quickly (30mn).
- *
- * This job service is used on Android SDK >= 21 (Android 5.x and above).
  */
 public class SchedulerJobServiceImpl extends AndroidJobServiceImpl {
     private static final String LOG_TAG = "SchedulerJobServiceImpl";
@@ -51,18 +47,17 @@ public class SchedulerJobServiceImpl extends AndroidJobServiceImpl {
 
     /**
      * Schedule a wakeup by using the Android job service to have a chance to re-connect to the server:
-     *
      * - if we have messages to send, the alarm wakeup can allow us to connect and send the pending messages,
      * - if the Firebase wakeup is not supported, we have to connect on regular basis to check if we have something available.
-     *
      * OTOH, we must not schedule the alarm too often because we must not drain the battery for nothing.
+     * @return the deadline time of the scheduled alarm.
      */
-    public void scheduleAlarm() {
+    public long scheduleAlarm() {
         if (DEBUG) {
             Log.d(LOG_TAG, "scheduleAlarm");
         }
 
-        schedule(JOB_RECONNECT_ID);
+        return schedule(JOB_RECONNECT_ID);
     }
 
     /**
@@ -71,24 +66,26 @@ public class SchedulerJobServiceImpl extends AndroidJobServiceImpl {
      * @param jobId the job id to schedule.
      */
     @Override
-    protected void schedule(int jobId) {
+    protected long schedule(int jobId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "schedule jobId=" + jobId);
         }
 
         Context context = mApplication.getApplicationContext();
+        long deadline = computeAlarmDeadline();
 
         JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if (scheduler == null) {
-
-            return;
+            return deadline;
         }
 
-        long deadline = computeAlarmDeadline();
         long now = System.currentTimeMillis();
         long wakeupDelay = deadline - now;
-        if (wakeupDelay <= 0) {
-            wakeupDelay = 10;
+        if (wakeupDelay <= 10000) {
+            if (DEBUG) {
+                Log.e(LOG_TAG, "Delay too short " + wakeupDelay + " msgDeadline=" + getMessageDeadline() + " now=" + now + " nextAlarm=" + mNextAlarm);
+            }
+            wakeupDelay = 10000;
         }
         JobInfo.Builder builder = new JobInfo.Builder(jobId, new ComponentName(context, AlarmJobService.class));
         builder.setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY);
@@ -107,5 +104,6 @@ public class SchedulerJobServiceImpl extends AndroidJobServiceImpl {
         if (DEBUG) {
             Log.e(LOG_TAG, "Job " + jobId + " scheduled in " + wakeupDelay + " ms result=" + result);
         }
+        return deadline;
     }
 }

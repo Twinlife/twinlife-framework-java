@@ -12,7 +12,7 @@ android {
     defaultConfig {
         minSdkVersion libs.versions.min.sdk.version.get() as int
         targetSdkVersion libs.versions.target.sdk.version.get() as int
-        buildConfigField "String", "VERSION", '"2.12.6"'
+        buildConfigField "String", "VERSION", '"2.12.7"'
 
         // Enable reporting power management information
         buildConfigField "boolean", "ENABLE_POWER_MANAGEMENT_REPORT", "true"

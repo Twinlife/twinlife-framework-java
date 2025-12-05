@@ -355,6 +355,7 @@ public abstract class BaseServiceImpl <Observer extends BaseService.ServiceObser
         }
 
         mOnline = true;
+        mShutdown = false;
     }
 
     public void onTwinlifeSuspend() {
