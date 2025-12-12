@@ -913,7 +913,8 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
             Log.d(LOG_TAG, "onSessionInitiate: iq=" + iq);
         }
 
-        if (!(iq instanceof SessionInitiateIQ)) {
+        // Do not acknowledge if we are shutting down.
+        if (!(iq instanceof SessionInitiateIQ) || isShutdown()) {
             return;
         }
 
@@ -925,7 +926,7 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
         final ErrorCode result = mPeerSignalingListener.onSessionInitiate(sessionInitiateIQ.sessionId, sessionInitiateIQ.from,
                 sessionInitiateIQ.to, sdp, offer, offerToReceive, sessionInitiateIQ.frameSize,
                 sessionInitiateIQ.frameRate);
-        if(result != null) {
+        if (result != null) {
             //null => local session, ignore the ack from OpenFire
             sendResponse(new BinaryErrorPacketIQ(IQ_ON_SESSION_INITIATE_SERIALIZER, iq, result));
         }
@@ -941,7 +942,8 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
             Log.d(LOG_TAG, "onSessionAccept: iq=" + iq);
         }
 
-        if (!(iq instanceof SessionAcceptIQ)) {
+        // Do not acknowledge if we are shutting down.
+        if (!(iq instanceof SessionAcceptIQ) || isShutdown()) {
             return;
         }
 
@@ -967,7 +969,8 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
             Log.d(LOG_TAG, "onSessionUpdate: iq=" + iq);
         }
 
-        if (!(iq instanceof SessionUpdateIQ)) {
+        // Do not acknowledge if we are shutting down.
+        if (!(iq instanceof SessionUpdateIQ) || isShutdown()) {
             return;
         }
 
@@ -989,7 +992,8 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
             Log.d(LOG_TAG, "onTransportInfo: iq=" + iq);
         }
 
-        if (!(iq instanceof TransportInfoIQ)) {
+        // Do not acknowledge if we are shutting down.
+        if (!(iq instanceof TransportInfoIQ) || isShutdown()) {
             return;
         }
 
@@ -1014,6 +1018,7 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
             Log.d(LOG_TAG, "onSessionTerminate: iq=" + iq);
         }
 
+        // Take into account even if we are shutting down.
         if (!(iq instanceof SessionTerminateIQ)) {
             return;
         }

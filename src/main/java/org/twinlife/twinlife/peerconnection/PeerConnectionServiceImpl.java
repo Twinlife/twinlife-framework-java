@@ -930,9 +930,8 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
         }
 
         final PeerConnectionServiceConfiguration peerConnectionServiceConfiguration = (PeerConnectionServiceConfiguration) getServiceConfiguration();
-        if (!peerConnectionServiceConfiguration.acceptIncomingCalls) {
-
-            return ErrorCode.NO_PERMISSION;
+        if (!peerConnectionServiceConfiguration.acceptIncomingCalls || isShutdown()) {
+            return null;
         }
 
         PeerConnectionImpl peerConnectionImpl;

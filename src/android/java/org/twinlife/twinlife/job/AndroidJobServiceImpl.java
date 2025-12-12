@@ -49,6 +49,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     private static final int FOREGROUND_RELEASE_DELAY = 1000; // ms
     private static final int STOP_FOREGROUND_DISCONNECT_DELAY = 500; // ms
     private static final int BACKGROUND_DISCONNECT_DELAY = 10_000; // ms
+    private static final long MIN_FOREGROUND_TIME = 4000; // ms
 
     protected static final int ALARM_MIN_DELAY = 10 * 60 * 1000;       // 10mn
     protected static final int ALARM_ACTIVE_DELAY = 60 * 60 * 1000;   // 60mn (Firebase not available)
@@ -197,6 +198,24 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         }
     }
 
+    static final class VoIPLockImpl implements VoIPLock {
+        private final AndroidJobServiceImpl mJobService;
+        private boolean mIsReleased = false;
+
+        VoIPLockImpl(final AndroidJobServiceImpl jobService) {
+            mJobService = jobService;
+        }
+
+        @Override
+        public void release() {
+
+            if (!mIsReleased) {
+                mIsReleased = true;
+                mJobService.releaseVoIPLock();
+            }
+        }
+    }
+
     class ForegroundServiceJobImpl implements Job, Runnable {
         final Runnable mFinish;
         final long mDeadline;
@@ -284,6 +303,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     private long mNetworkLockCount;
     private long mProcessingLockCount;
     private long mInteractiveLockCount;
+    private long mVoIPLockCount;
     @Nullable
     private final PowerManager.WakeLock mProcessingLock;
     @Nullable
@@ -480,6 +500,9 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             }
             mForegroundServiceRunning = true;
             mForegroundServiceStartTime = now;
+            if (INFO) {
+                Log.i(LOG_TAG, "startForeground in state " + mApplicationState + " for " + delay + " ms");
+            }
             if (mApplicationState != ApplicationState.FOREGROUND && mApplicationState != ApplicationState.WAKEUP_ALARM) {
                 mApplicationState = ApplicationState.WAKEUP_PUSH;
             }
@@ -687,6 +710,24 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         return new InteractiveLockImpl(this);
     }
 
+    /**
+     * Allocate a VoIP lock to tell the service a VoIP call is in progress and we must not disconnect
+     * while we are in background.
+     * @return the VoIP lock instance.
+     */
+    @Override
+    @NonNull
+    public VoIPLock allocateVoIPLock() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "allocateVoIPLock");
+        }
+
+        synchronized (this) {
+            mVoIPLockCount++;
+        }
+        return new VoIPLockImpl(this);
+    }
+
     @Override
     synchronized public void onTwinlifeOnline() {
         if (DEBUG) {
@@ -723,6 +764,18 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         }
 
         return mMessageDeadline;
+    }
+
+    /**
+     * Check if the VoIP lock is active.
+     * @return true if some VoIP is active.
+     */
+    synchronized public boolean isVoIPActive() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "isVoIPActive " + mVoIPLockCount);
+        }
+
+        return mVoIPLockCount > 0;
     }
 
     /**
@@ -957,6 +1010,18 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         }
     }
 
+    private synchronized void releaseVoIPLock() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "releaseVoIPLock lock counter=" + (mVoIPLockCount - 1));
+        }
+
+        mVoIPLockCount--;
+        if (mVoIPLockCount == 0) {
+
+            mExecutor.schedule(this::stopForegroundService, FOREGROUND_RELEASE_DELAY, TimeUnit.MILLISECONDS);
+        }
+    }
+
     private void stopProcessing() {
         if (DEBUG) {
             Log.d(LOG_TAG, "stopProcessing");
@@ -986,41 +1051,51 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     }
 
     private void stopForegroundService() {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "stopForegroundService state=" + mApplicationState);
+        if (INFO) {
+            Log.i(LOG_TAG, "stopForegroundService state=" + mApplicationState + " voipLock=" + mVoIPLockCount);
         }
 
         ForegroundServiceJobImpl stopJob;
         boolean mustDisconnect;
         long now = System.currentTimeMillis();
-        final boolean hasWakeup = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasPush();
         synchronized (this) {
             stopJob = mForegroundServiceStopJob;
 
             if (mNetworkLockCount == 0 && mWifiLock != null && mWifiLock.isHeld()) {
                 mWifiLock.release();
             }
-
-            mustDisconnect = mApplicationState != ApplicationState.FOREGROUND;
-            if (mustDisconnect) {
-                if (!hasWakeup && mNetworkLockCount > 0 && (stopJob == null || now < stopJob.mDeadline)) {
+            if (mVoIPLockCount == 0) {
+                if (mApplicationState == ApplicationState.FOREGROUND) {
+                    // In foreground, we must never disconnect.
+                    mustDisconnect = false;
+                    if (stopJob != null && now < stopJob.mDeadline) {
+                        return;
+                    }
+                    mForegroundServiceStopJob = null;
+                } else if (mNetworkLockCount == 0 && (now - mForegroundServiceStartTime < MIN_FOREGROUND_TIME)) {
+                    // Give at least 4s for the foreground service to connect.
                     return;
+                } else if (mNetworkLockCount > 0 && stopJob != null && now < stopJob.mDeadline) {
+                    // If the foreground service has not expired, keep connection and continue.
+                    return;
+                } else {
+                    mustDisconnect = true;
                 }
+                if (mApplicationState == ApplicationState.WAKEUP_PUSH) {
+                    mApplicationState = ApplicationState.BACKGROUND_IDLE;
+                }
+            } else {
+                mustDisconnect = false;
                 mForegroundServiceStopJob = null;
-                mForegroundServiceRunning = false;
             }
-            if (mApplicationState == ApplicationState.WAKEUP_PUSH) {
-                mApplicationState = ApplicationState.BACKGROUND_IDLE;
-            }
+            mForegroundServiceRunning = false;
         }
 
         // Disconnect from Twinlife server if there is no need to be connected.
         if (mustDisconnect) {
             disconnect();
-        }
-
-        // We can stop the foreground service.
-        if (stopJob != null) {
+        } else if (stopJob != null) {
+            // We can stop the foreground service.
             stopJob.run();
         }
     }
@@ -1035,18 +1110,26 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
 
         final TwinlifeContextImpl twinlifeContext = (TwinlifeContextImpl) mTwinlifeContext;
         if (twinlifeContext != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasPush()) {
+            if (mDisconnectTask != null) {
+                mDisconnectTask.cancel(false);
+            }
+
             // Android O introduced restrictions on starting foreground services
             // which prevents us from processing incoming calls reliably.
             // So we disconnect from the server a few seconds after entering background,
             // this way the device will receive a firebase push which can start the service without
             // hitting these restrictions.
             mDisconnectTask = mExecutor.schedule(() -> {
+                ForegroundServiceJobImpl stopJob;
                 synchronized (this) {
                     mDisconnectTask = null;
-                    if (mApplicationState == ApplicationState.FOREGROUND) {
+                    // Be careful: if a VoIP call is in progress, do not disconnect!
+                    if (mApplicationState == ApplicationState.FOREGROUND || mVoIPLockCount > 0) {
                         return;
                     }
                     mApplicationState = ApplicationState.SUSPENDED;
+                    stopJob = mForegroundServiceStopJob;
+                    mForegroundServiceStopJob = null;
                 }
                 if (INFO) {
                     Log.i(LOG_TAG, "Disconnecting state " + mApplicationState);
@@ -1056,13 +1139,29 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
                 twinlifeContext.suspend();
 
                 // Give 500ms to close and disconnect from the server.
-                mDisconnectTask = mExecutor.schedule(() -> {
-                    if (mApplicationState == ApplicationState.SUSPENDED) {
-                        twinlifeContext.disconnect();
+                mExecutor.schedule(() -> {
+                    twinlifeContext.disconnect();
+                    if (stopJob != null) {
+                        stopJob.run();
+                    }
+
+                    // In the SUSPENDED state, we must not try to skip the disconnection, but instead
+                    // re-connect immediately if we received a push in between.
+                    if (mApplicationState != ApplicationState.SUSPENDED) {
+                        twinlifeContext.connect();
                     }
                 }, STOP_FOREGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
 
             }, STOP_FOREGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
+        } else {
+            ForegroundServiceJobImpl stopJob;
+            synchronized (this) {
+                stopJob = mForegroundServiceStopJob;
+                mForegroundServiceStopJob = null;
+            }
+            if (stopJob != null) {
+                stopJob.run();
+            }
         }
     }
 
@@ -1097,27 +1196,15 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             Log.d(LOG_TAG, "onEnterBackground");
         }
 
-        synchronized (this) {
-            mApplicationState = ApplicationState.BACKGROUND;
-        }
-
+        mApplicationState = ApplicationState.BACKGROUND;
         for (Observer observer : mObservers) {
             mExecutor.execute(observer::onEnterBackground);
         }
 
         scheduleJobs();
 
-        if (!mForegroundServiceRunning) {
+        if (!mForegroundServiceRunning && mVoIPLockCount == 0) {
             mExecutor.schedule(this::stopForegroundService, FOREGROUND_RELEASE_DELAY, TimeUnit.MILLISECONDS);
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && hasPush()) {
-            // Android O introduced restrictions on starting foreground services
-            // which prevents us from processing incoming calls reliably.
-            // So we disconnect from the server a few seconds after entering background,
-            // this way the device will receive a firebase push which can start the service without
-            // hitting these restrictions.
-            mDisconnectTask = mExecutor.schedule(this::disconnect, BACKGROUND_DISCONNECT_DELAY, TimeUnit.MILLISECONDS);
         }
     }
 

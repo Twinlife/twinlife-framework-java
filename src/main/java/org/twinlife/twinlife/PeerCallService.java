@@ -20,7 +20,7 @@ import java.util.UUID;
 
 public interface PeerCallService extends BaseService<PeerCallService.ServiceObserver> {
 
-    String VERSION = "1.4.1";
+    String VERSION = "1.4.2";
 
     enum MemberStatus {
         NEW_MEMBER,

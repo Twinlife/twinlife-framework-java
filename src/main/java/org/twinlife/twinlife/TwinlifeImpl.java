@@ -1000,6 +1000,14 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         suspend();
     }
 
+    void onNetworkDisconnect() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onNetworkDisconnect");
+        }
+
+        mWebSocketConnection.onNetworkDisconnect();
+    }
+
     /**
      * Compute the wall clock adjustment between the server and our local clock.
      * This time correction is applied to times that we received from the server.

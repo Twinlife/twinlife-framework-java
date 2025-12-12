@@ -370,6 +370,10 @@ class ResetConversationOperation extends Operation {
                             mClearMode = ClearMode.CLEAR_MEDIA;
                             break;
 
+                        case 3:
+                            mClearMode = ClearMode.CLEAR_BOTH_MEDIA;
+                            break;
+
                         default:
                             throw new SerializerException();
                     }
@@ -448,6 +452,11 @@ class ResetConversationOperation extends Operation {
                 // 2023-02-21: added this new clear mode but supported only starting with ConversationService 2.15.
                 case CLEAR_MEDIA:
                     encoder.writeEnum(2);
+                    break;
+
+                // 2023-04-20: added to allow cleaning of media on both devices.
+                case CLEAR_BOTH_MEDIA:
+                    encoder.writeEnum(3);
                     break;
             }
             encoder.writeLong(mCreatedTimestamp);

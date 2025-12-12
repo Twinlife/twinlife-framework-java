@@ -35,9 +35,13 @@ public interface ConfigurationService {
 
         void setLong(@NonNull String parameter, long value);
 
+        float getFloat(@NonNull String parameter, float defaultValue);
+
         float getFloatConfig(@NonNull ConfigIdentifier config, float defaultValue);
 
         void setFloatConfig(@NonNull ConfigIdentifier config, float value);
+
+        void setFloat(@NonNull String parameter, float value);
 
         boolean getBoolean(String parameter, boolean defaultValue);
 

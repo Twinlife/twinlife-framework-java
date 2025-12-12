@@ -605,9 +605,13 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
                     // be more pro-active in testing the network connectivity.  The delay will start at 0 and we increase it
                     // by 250ms min until we reach 10s and then we start again from 1s.
                     // 0, 250, 625, 1187, 2030, 3305, 5207, 8060
-                    mDisconnectedTimeout += 250 + mDisconnectedTimeout / 2;
-                    if (mDisconnectedTimeout > 10000) {
-                        mDisconnectedTimeout = 1000;
+                    if (jobService.isVoIPActive()) {
+                        mDisconnectedTimeout = 100;
+                    } else {
+                        mDisconnectedTimeout += 250 + mDisconnectedTimeout / 2;
+                        if (mDisconnectedTimeout > 10000) {
+                            mDisconnectedTimeout = 1000;
+                        }
                     }
                 } else {
                     // We are in background and there is no work to do.
@@ -637,7 +641,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
                     } else if (connectionStatus == ConnectionStatus.NO_SERVICE) {
                         final long now = System.currentTimeMillis();
                         timeout = mReconnectionTime - now;
-                        if (timeout <= 0) {
+                        if (timeout <= 0 || jobService.isVoIPActive()) {
                             mReconnectionTime = now + 20000;
                             webSocketConnection.connect();
                             timeout = 10000;

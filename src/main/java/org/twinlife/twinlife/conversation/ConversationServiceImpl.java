@@ -3555,7 +3555,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             }
             // Tell the scheduler the group incoming conversation can be dropped and it must now track the member conversation.
             // The group incoming conversation has no operation but the member's conversation can have pending operations.
-            mScheduler.close(oldConnection);
+            mScheduler.close(oldConnection, false);
             mScheduler.startOperation(connection, State.OPEN);
 
             conversationImpl = memberConversationImpl;
@@ -3820,7 +3820,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         }
 
         conversationImpl.nextDelay(terminateReason);
-        final boolean synchronizePeerNotification = mScheduler.close(connection);
+        final boolean synchronizePeerNotification = mScheduler.close(connection, retryImmediately);
 
         // This peer has gone or was revoked, there is no need to try again nor to keep the conversation.
         // Inform the upper layer so that the conversation is cleaned.
@@ -3878,20 +3878,11 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             }
         }
 
-        retryImmediately = retryImmediately && mScheduler.hasOperations(conversationImpl);
-        if (!retryImmediately && synchronizePeerNotification) {
+        if (synchronizePeerNotification) {
             askConversationSynchronize(conversationImpl);
         }
-
-        if (retryImmediately) {
-            EventMonitor.info(LOG_TAG,"Close ", conversationImpl.getPeerTwincodeOutboundId(),
-                    " retry immediately");
-            executeOperation(conversationImpl);
-        } else {
-            EventMonitor.info(LOG_TAG,"Close ", conversationImpl.getPeerTwincodeOutboundId(),
-                    " retry in ", conversationImpl.getDelay());
-            mScheduler.scheduleConversationOperations(conversationImpl);
-        }
+        EventMonitor.info(LOG_TAG,"Close ", conversationImpl.getPeerTwincodeOutboundId(), " retry in ", conversationImpl.getDelay());
+        mScheduler.scheduleConversationOperations(conversationImpl);
     }
 
     @NonNull

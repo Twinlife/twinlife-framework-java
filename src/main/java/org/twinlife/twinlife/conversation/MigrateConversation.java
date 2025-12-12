@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2024 twinlife SA.
+ *  Copyright (c) 2015-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -209,8 +209,8 @@ class MigrateConversation {
 
         return mDatabase.longQuery("SELECT r.id"
                 + " FROM twincodeOutbound AS twout"
-                + " INNER JOIN repository AS r ON r.twincodeOutbound=twoud.id"
-                + " WHERE twout.twincode=?", new String[]{twincodeOutboundId.toString()});
+                + " INNER JOIN repository AS r ON r.twincodeOutbound=twout.id"
+                + " WHERE twout.twincodeId=?", new String[]{twincodeOutboundId.toString()});
     }
 
     private void prepareObjectMap() throws DatabaseException {
@@ -369,7 +369,7 @@ class MigrateConversation {
      */
     private int upgradeConversationDescriptors_V20(@NonNull Transaction transaction, long cid) throws DatabaseException {
         if (DEBUG) {
-            Log.d(LOG_TAG, "upgradeDescriptors_V20");
+            Log.d(LOG_TAG, "upgradeDescriptors_V20 cid=" + cid);
         }
 
         // Scan each descriptor, extract the content and timestamps and insert in the new table.

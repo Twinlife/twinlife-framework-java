@@ -421,6 +421,15 @@ public class WebSocketConnection extends Connection implements Observer {
         }
     }
 
+    @Override
+    public void onNetworkDisconnect() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onNetworkDisconnect");
+        }
+
+        disconnect();
+    }
+
     public void service(int timeout) {
         if (DEBUG) {
             Log.d(LOG_TAG, "service timeout=" + timeout);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2019-2022 twinlife SA.
+ *  Copyright (c) 2019-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -14,7 +14,7 @@ import java.util.concurrent.ScheduledFuture;
 
 public interface JobService {
 
-    String VERSION = "1.3.0";
+    String VERSION = "1.4.0";
 
     enum Priority {
         // Job is related to connection management and must be scheduled even if we are not connected.
@@ -75,6 +75,14 @@ public interface JobService {
      * Keep a lock on the power manager with interactive mode (screen ON).
      */
     interface InteractiveLock {
+
+        void release();
+    }
+
+    /**
+     * Keep a lock to indicate a VoIP call is in progress.
+     */
+    interface VoIPLock {
 
         void release();
     }
@@ -159,7 +167,6 @@ public interface JobService {
 
     /**
      * Schedule a job to be executed sometimes in the future and after the specified delay repeatedly.
-     *
      * Times are in MILLISECONDS.
      *
      * @param work the work to execute.
@@ -172,7 +179,6 @@ public interface JobService {
 
     /**
      * Schedule a job to be executed sometimes in the future and after the specified delay.
-     *
      * Times are in MILLISECONDS.
      *
      * @param work the work to execute.
@@ -184,7 +190,6 @@ public interface JobService {
 
     /**
      * Allocate a network lock to try keeping the service alive.
-     *
      * When the network lock is not needed anymore, its `release` operation must be called.
      *
      * @return the network lock instance.
@@ -194,7 +199,6 @@ public interface JobService {
 
     /**
      * Allocate a processing lock to tell the system we need the CPU.
-     *
      * When the processing lock is not needed anymore, its `release` operation must be called.
      *
      * @return the processing lock instance.
@@ -204,11 +208,18 @@ public interface JobService {
 
     /**
      * Allocate an interactive lock to tell activate the screen and tell the system we need the CPU.
-     *
      * When the interactive lock is not needed anymore, its `release` operation must be called.
      *
      * @return the interactive lock instance.
      */
     @NonNull
     InteractiveLock allocateInteractiveLock();
+
+    /**
+     * Allocate a VoIP lock to tell the service a VoIP call is in progress and we must not disconnect
+     * while we are in background.
+     * @return the interactive lock instance.
+     */
+    @NonNull
+    VoIPLock allocateVoIPLock();
 }

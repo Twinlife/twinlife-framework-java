@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2023 twinlife SA.
+ *  Copyright (c) 2015-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -156,7 +156,7 @@ public enum TerminateReason {
     @NonNull
     public static TerminateReason fromErrorCode(@NonNull BaseService.ErrorCode errorCode) {
 
-        /**
+        /*
          * Errors returned by createIncomingPeerConnection():
          * - ITEM_NOT_FOUND: P2P session not found
          * - NO_PUBLIC_KEY: No session key pair to decrypt the encrypted IQ, twincode.isEncrypted() && !peer.isEncrypted()
@@ -172,7 +172,6 @@ public enum TerminateReason {
          * - BAD_ENCRYPTION_FORMAT: exception raised when deserializing the decrypted data.
          * - LIBRARY_ERROR: Internal exception raised.
          */
-
         switch (errorCode) {
             case SUCCESS:
                 return SUCCESS;
@@ -201,6 +200,11 @@ public enum TerminateReason {
             case BAD_ENCRYPTION_FORMAT:
             case DECRYPT_ERROR:
                 return DECRYPT_ERROR;
+
+            case SERVICE_UNAVAILABLE:
+                // If we are suspending, the service will return the unavailable status
+                // and must map it to DISCONNECTED to inform the peer that we are not connected.
+                return DISCONNECTED;
 
             default:
                 return UNKNOWN;

@@ -785,6 +785,7 @@ public class TwinlifeContextImpl implements TwinlifeContext {
         for (Observer observer : mObservers) {
             mTwinlifeExecutor.execute(() -> observer.onConnectionStatusChange(ConnectionStatus.NO_INTERNET));
         }
+        mTwinlifeImpl.onNetworkDisconnect();
     }
 
     @SuppressWarnings("WeakerAccess")

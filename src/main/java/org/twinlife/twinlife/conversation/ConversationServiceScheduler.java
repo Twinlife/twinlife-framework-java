@@ -842,9 +842,10 @@ public class ConversationServiceScheduler implements JobService.Observer {
      * Notify the scheduler that the connection for the conversation has closed.
      *
      * @param connection the connection object being closed.
+     * @param retryImmediately when true, try to re-connect as soon as possible.
      * @return true if a synchronize peer notification is required.
      */
-    boolean close(@NonNull ConversationConnection connection) {
+    boolean close(@NonNull ConversationConnection connection, boolean retryImmediately) {
         if (DEBUG) {
             Log.d(LOG_TAG, "close: connection=" + connection);
         }
@@ -863,11 +864,20 @@ public class ConversationServiceScheduler implements JobService.Observer {
             if (operations != null) {
                 mActiveOperations.remove(operations);
                 mWaitingOperations.remove(operations);
+
+                // Reset the operations so that we can restart them for the next P2P connection.
                 synchronizePeerNotification = operations.resetOperations();
 
                 // Put back the operations in the waiting queue with a new deadline.
                 if (!operations.isEmpty()) {
-                    operations.setDeadline(System.currentTimeMillis() + conversationImpl.getDelay());
+                    final long delay;
+                    if (retryImmediately) {
+                        synchronizePeerNotification = false;
+                        delay = 500;
+                    } else {
+                        delay = conversationImpl.getDelay();
+                    }
+                    operations.setDeadline(System.currentTimeMillis() + delay);
                     mWaitingOperations.add(operations);
                 } else {
                     mConversationId2Operations.remove(conversationId);

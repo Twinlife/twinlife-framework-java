@@ -258,8 +258,10 @@ final class KeyChain {
         } catch (Exception exception) {
             // Note: a NullPointerException is sometimes raised by keyStore.getEntry() despite our alias that is NEVER null.
             // This is a bug on some OEM firmware.
-            Log.e(LOG_TAG, "getSecureKey: exception=" + exception);
-            twinlife.exception(AndroidAssertPoint.KEYCHAIN, exception, null);
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP_MR1 || !(exception instanceof NullPointerException)) {
+                Log.e(LOG_TAG, "getSecureKey: exception=" + exception);
+                twinlife.exception(AndroidAssertPoint.KEYCHAIN, exception, null);
+            }
         }
         return null;
     }

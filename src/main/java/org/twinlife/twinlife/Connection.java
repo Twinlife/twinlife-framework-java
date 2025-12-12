@@ -198,6 +198,8 @@ public abstract class Connection {
         mBinaryListeners.put(key, new Pair<>(serializer, packetListener));
     }
 
+    public abstract void onNetworkDisconnect();
+
     protected void recordError(@NonNull ErrorCategory errorCategory) {
 
         switch (errorCategory) {

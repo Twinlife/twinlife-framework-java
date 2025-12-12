@@ -422,6 +422,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
     private boolean mVideoSourceOn = false;
     private boolean mDataSourceOn = false;
     private boolean mIgnoreOffer = false;
+    private boolean mWithMedia = false;
     private volatile boolean mIsSettingRemoteAnswerPending = false;
     private AudioSource mAudioSource;
     private AudioTrack mAudioTrack;
@@ -438,6 +439,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
     private long mStopTimestamp = 0;
     private long mAcceptTimestamp = 0;
     private long mConnectedTimestamp = 0;
+    private long mRestartIceTimestamp = 0;
     private int mRemoteIceCandidatesCount = 0;
     private int mLocalIceCandidatesCount = 0;
     private IceConnectionState mState = null;
@@ -795,12 +797,12 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         // Use a data only peer connection factory if this is a data-channel only connection.
         // We avoid the creation and initialization of audio threads, audio devices, codecs and WebRTC media engine.
         // However, if the media aware peer connection factory is available, we are going to use it.
-        final boolean withMedia = mOffer.audio | mOffer.video | mOffer.videoBell;
-        final PeerConnectionFactory peerConnectionFactory = mPeerConnectionServiceImpl.getPeerConnectionFactory(withMedia);
+        mWithMedia = mOffer.audio | mOffer.video | mOffer.videoBell;
+        final PeerConnectionFactory peerConnectionFactory = mPeerConnectionServiceImpl.getPeerConnectionFactory(mWithMedia);
         mStartTimestamp = SystemClock.elapsedRealtime();
         mDataChannelObserver = observer;
 
-        rtcConfiguration.tcpCandidatePolicy = withMedia ? PeerConnection.TcpCandidatePolicy.DISABLED : PeerConnection.TcpCandidatePolicy.ENABLED;
+        rtcConfiguration.tcpCandidatePolicy = mWithMedia ? PeerConnection.TcpCandidatePolicy.DISABLED : PeerConnection.TcpCandidatePolicy.ENABLED;
         mPeerConnection = peerConnectionFactory.createPeerConnection(rtcConfiguration, this);
         if (mPeerConnection == null) {
 
@@ -833,7 +835,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
 
             // If this is a data-channel only WebRTC connection, start the offer or answer immediately.
             // For the audio/video, this will be done at the first call to initSources().
-            if (!withMedia) {
+            if (!mWithMedia) {
                 if (mInitiator) {
                     createOfferInternal();
                 } else {
@@ -1259,6 +1261,33 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         }
     }
 
+    private void restartIce() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restartIce: id=" + mId + " state=" + mState);
+        }
+
+        if (isTerminated() || mPeerConnection == null) {
+            return;
+        }
+
+        mRestartIce = null;
+        if (mState != IceConnectionState.DISCONNECTED && mState != IceConnectionState.FAILED) {
+            return;
+        }
+
+        mRestartIceTimestamp = SystemClock.elapsedRealtime();
+        mRenegotiationNeeded.set(0);
+        mPeerConnection.restartIce();
+
+        // Give 5s to recover or fail.
+        mPeerConnectionExecutor.schedule(() -> {
+            if (mState == IceConnectionState.CONNECTED) {
+                return;
+            }
+            terminatePeerConnectionInternal(TerminateReason.DISCONNECTED, true);
+        }, 5000, TimeUnit.MILLISECONDS);
+    }
+
     @Override
     public void onStandardizedIceConnectionChange(IceConnectionState iceConnectionChange) {
         if (DEBUG) {
@@ -1303,7 +1332,6 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         }
 
         if (isTerminated()) {
-
             return;
         }
 
@@ -1338,29 +1366,27 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
                 if (mVideoTrack != null) {
                     mVideoTrack.setEnabled(mVideoSourceOn);
                 }
+                if (mRestartIce != null) {
+                    mRestartIce.cancel(false);
+                    mRestartIce = null;
+                }
                 break;
 
             case DISCONNECTED:
-                if (mConnectedTimestamp > 0 && mPeerConnection != null) {
-                    // Trigger the ICE restart in 2.5 seconds in case it was a transient disconnect.
-                    // We must be careful that the P2P connection could have been terminated and released.
-                    if (mRestartIce != null) {
-                        mRestartIce.cancel(false);
-                    }
-                    mRestartIce = mPeerConnectionExecutor.schedule(() -> {
-                        mRestartIce = null;
-                        if (!isTerminated() && mState == IceConnectionState.DISCONNECTED) {
-                            mRenegotiationNeeded.set(0);
-                            mPeerConnection.restartIce();
-                        }
-                    }, 2500, TimeUnit.MILLISECONDS);
-                    return;
-                }
-                terminatePeerConnectionInternal(TerminateReason.DISCONNECTED, true);
-                break;
-
             case FAILED:
-                terminatePeerConnectionInternal(TerminateReason.CONNECTIVITY_ERROR, true);
+                if (mConnectedTimestamp > 0 && mPeerConnection != null) {
+                    final long now = SystemClock.elapsedRealtime();
+                    if (mRestartIceTimestamp + 15000 < now) {
+                        // Trigger the ICE restart in 2.5 (audio/video) or 5.0 (data) seconds in case it was a transient disconnect.
+                        // We must be careful that the P2P connection could have been terminated and released.
+                        if (mRestartIce != null) {
+                            mRestartIce.cancel(false);
+                        }
+                        mRestartIce = mPeerConnectionExecutor.schedule(this::restartIce, mWithMedia ? 2500 : 5000, TimeUnit.MILLISECONDS);
+                        return;
+                    }
+                }
+                terminatePeerConnectionInternal(iceConnectionState == IceConnectionState.DISCONNECTED ? TerminateReason.DISCONNECTED : TerminateReason.CONNECTIVITY_ERROR, true);
                 break;
 
             case CLOSED:

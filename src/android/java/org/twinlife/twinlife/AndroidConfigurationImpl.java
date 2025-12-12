@@ -91,6 +91,18 @@ public class AndroidConfigurationImpl implements ConfigurationService.Configurat
     }
 
     @Override
+    public float getFloat(@NonNull String parameter, float defaultValue) {
+
+        try {
+            return mSharedPreferences.getFloat(parameter, defaultValue);
+
+        } catch (ClassCastException ex) {
+
+            return defaultValue;
+        }
+    }
+
+    @Override
     public float getFloatConfig(@NonNull ConfigIdentifier config, float defaultValue) {
 
         try {
@@ -106,6 +118,12 @@ public class AndroidConfigurationImpl implements ConfigurationService.Configurat
     public void setFloatConfig(@NonNull ConfigIdentifier config, float value) {
 
         getEditor().putFloat(config.getParameterName(), value);
+    }
+
+    @Override
+    public void setFloat(@NonNull String parameter, float value) {
+
+        getEditor().putFloat(parameter, value);
     }
 
     @Override
