@@ -247,8 +247,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
                 mScheduled.cancel(false);
                 mScheduled = null;
             }
-            mForegroundServiceStopJob = null;
-            mForegroundServiceRunning = false;
+            cancelForegroundService();
         }
 
         /**
@@ -1047,6 +1046,21 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             }
 
             mInteractiveLock.release();
+        }
+    }
+
+    private void cancelForegroundService() {
+        if (INFO) {
+            Log.i(LOG_TAG, "cancelForegroundService state=" + mApplicationState + " voipLock=" + mVoIPLockCount);
+        }
+
+        synchronized (this) {
+            mForegroundServiceStopJob = null;
+            mForegroundServiceRunning = false;
+            mForegroundServiceStartTime = 0;
+            if (mApplicationState != ApplicationState.FOREGROUND) {
+                mExecutor.execute(this::stopForegroundService);
+            }
         }
     }
 

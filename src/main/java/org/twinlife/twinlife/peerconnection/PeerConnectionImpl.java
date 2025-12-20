@@ -1602,15 +1602,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             }
         }
 
-        // Create the answer by setting the local description and let Web-RTC define the correct answer.
-        mPeerConnection.setLocalDescription(new SetLocalDescriptionObserver() {
-
-            @Override
-            public void onSetSuccess() {
-
-                onSetLocalDescription(null);
-            }
-        });
+        mPeerConnection.createAnswer(mCreateOfferObserver, new MediaConstraints());
     }
 
     private void createOfferInternal() {
@@ -1625,22 +1617,19 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             }
         }
 
-        MediaConstraints mediaConstraints = new MediaConstraints();
         if (mOfferToReceive.video && mVideoTrack != null) {
             EventMonitor.info(LOG_TAG, "Start video peer ", mId);
-            mediaConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
         }
         if (mOfferToReceive.audio && mAudioTrack != null) {
             if (!mOfferToReceive.video) {
                 EventMonitor.info(LOG_TAG, "Start audio peer ", mId);
             }
-            mediaConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
         }
         if (mDataSourceOn) {
             EventMonitor.info(LOG_TAG, "Start data peer ", mId);
         }
 
-        mPeerConnection.createOffer(mCreateOfferObserver, mediaConstraints);
+        mPeerConnection.createOffer(mCreateOfferObserver, new MediaConstraints());
     }
 
     private void onCreateOfferSuccessInternal(@NonNull SessionDescription sessionDescription) {
@@ -1875,13 +1864,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             }
         }
 
-        mPeerConnection.setLocalDescription(new SetLocalDescriptionObserver() {
-
-            @Override
-            public void onSetSuccess() {
-                onSetLocalDescription(null);
-            }
-        });
+        mPeerConnection.createOffer(mCreateOfferObserver, new MediaConstraints());
     }
 
     @Override

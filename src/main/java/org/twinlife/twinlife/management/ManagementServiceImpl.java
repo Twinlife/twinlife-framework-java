@@ -708,12 +708,12 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
         final AssertionIQ assertionIQ = new AssertionIQ(IQ_ASSERTION_SERIALIZER, requestId, mApplicationId,
                 new Version(mTwinlifeImpl.getApplicationVersion()), assertPoint, values, stackTrace, exception);
         synchronized (mAssertions) {
-            // Limit to MAX_ASSERTIONS the number of assertions we can report during the last 5 seconds
+            // Limit to MAX_ASSERTIONS the number of assertions we can report during the last 10 seconds
             // This is a simplified token bucket algorithm but we want to keep consecutive assertions
-            // even if the rate is higher than the limit and fills the 5s time slot completely.
+            // even if the rate is higher than the limit and fills the 10s time slot completely.
             final long dt = now - mFirstAssertionTime;
-            if (dt > 5000) {
-                mAssertionCount = 0;
+            if (dt > 10000) {
+                mAssertionCount = mAssertionCount / 2;
                 mFirstAssertionTime = now;
             }
             mAssertionCount++;

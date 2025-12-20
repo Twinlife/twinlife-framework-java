@@ -35,6 +35,7 @@ public class WebSocketConnection extends Connection implements Observer {
     private static final int MAX_PROXIES = 6;
     private static final int PROXY_START_DELAY = ((5000 / 8) << 12) & 0x003FF000;      // around 5000ms, see wscontainer.h in libwebsockets
     private static final int PROXY_FIRST_START_DELAY = ((500 / 8) << 22) & 0x7FC00000; // around 500ms
+    private static final long CONNECTION_TIMEOUT = 20000; // 20s to connect to the signaling server.
 
     private final Twinlife mTwinlife;
     private final Container mContainer;
@@ -51,6 +52,7 @@ public class WebSocketConnection extends Connection implements Observer {
     private boolean mIsConnected = false;
     private boolean mDisconnecting = false;
     private boolean mConnecting = false;
+    private long mStartConnect;
     private ConnectionStats mConnectStats;
     @Nullable
     private ProxyDescriptor[] mProxies;
@@ -198,10 +200,21 @@ public class WebSocketConnection extends Connection implements Observer {
         }
 
         synchronized (mConnectionLock) {
-            if (mConnecting || mIsConnected) {
+            if (mIsConnected) {
+                return;
+            }
+            final long now = System.currentTimeMillis();
+            if (mConnecting) {
+                // Early detection of timeout when we try to connect.
+                if (mStartConnect + CONNECTION_TIMEOUT < now && mSession != null) {
+                    mSession.close();
+                    mSession = null;
+                    mConnecting = false;
+                }
                 return;
             }
             mConnecting = true;
+            mStartConnect = now;
             mSessionId++;
         }
 
@@ -307,8 +320,17 @@ public class WebSocketConnection extends Connection implements Observer {
         synchronized (mConnectionLock) {
             if (mIsConnected) {
                 result = ConnectionStatus.CONNECTED;
-            } else if (mConnecting) {
-                result = ConnectionStatus.CONNECTING;
+            } else if (mConnecting && mSession != null) {
+                // Early detection of timeout when we try to connect.
+                final long now = System.currentTimeMillis();
+                if (mStartConnect + CONNECTION_TIMEOUT < now) {
+                    mSession.close();
+                    mSession = null;
+                    mConnecting = false;
+                    result = ConnectionStatus.NO_SERVICE;
+                } else {
+                    result = ConnectionStatus.CONNECTING;
+                }
             } else {
                 result = ConnectionStatus.NO_SERVICE;
             }
