@@ -78,6 +78,8 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
     public static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ON_UNBIND_TWINCODE_SERIALIZER = BinaryPacketIQ.createDefaultSerializer(ON_UNBIND_TWINCODE_SCHEMA_ID, 1);
 
     // Record a list of invocations being processed for a specific twincode inbound id.
+    // We want to process only one invocation at a time for a given twincode and we record
+    // in `waitingInvocations` the list of invocations to process.
     // A list of code blocks is recorded in case the `waitInvocationsForTwincode()` wants
     // to execute some code and it will be executed when every invocation for that twincode
     // has been processed.
@@ -87,6 +89,8 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
         final List<UUID> invocationList;
         @Nullable
         List<Runnable> waitingRunnables;
+        @Nullable
+        List<TwincodeInvocation> waitingInvocations;
 
         PendingInvocation(@NonNull UUID twincodeId, @NonNull UUID invocationId, @NonNull RepositoryObject subject) {
             this.twincodeId = twincodeId;
@@ -94,6 +98,19 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
             this.invocationList = new ArrayList<>();
             this.invocationList.add(invocationId);
             this.waitingRunnables = null;
+        }
+
+        public boolean queue(@NonNull TwincodeInvocation invocation) {
+            // If the first invocationId in `invocationList` is the invocation, we don't need to queue
+            // and we can execute immediately.
+            if (this.invocationList.isEmpty() || invocation.invocationId.equals(this.invocationList.get(0))) {
+                return false;
+            }
+            if (waitingInvocations == null) {
+                waitingInvocations = new ArrayList<>();
+            }
+            waitingInvocations.add(invocation);
+            return true;
         }
     }
 
@@ -417,21 +434,30 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
             Log.d(LOG_TAG, "finishInvocation invocationId=" + invocationId);
         }
 
-        final PendingInvocation pendingInvocation;
+        final TwincodeInvocation twincodeInvocation;
+        final List<Runnable> waitingRunnables;
         synchronized (mPendingInvocations) {
-            pendingInvocation = mPendingInvocations.remove(invocationId);
+            final PendingInvocation pendingInvocation = mPendingInvocations.remove(invocationId);
             if (pendingInvocation == null) {
                 return;
             }
             pendingInvocation.invocationList.remove(invocationId);
-            if (!pendingInvocation.invocationList.isEmpty()) {
-                return;
+
+            if (pendingInvocation.waitingInvocations == null || pendingInvocation.waitingInvocations.isEmpty()) {
+                twincodeInvocation = null;
+                waitingRunnables = pendingInvocation.invocationList.isEmpty() ? pendingInvocation.waitingRunnables : null;
+            } else {
+                twincodeInvocation = pendingInvocation.waitingInvocations.remove(0);
+                waitingRunnables = null;
             }
+        }
+        if (twincodeInvocation != null) {
+            executeInvocation(twincodeInvocation);
         }
 
         // All invocation have been processed, if we have some code blocks execute them.
-        if (pendingInvocation.waitingRunnables != null) {
-            for (Runnable complete : pendingInvocation.waitingRunnables) {
+        if (waitingRunnables != null) {
+            for (Runnable complete : waitingRunnables) {
                 complete.run();
             }
         }
@@ -581,7 +607,12 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
         final byte[] data = onInvokeTwincodeIQ.getData();
         final TwincodeInvocation invocation;
         if (data != null) {
-            final CryptoService.DecipherResult cipherResult = mCryptoService.decrypt(subject.getTwincodeOutbound(), data);
+            final TwincodeOutbound twincodeOutbound = subject.getTwincodeOutbound();
+            if (twincodeOutbound == null) {
+                acknowledgeInvocation(invocationId, ErrorCode.ITEM_NOT_FOUND);
+                return;
+            }
+            final CryptoService.DecipherResult cipherResult = mCryptoService.decrypt(twincodeOutbound, data);
             if (cipherResult.errorCode != ErrorCode.SUCCESS) {
                 acknowledgeInvocation(invocationId, cipherResult.errorCode);
                 return;
@@ -594,21 +625,36 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
                     onInvokeTwincodeIQ.getAttributes(), null, 0, null, null, TrustMethod.NONE);
         }
 
-        // A twincode invocation can be handled by only one handler because we have to respond:
-        // - if the handler returns NULL or QUEUED, it must acknowledge itself the invocation,
-        // - otherwise the invocation is acknowledged with the returned code.
-        final InvocationListener observer = mInvocationListeners.get(invocation.action);
-        if (observer == null) {
-            acknowledgeInvocation(invocationId, ErrorCode.BAD_REQUEST);
-            return;
-        }
-
         // This twincode is having its first invocation, remember it.
+        final boolean queued;
         if (pendingInvocation == null) {
             pendingInvocation = new PendingInvocation(twincodeId, invocationId, subject);
             synchronized (mPendingInvocations) {
                 mPendingInvocations.put(invocationId, pendingInvocation);
             }
+            queued = false;
+        } else {
+            synchronized (mPendingInvocations) {
+                queued = pendingInvocation.queue(invocation);
+            }
+        }
+        if (!queued) {
+            executeInvocation(invocation);
+        }
+    }
+
+    private void executeInvocation(@NonNull TwincodeInvocation invocation) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "executeInvocation: invocation=" + invocation);
+        }
+
+        // A twincode invocation can be handled by only one handler because we have to respond:
+        // - if the handler returns NULL or QUEUED, it must acknowledge itself the invocation,
+        // - otherwise the invocation is acknowledged with the returned code.
+        final InvocationListener observer = mInvocationListeners.get(invocation.action);
+        if (observer == null) {
+            acknowledgeInvocation(invocation.invocationId, ErrorCode.BAD_REQUEST);
+            return;
         }
 
         mTwinlifeExecutor.execute(() -> {
@@ -618,7 +664,7 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
                     Log.e(LOG_TAG, "Invocation '" + invocation.action + "' failed: " + errorCode);
                 }
 
-                acknowledgeInvocation(invocationId, errorCode);
+                acknowledgeInvocation(invocation.invocationId, errorCode);
             }
         });
     }

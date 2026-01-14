@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024 twinlife SA.
+ *  Copyright (c) 2024-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -59,5 +59,11 @@ public class TwincodeInvocation {
         this.secretKey = secretKey;
         this.publicKey = publicKey;
         this.trustMethod = trustMethod;
+    }
+
+    @NonNull
+    public String toString() {
+
+        return invocationId + " " + action + " " + subject;
     }
 }

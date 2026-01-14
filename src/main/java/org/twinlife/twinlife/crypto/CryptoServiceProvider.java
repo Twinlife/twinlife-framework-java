@@ -308,53 +308,39 @@ class CryptoServiceProvider extends DatabaseServiceProvider {
                 } else if ((secretFlags & CryptoService.USE_SECRET1) != 0) {
                     keyIndex = 1;
                     useSecret = secret1;
-                    if ((options & (CREATE_SECRET | CREATE_NEXT_SECRET)) != 0) {
+                    if ((options & CREATE_NEXT_SECRET) != 0) {
                         keyIndex = 2;
-                        if ((options & CREATE_NEXT_SECRET) != 0) {
-                            // Prepare for the new secret 2 (don't change until we clear the NEW_SECRET2 flag).
-                            if ((secretFlags & CryptoService.NEW_SECRET2) == 0) {
-                                secretFlags |= CryptoService.NEW_SECRET2;
-                                useSecret = secret;
-                                createSecret = true;
-                            } else {
-                                useSecret = secret2;
-                            }
-                        } else {
-                            // Switch to use secret2 (without waiting for the peer to acknowledge).
-                            secretFlags |= CryptoService.USE_SECRET2;
-                            secretFlags &= ~CryptoService.USE_SECRET1;
+                        // Prepare for the new secret 2 (don't change until we clear the NEW_SECRET2 flag).
+                        if ((secretFlags & CryptoService.NEW_SECRET2) == 0) {
+                            secretFlags |= CryptoService.NEW_SECRET2;
                             useSecret = secret;
                             createSecret = true;
+                        } else {
+                            useSecret = secret2;
                         }
                     }
                 } else if ((secretFlags & CryptoService.USE_SECRET2) != 0) {
                     keyIndex = 2;
                     useSecret = secret2;
-                    if ((options & (CREATE_SECRET | CREATE_NEXT_SECRET)) != 0) {
+                    if ((options & CREATE_NEXT_SECRET) != 0) {
                         keyIndex = 1;
-                        if ((options & CREATE_NEXT_SECRET) != 0) {
-                            // Prepare for the new secret 1 (don't change until we clear the NEW_SECRET1 flag).
-                            if ((secretFlags & CryptoService.NEW_SECRET1) == 0) {
-                                secretFlags |= CryptoService.NEW_SECRET1;
-                                useSecret = secret;
-                                createSecret = true;
-                            } else {
-                                useSecret = secret1;
-                            }
-                        } else {
-                            // Switch to use secret1 (without waiting for the peer to acknowledge).
-                            secretFlags |= CryptoService.USE_SECRET1;
-                            secretFlags &= ~CryptoService.USE_SECRET2;
+                        // Prepare for the new secret 1 (don't change until we clear the NEW_SECRET1 flag).
+                        if ((secretFlags & CryptoService.NEW_SECRET1) == 0) {
+                            secretFlags |= CryptoService.NEW_SECRET1;
                             useSecret = secret;
                             createSecret = true;
+                        } else {
+                            useSecret = secret1;
                         }
                     }
                 } else if ((options & CREATE_NEXT_SECRET) != 0) {
+                    // This secret is new but it must be acknowledged by the peer to be used.
                     secretFlags = CryptoService.NEW_SECRET1;
                     createSecret = true;
                     useSecret = secret;
                     keyIndex = 1;
                 } else if ((options & CREATE_SECRET) != 0) {
+                    // This secret can be used immediately.
                     secretFlags = CryptoService.USE_SECRET1;
                     createSecret = true;
                     useSecret = secret;
