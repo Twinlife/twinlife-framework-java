@@ -183,6 +183,9 @@ public interface TwinlifeContext {
     PeerCallService getPeerCallService();
 
     @NonNull
+    BackupService getBackupService();
+
+    @NonNull
     Map<String, ServiceStats> getServiceStats();
 
     @Nullable

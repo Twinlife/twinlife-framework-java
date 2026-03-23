@@ -78,8 +78,10 @@ class SessionPingIQ extends BinaryPacketIQ {
     }
 
     @NonNull
+    final
     String from;
     @NonNull
+    final
     String to;
     @NonNull
     final UUID sessionId;

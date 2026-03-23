@@ -34,7 +34,7 @@ public class TwincodeOutboundImpl extends DatabaseObjectImpl implements Twincode
     private static final boolean DEBUG = false;
 
     // When set, we must get the twincode attributes from the server.
-    static final int FLAG_NEED_FETCH = 0x01;
+    public static final int FLAG_NEED_FETCH = 0x01;
     static final int TRUST_METHOD_SHIFT = 8;
     public static final int FLAG_SIGNED = 0x02;
     public static final int FLAG_TRUSTED = 0x04;
@@ -104,6 +104,7 @@ public class TwincodeOutboundImpl extends DatabaseObjectImpl implements Twincode
 
     @NonNull
     private final UUID mTwincodeId;
+    private long mCreationDate;
     private long mModificationDate;
     @Nullable
     private List<AttributeNameValue> mAttributes;
@@ -117,7 +118,7 @@ public class TwincodeOutboundImpl extends DatabaseObjectImpl implements Twincode
     private String mDescription;
     private int mFlags;
 
-    TwincodeOutboundImpl(@NonNull DatabaseIdentifier id, @NonNull UUID twincodeId, long modificationDate,
+    TwincodeOutboundImpl(@NonNull DatabaseIdentifier id, @NonNull UUID twincodeId, long creationDate, long modificationDate,
                          @Nullable String name, @Nullable String description, @Nullable ImageId avatarId,
                          @Nullable String capabilities, @Nullable byte[] content, int flags) {
         super(id);
@@ -127,7 +128,7 @@ public class TwincodeOutboundImpl extends DatabaseObjectImpl implements Twincode
 
         mTwincodeId = twincodeId;
         mFlags = 0;
-        update(modificationDate, name, description, avatarId, capabilities, content, flags);
+        update(creationDate, modificationDate, name, description, avatarId, capabilities, content, flags);
     }
 
     TwincodeOutboundImpl(@NonNull DatabaseIdentifier id, @NonNull UUID twincodeId, int flags, long modificationDate,
@@ -269,6 +270,11 @@ public class TwincodeOutboundImpl extends DatabaseObjectImpl implements Twincode
         return mModificationDate;
     }
 
+    public long getCreationDate() {
+
+        return mCreationDate;
+    }
+
     public void needFetch() {
 
         mFlags |= FLAG_NEED_FETCH;
@@ -360,9 +366,10 @@ public class TwincodeOutboundImpl extends DatabaseObjectImpl implements Twincode
         mAvatarId = avatarId;
     }
 
-    synchronized void update(long modificationDate, @Nullable String name, @Nullable String description,
+    synchronized void update(long creationDate, long modificationDate, @Nullable String name, @Nullable String description,
                              @Nullable ImageId avatarId, @Nullable String capabilities, @Nullable byte[] content, int flags) {
 
+        mCreationDate = creationDate;
         mModificationDate = modificationDate;
         mName = name;
         mDescription = description;

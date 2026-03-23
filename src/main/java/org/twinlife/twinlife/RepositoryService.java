@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2014-2025 twinlife SA.
+ *  Copyright (c) 2014-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -19,7 +19,7 @@ import java.util.UUID;
 
 public interface RepositoryService extends BaseService<RepositoryService.ServiceObserver> {
 
-    String VERSION = "3.1.0";
+    String VERSION = "3.2.0";
     String XML_SERIALIZER = "XML";
 
     class RepositoryServiceConfiguration extends BaseServiceConfiguration {
@@ -187,6 +187,9 @@ public interface RepositoryService extends BaseService<RepositoryService.Service
     FindResult findWithSignature(@NonNull String signature, @NonNull RepositoryObjectFactory<?>[] factories);
 
     void updateObject(@NonNull RepositoryObject object, @NonNull Consumer<RepositoryObject> complete);
+
+    @NonNull
+    ErrorCode saveAttributes(@NonNull RepositoryObject object);
 
     /**
      * Set the owner for every object of the factory.

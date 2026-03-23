@@ -107,7 +107,7 @@ public class DebugServiceImpl extends BaseServiceImpl implements DebugService {
         mDatabase = db;
     }
 
-    static String LIST_CONVERSATION_QUERY =
+    static final String LIST_CONVERSATION_QUERY =
             "SELECT C.uuid, C.twincodeOutboundId, C.peerTwincodeOutboundId, "
                     + " (SELECT COUNT(*) FROM conversationDescriptor AS D WHERE C.twincodeOutboundId = D.twincodeOutboundId), "
                     + " C.content "

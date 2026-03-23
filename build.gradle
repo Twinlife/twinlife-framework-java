@@ -12,7 +12,7 @@ android {
     defaultConfig {
         minSdkVersion libs.versions.min.sdk.version.get() as int
         targetSdkVersion libs.versions.target.sdk.version.get() as int
-        buildConfigField "String", "VERSION", '"2.12.11"'
+        buildConfigField "String", "VERSION", '"2.13.2"'
 
         // Enable reporting power management information
         buildConfigField "boolean", "ENABLE_POWER_MANAGEMENT_REPORT", "true"
@@ -37,6 +37,8 @@ android {
 
         // Name of parameter for invitation links
         buildConfigField "String", "INVITATION_PARAM_ID", '"twincodeId"'
+
+        buildConfigField "String", "BACKUP_EXTENSION", '"twmbckp"'
     }
 
     flavorDimensions = ["product", "tier"]
@@ -52,6 +54,7 @@ android {
             buildConfigField "boolean", "DEFAULT_COPY_ALLOWED", "true"
             buildConfigField "int", "MAX_GROUP_MEMBERS", "20"
             buildConfigField "String", "INVITATION_PARAM_ID", '"skredcodeId"'
+            buildConfigField "String", "BACKUP_EXTENSION", '"skrdbckp"'
         }
 
         //Skred and Twinme
@@ -86,11 +89,18 @@ android {
         def paid = flavors[1].name
         def buildType = variant.buildType.name
 
-        // Setup common source set for twinme and twinme+ (twinmeRelease and twinmeDebug)
         if(product == 'twinme'){
-            def twinmeSrcSet = product + buildType.capitalize()
+            // Setup common source set for twinme and twinme+ (twinmeRelease and twinmeDebug)
+            def twinmeSrcSet = 'twinme' + buildType.capitalize()
 
             def srcSet = product + paid.capitalize() + buildType.capitalize()
+
+            android.sourceSets."$srcSet".java.srcDirs += "src/$twinmeSrcSet/java"
+            android.sourceSets."$srcSet".resources.srcDirs += "src/$twinmeSrcSet/resources"
+            android.sourceSets."$srcSet".res.srcDirs += "src/$twinmeSrcSet/res"
+
+            // Setup common source set for release and debug twinme (twinmeFree and twinme+)
+            twinmeSrcSet = 'twinme' + paid.capitalize()
 
             android.sourceSets."$srcSet".java.srcDirs += "src/$twinmeSrcSet/java"
             android.sourceSets."$srcSet".resources.srcDirs += "src/$twinmeSrcSet/resources"
@@ -171,6 +181,8 @@ dependencies {
     implementation libs.androidx.exifinterface
     implementation libs.androidx.collection
     testImplementation libs.junit.jupiter
+
+    testRuntimeOnly libs.junit.platform.launcher
 }
 
 // Needed to configure JUnit in an Android library project.

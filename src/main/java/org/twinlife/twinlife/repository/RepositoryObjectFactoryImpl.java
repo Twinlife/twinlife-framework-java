@@ -1,9 +1,10 @@
 /*
- *  Copyright (c) 2023 twinlife SA.
+ *  Copyright (c) 2023-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.repository;
@@ -15,6 +16,7 @@ import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BaseService.AttributeNameValue;
+import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.DatabaseCursor;
 import org.twinlife.twinlife.DatabaseException;
 import org.twinlife.twinlife.DatabaseIdentifier;
@@ -25,6 +27,7 @@ import org.twinlife.twinlife.RepositoryObjectFactory;
 import org.twinlife.twinlife.DatabaseTable;
 import org.twinlife.twinlife.TwincodeInbound;
 import org.twinlife.twinlife.TwincodeOutbound;
+import org.twinlife.twinlife.TwinlifeContext;
 import org.twinlife.twinlife.database.DatabaseObjectFactory;
 import org.twinlife.twinlife.database.DatabaseServiceImpl;
 import org.twinlife.twinlife.database.Transaction;
@@ -226,6 +229,22 @@ class RepositoryObjectFactoryImpl<T extends RepositoryObject> implements Databas
         }
     }
 
+    public void syncObject(@NonNull TwinlifeContext twinlifeContext, @NonNull RepositoryObject object, @NonNull Consumer<RepositoryObject> consumer) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "updateObject: object=" + object);
+        }
+
+        mFactory.syncObject(twinlifeContext, object, consumer);
+    }
+
+    public void deleteObject(@NonNull TwinlifeContext twinlifeContext, @NonNull RepositoryObject object, @NonNull Consumer<RepositoryObject> consumer) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "deleteObject: object=" + object + " consumer=" + consumer);
+        }
+
+        mFactory.deleteObject(twinlifeContext, object, consumer);
+    }
+
     //
     // Internal methods
     //
@@ -253,6 +272,11 @@ class RepositoryObjectFactoryImpl<T extends RepositoryObject> implements Databas
         }
 
         return mFactory.createObject(identifier, uuid, modificationDate, null, null, attributes, modificationDate);
+    }
+
+    public void loadObject(@NonNull T object, @Nullable String name, @Nullable String description, @Nullable List<AttributeNameValue> attributes, long modificationDate) {
+
+        mFactory.loadObject(object, name, description, attributes, modificationDate);
     }
 
     @Nullable

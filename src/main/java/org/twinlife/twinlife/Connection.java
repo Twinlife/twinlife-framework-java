@@ -22,7 +22,6 @@ import org.twinlife.twinlife.util.BinaryPacketIQ;
 import org.twinlife.twinlife.util.ByteBufferInputStream;
 import org.twinlife.twinlife.util.SchemaKey;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;

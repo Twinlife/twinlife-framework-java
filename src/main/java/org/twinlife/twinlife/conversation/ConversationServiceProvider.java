@@ -784,6 +784,34 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         return null;
     }
 
+    @Nullable
+    Conversation restoreGroupConversation(long databaseId, @NonNull UUID conversationId, long creationDate, long groupId, long subjectId,
+                                  long peerTwincodeOutboundId, @NonNull UUID resourceId, @Nullable UUID peerResourceId,
+                                  @Nullable UUID invitedContactId, long permissions, long joinPermissions, int flags) {
+        final ContentValues values = new ContentValues();
+        values.put(Columns.ID, databaseId);
+        values.put(Columns.GROUP_ID, groupId);
+        values.put(Columns.UUID, conversationId.toString());
+        values.put(Columns.SUBJECT, subjectId);
+        values.put(Columns.CREATION_DATE, creationDate);
+        values.put(Columns.PEER_TWINCODE_OUTBOUND, peerTwincodeOutboundId);
+        values.put(Columns.PERMISSIONS, permissions);
+        values.put(Columns.JOIN_PERMISSIONS, joinPermissions);
+        values.put(Columns.RESOURCE_ID, resourceId.toString());
+        values.put(Columns.FLAGS, flags);
+        //TODO BKP: invitedContactId isn't stored in the conversation table?
+
+        try (Transaction transaction = newTransaction()) {
+            transaction.insertOrThrow(Tables.CONVERSATION, null, values);
+            transaction.commit();
+        } catch (Exception exception) {
+            mService.onDatabaseException(exception);
+            return null;
+        }
+
+        return loadConversationWithId(databaseId);
+    }
+
     void updateConversation(@NonNull ConversationImpl conversation, @Nullable TwincodeOutbound peerTwincodeOutbound) {
         if (DEBUG) {
             Log.d(LOG_TAG, "updateConversation: conversation=" + conversation + " peerTwincodeOutbound=" + peerTwincodeOutbound);
@@ -1410,9 +1438,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         if (!descriptorMap.isEmpty() && conversation != null) {
 
             query = new QueryBuilder("descriptor, kind, value, COUNT(*) FROM annotation");
-            if (conversation != null) {
-                query.filterLong("cid", conversation.getDatabaseId().getId());
-            }
+            query.filterLong("cid", conversation.getDatabaseId().getId());
             query.filterIn("descriptor", descriptorMap.keySet());
             query.append("GROUP BY descriptor, kind, value");
 
@@ -1423,7 +1449,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                     long descriptorId = annotationCursor.getLong(0);
                     AnnotationType kind = toAnnotationType(annotationCursor.getInt(1));
                     if (kind != null) {
-                        int value = annotationCursor.getInt(2);
+                        long value = annotationCursor.getLong(2);
                         int count = annotationCursor.getInt(3);
 
                         DescriptorImpl descriptorImpl = descriptorMap.get(descriptorId);
@@ -1487,7 +1513,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             while (cursor.moveToNext()) {
                 AnnotationType type = toAnnotationType(cursor.getInt(0));
                 if (type != null) {
-                    int value = cursor.getInt(1);
+                    long value = cursor.getLong(1);
                     int count = cursor.getInt(2);
 
                     if (annotations == null) {
@@ -2206,6 +2232,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             mService.onDatabaseException(exception);
         }
 
+        //noinspection unchecked
         final List<DescriptorId>[] result = new List[3];
 
         result[0] = deleteList;
@@ -2410,7 +2437,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             while (cursor.moveToNext()) {
                 final AnnotationType type = toAnnotationType(cursor.getInt(0));
                 if (type != null) {
-                    final int value = cursor.getInt(1);
+                    final long value = cursor.getLong(1);
 
                     annotations.add(new DescriptorAnnotation(type, value, 0));
                 }
@@ -2441,7 +2468,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         final String descriptorId = Long.toString(descriptorImpl.getDatabaseId());
         final String conversationId = Long.toString(descriptorImpl.getConversationId());
 
-        final Map<AnnotationType, Integer> newList = new HashMap<>();
+        final Map<AnnotationType, Long> newList = new HashMap<>();
         for (DescriptorAnnotation annotation : annotations) {
             newList.put(annotation.getType(), annotation.getValue());
         }
@@ -2468,9 +2495,9 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 while (cursor.moveToNext()) {
                     final AnnotationType type = toAnnotationType(cursor.getInt(0));
                     if (type != null) {
-                        final int value = cursor.getInt(1);
+                        final long value = cursor.getLong(1);
 
-                        final Integer newValue = newList.get(type);
+                        final Long newValue = newList.get(type);
                         if (newValue == null) {
                             if (deleteList == null) {
                                 deleteList = new ArrayList<>();
@@ -2532,7 +2559,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 // Step 4: add the new ones.
                 if (!newList.isEmpty()) {
                     final ContentValues values = new ContentValues();
-                    for (final Map.Entry<AnnotationType, Integer> newAnnotation : newList.entrySet()) {
+                    for (final Map.Entry<AnnotationType, Long> newAnnotation : newList.entrySet()) {
                         values.put(Columns.CID, conversationId);
                         values.put(Columns.DESCRIPTOR, descriptorId);
                         values.put(Columns.KIND, fromAnnotationType(newAnnotation.getKey()));
@@ -2570,7 +2597,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      * @param value the value to set on the annotation.
      * @return true if the annotation was inserted or updated and false if it existed and was not modified.
      */
-    boolean setAnnotation(@NonNull DescriptorImpl descriptorImpl, @NonNull AnnotationType type, int value) {
+    boolean setAnnotation(@NonNull DescriptorImpl descriptorImpl, @NonNull AnnotationType type, long value) {
         if (DEBUG) {
             Log.d(LOG_TAG, "setAnnotation: descriptorImpl=" + descriptorImpl + " type=" + type + " value=" + value);
         }
@@ -2589,7 +2616,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                                 Long.toString(conversationId),
                                 Long.toString(id),
                                 Integer.toString(fromAnnotationType(type)),
-                                Integer.toString(value)
+                                Long.toString(value)
                         });
 
             if (result > 0) {
@@ -2666,7 +2693,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      * @return true if an annotation was removed and false if there was not change.
      */
     boolean toggleAnnotation(@NonNull DescriptorImpl descriptorImpl,
-                             @NonNull AnnotationType type, int value) {
+                             @NonNull AnnotationType type, long value) {
         if (DEBUG) {
             Log.d(LOG_TAG, "toggleAnnotation: descriptorImpl=" + descriptorImpl + " + type=" + type + " value=" + value);
         }
@@ -2726,37 +2753,41 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         return modified;
     }
 
-    @Nullable
-    Map<TwincodeOutbound, DescriptorAnnotation> listAnnotations(@NonNull DescriptorId descriptorId) {
+    @NonNull
+    Map<TwincodeOutbound, List<DescriptorAnnotation>> listAnnotations(@NonNull DescriptorId descriptorId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "listAnnotations: descriptorId=" + descriptorId);
         }
 
-        final Map<TwincodeOutbound, DescriptorAnnotation> result = new HashMap<>();
-        final QueryBuilder query = new QueryBuilder("tw.id, tw.twincodeId, tw.modificationDate,"
-                + " tw.name, tw.avatarId, tw.description, tw.capabilities, tw.attributes, tw.flags, a.kind, a.value"
+        final Map<TwincodeOutbound, List<DescriptorAnnotation>> result = new HashMap<>();
+        final QueryBuilder query = new QueryBuilder(DatabaseServiceImpl.TWINCODE_OUT_COLUMNS + ", a.kind, a.value"
                 + " FROM descriptor AS d"
                 + " INNER JOIN annotation AS a ON d.cid=a.cid AND a.descriptor=d.id"
                 + " INNER JOIN conversation AS c on d.cid=c.id"
                 + " INNER JOIN repository AS r on r.id=c.subject"
-                + " INNER JOIN twincodeOutbound AS tw ON"
-                + " (a.peerTwincodeOutbound IS NULL AND tw.id=r.twincodeOutbound)"
-                + " OR (a.peerTwincodeOutbound IS NOT NULL AND tw.id=a.peerTwincodeOutbound)");
+                + " INNER JOIN twincodeOutbound AS twout ON"
+                + " (a.peerTwincodeOutbound IS NULL AND twout.id=r.twincodeOutbound)"
+                + " OR (a.peerTwincodeOutbound IS NOT NULL AND twout.id=a.peerTwincodeOutbound)");
 
         if (descriptorId.id > 0) {
             query.filterLong("d.id", descriptorId.id);
         } else {
-            query.append(" INNER JOIN twincodeOutbound AS twout ON d.twincodeOutbound=twout.id");
+            query.append(" INNER JOIN twincodeOutbound AS tw ON d.twincodeOutbound=tw.id");
             query.filterLong("d.sequenceId", descriptorId.sequenceId);
-            query.filterUUID("twout.twincodeId", descriptorId.twincodeOutboundId);
+            query.filterUUID("tw.twincodeId", descriptorId.twincodeOutboundId);
         }
         try (DatabaseCursor cursor = mDatabase.rawQuery(query.getQuery(), query.getParams())) {
             while (cursor.moveToNext()) {
                 final TwincodeOutbound twincodeOutbound = mDatabase.loadTwincodeOutbound(cursor, 0);
-                final AnnotationType type = toAnnotationType(cursor.getInt(9));
-                final int value = cursor.getInt(10);
+                final AnnotationType type = toAnnotationType(cursor.getInt(DatabaseServiceImpl.TWINCODE_COLUMN_COUNT));
+                final long value = cursor.getLong(DatabaseServiceImpl.TWINCODE_COLUMN_COUNT + 1);
                 if (type != null && twincodeOutbound != null) {
-                    result.put(twincodeOutbound, new DescriptorAnnotation(type, value, 1));
+                    List<DescriptorAnnotation> annotations = result.get(twincodeOutbound);
+                    if (annotations == null) {
+                        annotations = new ArrayList<>();
+                        result.put(twincodeOutbound, annotations);
+                    }
+                    annotations.add(new DescriptorAnnotation(type, value, 1));
                 }
             }
         } catch (DatabaseException exception) {
@@ -2787,7 +2818,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             while (cursor.moveToNext()) {
                 final AnnotationType type = toAnnotationType(cursor.getInt(0));
                 if (type != null) {
-                    final int value = cursor.getInt(1);
+                    final long value = cursor.getLong(1);
                     final int count = cursor.getInt(2);
 
                     if (annotations == null) {
@@ -3114,6 +3145,12 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case POLL:
                 return 5;
+
+            case RECEIVED:
+                return 6;
+
+            case READ:
+                return 7;
         }
         return 0;
     }
@@ -3206,6 +3243,12 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case 5:
                 return AnnotationType.POLL;
+
+            case 6:
+                return AnnotationType.RECEIVED;
+
+            case 7:
+                return AnnotationType.READ;
         }
 
         return null;

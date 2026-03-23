@@ -87,6 +87,8 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         @Nullable
         UUID getPeerConnectionId();
 
+        long getCreationDate();
+
         boolean isActive();
 
         boolean isGroup();
@@ -264,16 +266,22 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         LIKE,
 
         // The descriptor is marked by an answer of a poll: the getValue() gives the vote entry.
-        POLL
+        POLL,
+
+        // The descriptor was received by the peer: the getValue() gives the timestamp.
+        RECEIVED,
+
+        // The descriptor was read by the peer: the getValue() gives the timestamp.
+        READ
     }
 
     class DescriptorAnnotation {
         @NonNull
         private final AnnotationType mType;
         private final int mCount;
-        private final int mValue;
+        private final long mValue;
 
-        public DescriptorAnnotation(@NonNull AnnotationType type, int value, int count) {
+        public DescriptorAnnotation(@NonNull AnnotationType type, long value, int count) {
             mType = type;
             mValue = value;
             mCount = count;
@@ -290,7 +298,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
             return mCount;
         }
 
-        public int getValue() {
+        public long getValue() {
 
             return mValue;
         }
@@ -782,6 +790,16 @@ public interface ConversationService extends BaseService<ConversationService.Ser
     void acceptPushTwincode(@NonNull UUID schemaId);
 
     /**
+     * Save or update a call that was made for the given subject at the given time.
+     * @param subject the subject associated with the call descriptor.
+     * @param startDate the start date of the call.
+     * @param endDate when > 0, the end date of the call.
+     * @return SUCCESS if the call descriptor was created or updated.
+     */
+    @NonNull
+    ErrorCode saveCall(@NonNull RepositoryObject subject, long startDate, long endDate);
+
+    /**
      * Get the descriptor that was sent with the given descriptor Id.
      *
      * @param descriptorId the descriptor id.
@@ -813,7 +831,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
      */
     @NonNull
     ErrorCode setAnnotation(@NonNull DescriptorId descriptorId,
-                            @NonNull AnnotationType type, int value);
+                            @NonNull AnnotationType type, long value);
 
     /**
      * Remove the annotation on the descriptor.  The operation can only remove the annotations that the current
@@ -842,7 +860,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
      */
     @NonNull
     ErrorCode toggleAnnotation(@NonNull DescriptorId descriptorId,
-                               @NonNull AnnotationType type, int value);
+                               @NonNull AnnotationType type, long value);
 
     /**
      * Get the descriptor annotation indexed by the owner twincode id.
@@ -851,7 +869,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
      * @return a map keyed on the twincode id of the user who annotated and giving the annotation.
      */
     @Nullable
-    Map<TwincodeOutbound, DescriptorAnnotation> listAnnotations(@NonNull DescriptorId descriptorId);
+    Map<TwincodeOutbound, List<DescriptorAnnotation>> listAnnotations(@NonNull DescriptorId descriptorId);
 
     void deleteDescriptor(long requestId, @NonNull DescriptorId descriptorId);
 

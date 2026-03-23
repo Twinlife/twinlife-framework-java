@@ -89,8 +89,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -509,7 +511,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
      * Handle the conversation refresh secret twincode invocation: the peer does not know our secret or it is not able
      * to setup a P2P session with existing secrets.  This is handled in several steps by the same invocation handler
      * because these steps are very close.  The global process is the following:
-     *
+     *<pre>
      * DEVICE-1  -- invokeTwincode("need-refresh") ===>        DEVICE-2
      *                                                         createPrivateKey()
      *                                                         CREATE_NEW_SECRET
@@ -524,7 +526,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
      *          <== secureInvokeTwincode("validate-secret")   -- (no secret sent)
      * getSignedTwincode()
      * validateSecrets(DEVICE-1, DEVICE-2)
-     *
+     *</pre>
      * A call to validateSecrets() is necessary after a CREATE_NEW_SECRET or SEND_SECRET to make the secret usable for encryption.
      * CREATE_NEW_SECRET generates a new secret 1 or secret 2.
      * SEND_SECRET sends the existing secret but it is created if it does not exist (which means a validateSecrets() is necessary).
@@ -963,6 +965,25 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         return mServiceProvider.listConversations(filter);
     }
 
+    @NonNull
+    public List<GroupConversation> listGroupConversations() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "listGroupConversations");
+        }
+
+        List<GroupConversation> res = new ArrayList<>();
+
+        if (isServiceOn()) {
+            for (Conversation conversation : mServiceProvider.listConversations(null)) {
+                if (conversation.isGroup()) {
+                    res.add((GroupConversation) conversation);
+                }
+            }
+        }
+
+        return res;
+    }
+
     @Override
     @Nullable
     public Conversation getOrCreateConversation(@NonNull RepositoryObject subject) {
@@ -1059,6 +1080,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                                 UpdateDescriptorTimestampOperation updateDescriptorTimestampOperation
                                         = new UpdateDescriptorTimestampOperation(conversationImpl,
                                         UpdateDescriptorTimestampType.PEER_DELETE, descriptorId, deleteTimestamp);
+                                //noinspection unchecked
                                 List<Operation> operations = (List<Operation>)pendingOperations.get(conversationImpl);
                                 if (operations == null) {
                                     operations = new ArrayList<>();
@@ -1265,7 +1287,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     public List<Descriptor> getConversationTypeDescriptors(@NonNull Conversation conversation, @NonNull Descriptor.Type[] types,
                                                            @NonNull DisplayCallsMode callsMode, long beforeTimestamp, int maxDescriptors) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "getDescriptors: conversation=" + conversation + " type=" + types + " beforeTimestamp=" + beforeTimestamp +
+            Log.d(LOG_TAG, "getDescriptors: conversation=" + conversation + " type=" + Arrays.toString(types) + " beforeTimestamp=" + beforeTimestamp +
                     " maxDescriptors=" + maxDescriptors);
         }
 
@@ -1298,7 +1320,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     public List<Descriptor> getDescriptors(@NonNull Descriptor.Type[] types, @NonNull DisplayCallsMode callsMode,
                                            long beforeTimestamp, int maxDescriptors) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "getDescriptors: type=" + types + " callsMode=" + callsMode + " beforeTimestamp=" + beforeTimestamp +
+            Log.d(LOG_TAG, "getDescriptors: type=" + Arrays.toString(types) + " callsMode=" + callsMode + " beforeTimestamp=" + beforeTimestamp +
                     " maxDescriptors=" + maxDescriptors);
         }
 
@@ -2079,7 +2101,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         // Create one descriptor for the conversation.
         final DescriptorImpl callDescriptorImpl = mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
             final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
-            return new CallDescriptorImpl(descriptorId, cid, isVideo, isIncoming);
+            return new CallDescriptorImpl(descriptorId, cid, isVideo, isIncoming, System.currentTimeMillis());
         });
         if (callDescriptorImpl == null) {
             onError(requestId, ErrorCode.NO_STORAGE_SPACE, null);
@@ -2121,7 +2143,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         }
 
         CallDescriptorImpl callDescriptorImpl = (CallDescriptorImpl) descriptorImpl;
-        callDescriptorImpl.setAcceptedCall();
+        callDescriptorImpl.setAcceptedCall(System.currentTimeMillis());
 
         mServiceProvider.updateDescriptor(callDescriptorImpl);
 
@@ -2163,6 +2185,78 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
             mTwinlifeExecutor.execute(() -> serviceObserver.onUpdateDescriptor(requestId, conversation, callDescriptorImpl, UpdateType.CONTENT));
         }
+    }
+
+    @NonNull
+    @Override
+    public ErrorCode saveCall(@NonNull RepositoryObject subject, long startDate, long endDate) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "saveCall: subject=" + subject + " startDate=" + startDate + " endDate=" + endDate);
+        }
+
+        if (!isServiceOn()) {
+            return ErrorCode.SERVICE_UNAVAILABLE;
+        }
+
+        final ConversationService.Conversation conversation = mServiceProvider.createConversation(subject);
+        if (conversation == null) {
+            return ErrorCode.ITEM_NOT_FOUND;
+        }
+
+        // Allow 1 minute of delta time.
+        final long TIME_COMPARE_DELTA = 60 * 1000L;
+
+        long beforeTimestamp = System.currentTimeMillis();
+        final Descriptor.Type[] types = new Descriptor.Type[] { ConversationService.Descriptor.Type.CALL_DESCRIPTOR };
+        final List<ConversationService.Descriptor> descriptors = mServiceProvider.loadDescriptorImpls(conversation, types, DisplayCallsMode.ALL, beforeTimestamp, 10);
+        CallDescriptorImpl callDescriptorImpl = null;
+        if (descriptors != null) {
+            for (Descriptor descriptor : descriptors) {
+
+                // Find the descriptor based on the creation date which should match the startDate.
+                final long timestamp = descriptor.getCreatedTimestamp();
+                if (timestamp + TIME_COMPARE_DELTA / 2 >= startDate && timestamp - TIME_COMPARE_DELTA / 2 <= startDate) {
+                    callDescriptorImpl = (CallDescriptorImpl) descriptor;
+                    break;
+                }
+
+                // If the descriptor is older than the start time, it means we don't have a CallDescriptor for this event.
+                if (timestamp + TIME_COMPARE_DELTA < startDate) {
+                    break;
+                }
+            }
+        }
+
+        if (callDescriptorImpl == null) {
+            // Create the call descriptor for the conversation.
+            callDescriptorImpl = (CallDescriptorImpl) mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
+                final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
+                final CallDescriptorImpl descriptor = new CallDescriptorImpl(descriptorId, cid, true, true, startDate);
+                descriptor.setReadTimestamp(startDate);
+                descriptor.setAcceptedCall(startDate);
+                return descriptor;
+            });
+            if (callDescriptorImpl == null) {
+                return ErrorCode.NO_STORAGE_SPACE;
+            }
+
+            final CallDescriptorImpl lCallDescriptor = callDescriptorImpl;
+            for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
+                mTwinlifeExecutor.execute(() -> serviceObserver.onPopDescriptor(DEFAULT_REQUEST_ID, conversation, lCallDescriptor));
+            }
+        }
+        if (endDate > 0) {
+            callDescriptorImpl.setCall(endDate);
+
+            mServiceProvider.updateDescriptor(callDescriptorImpl);
+
+            // Notify that the call descriptor content was updated.
+            final CallDescriptorImpl lCallDescriptor = callDescriptorImpl;
+            for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
+                mTwinlifeExecutor.execute(() -> serviceObserver.onUpdateDescriptor(DEFAULT_REQUEST_ID, conversation, lCallDescriptor, UpdateType.CONTENT));
+            }
+        }
+        return ErrorCode.SUCCESS;
     }
 
     @Override
@@ -2389,7 +2483,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     @NonNull
     @Override
     public ErrorCode setAnnotation(@NonNull DescriptorId descriptorId,
-                                   @NonNull AnnotationType type, int value) {
+                                   @NonNull AnnotationType type, long value) {
         if (DEBUG) {
             Log.d(LOG_TAG, "setAnnotation: descriptorId=" + descriptorId
                     + " type=" + type + " value=" + value);
@@ -2542,7 +2636,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     @NonNull
     @Override
     public ErrorCode toggleAnnotation(@NonNull DescriptorId descriptorId,
-                                      @NonNull AnnotationType type, int value) {
+                                      @NonNull AnnotationType type, long value) {
         if (DEBUG) {
             Log.d(LOG_TAG, "toggleAnnotation: descriptorId=" + descriptorId
                     + " type=" + type + " value=" + value);
@@ -2606,7 +2700,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     }
 
     @Nullable
-    public Map<TwincodeOutbound, DescriptorAnnotation> listAnnotations(@NonNull DescriptorId descriptorId) {
+    public Map<TwincodeOutbound, List<DescriptorAnnotation>> listAnnotations(@NonNull DescriptorId descriptorId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "listAnnotations: descriptorId=" + descriptorId);
         }
@@ -2759,6 +2853,27 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         }
 
         return mGroupManager.createGroup(group, owner);
+    }
+
+    @Nullable
+    public Conversation restoreGroupConversation(long databaseId, @NonNull UUID conversationId, long creationDate, long groupId, long subjectId,
+                                                 long peerTwincodeOutboundId, @NonNull UUID resourceId, @Nullable UUID peerResourceId,
+                                                 @Nullable UUID invitedContactId, long permissions, long joinPermissions, int flags) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreGroup: databaseId=" + databaseId + " conversationId=" + conversationId +
+                    " creationDate=" + creationDate + " groupId=" + groupId + " subjectId=" + subjectId +
+                    " peerTwincodeOutboundId=" + peerTwincodeOutboundId + " resourceId=" + resourceId +
+                    " peerResourceId=" + peerResourceId + " invitedContactId=" + invitedContactId +
+                    " permissions=" + permissions + " joinPermissions=" + joinPermissions + " flags=" + flags);
+        }
+
+        if (!isServiceOn()) {
+            return null;
+        }
+
+        return mServiceProvider.restoreGroupConversation(databaseId, conversationId, creationDate, groupId,
+                subjectId, peerTwincodeOutboundId, resourceId, peerResourceId, invitedContactId,
+                permissions, joinPermissions, flags);
     }
 
     @Override
@@ -4125,7 +4240,6 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             Log.d(LOG_TAG, "processIQ: connection=" + connection + " schemaId=" + schemaId + " schemaVersion=" + schemaVersion + " iq=" + iq);
         }
 
-        String description;
         boolean processed = false;
         Exception exception = null;
         switch (iq.getType()) {
@@ -4459,12 +4573,10 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                 if (iq instanceof ServiceErrorIQ) {
                     ServiceErrorIQ serviceErrorIQ = (ServiceErrorIQ) iq;
                     processServiceErrorIQ(connection, serviceErrorIQ);
-                    processed = true;
 
                 } else if (iq instanceof ErrorIQ) {
                     ErrorIQ errorIQ = (ErrorIQ) iq;
                     processErrorIQ(connection.getConversation(), errorIQ);
-                    processed = true;
 
                 }
         }
@@ -5267,7 +5379,20 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             final Set<TwincodeOutbound> annotatingUsers = new HashSet<>();
             for (final Map.Entry<UUID, List<DescriptorAnnotation>> annotationEntry : updateAnnotationIQ.annotations.entrySet()) {
                 final UUID peerTwincodeOutboundId = annotationEntry.getKey();
-                final List<DescriptorAnnotation> list = annotationEntry.getValue();
+                final List<DescriptorAnnotation> list = new ArrayList<>(annotationEntry.getValue());
+
+                // Make sure setAnnotations() doesn't delete our read/received annotations.
+                Map<TwincodeOutbound, List<DescriptorAnnotation>> existingAnnotations = listAnnotations(descriptorImpl.getDescriptorId());
+                if (existingAnnotations != null) {
+                    List<DescriptorAnnotation> peerExistingAnnotations = existingAnnotations.get(conversationImpl.getPeerTwincodeOutbound());
+                    if (peerExistingAnnotations != null) {
+                        for (DescriptorAnnotation annotation : peerExistingAnnotations) {
+                            if (annotation.getType() == AnnotationType.RECEIVED || annotation.getType() == AnnotationType.READ) {
+                                list.add(annotation);
+                            }
+                        }
+                    }
+                }
 
                 // A twinroom engine can send us back our annotations but we don't want to insert them again.
                 if (!peerTwincodeOutboundId.equals(conversationImpl.getTwincodeOutboundId())) {
@@ -5554,15 +5679,18 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         final DescriptorImpl descriptorImpl = mServiceProvider.loadDescriptorImpl(updateTimestampIQ.descriptorId);
         if (descriptorImpl != null) {
             final Conversation conversation = conversationImpl.getMainConversation();
+            long adjustedTime = connection.getAdjustedTime(updateTimestampIQ.timestamp);
             switch (updateTimestampIQ.timestampType) {
                 case READ:
-                    descriptorImpl.setReadTimestamp(connection.getAdjustedTime(updateTimestampIQ.timestamp));
+                    descriptorImpl.setReadTimestamp(adjustedTime);
                     updateDescriptor(descriptorImpl, conversationImpl);
+                    setTimestampAnnotation(descriptorImpl, conversationImpl, AnnotationType.READ, adjustedTime);
+
                     timestamp = 0;
                     break;
 
                 case DELETE:
-                    descriptorImpl.setDeletedTimestamp(connection.getAdjustedTime(updateTimestampIQ.timestamp));
+                    descriptorImpl.setDeletedTimestamp(adjustedTime);
                     // Save the descriptor timestamps in case we are stopped while removing the file (slow operation).
                     mServiceProvider.updateDescriptorImplTimestamps(descriptorImpl);
                     deleteConversationDescriptor(DEFAULT_REQUEST_ID, conversation, descriptorImpl);
@@ -5571,7 +5699,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
                 case PEER_DELETE:
                     if (descriptorImpl.getPeerDeletedTimestamp() == 0) {
-                        descriptorImpl.setPeerDeletedTimestamp(connection.getAdjustedTime(updateTimestampIQ.timestamp));
+                        descriptorImpl.setPeerDeletedTimestamp(adjustedTime);
                         updateDescriptor(descriptorImpl, conversationImpl);
                     }
                     timestamp = 0;
@@ -5596,14 +5724,16 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         DescriptorImpl descriptorImpl = mServiceProvider.loadDescriptorImpl(updateDescriptorTimestampIQ.descriptorId);
         if (descriptorImpl != null) {
             final Conversation conversation = conversationImpl.getMainConversation();
+            long adjustedTime = connection.getAdjustedTime(updateDescriptorTimestampIQ.timestamp);
             switch (updateDescriptorTimestampIQ.timestampType) {
                 case READ:
-                    descriptorImpl.setReadTimestamp(connection.getAdjustedTime(updateDescriptorTimestampIQ.timestamp));
+                    descriptorImpl.setReadTimestamp(adjustedTime);
                     updateDescriptor(descriptorImpl, conversationImpl);
+                    setTimestampAnnotation(descriptorImpl, conversationImpl, AnnotationType.READ, adjustedTime);
                     break;
 
                 case DELETE:
-                    descriptorImpl.setDeletedTimestamp(connection.getAdjustedTime(updateDescriptorTimestampIQ.timestamp));
+                    descriptorImpl.setDeletedTimestamp(adjustedTime);
                     // Save the descriptor timestamps in case we are stopped while removing the file (slow operation).
                     mServiceProvider.updateDescriptorImplTimestamps(descriptorImpl);
                     deleteConversationDescriptor(DEFAULT_REQUEST_ID, conversation, descriptorImpl);
@@ -5611,7 +5741,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
                 case PEER_DELETE:
                     if (descriptorImpl.getPeerDeletedTimestamp() == 0) {
-                        descriptorImpl.setPeerDeletedTimestamp(connection.getAdjustedTime(updateDescriptorTimestampIQ.timestamp));
+                        descriptorImpl.setPeerDeletedTimestamp(adjustedTime);
                         updateDescriptor(descriptorImpl, conversationImpl);
                     }
                     break;
@@ -5686,10 +5816,16 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         final SignatureInfoIQ signatureInfoIQ = (SignatureInfoIQ) iq;
         final ConversationImpl conversationImpl = connection.getConversation();
 
+        // Get the P2P connection ID as it can be released while we handle this IQ.
+        final UUID peerConnectionId = connection.getPeerConnectionId();
+        if (peerConnectionId == null) {
+            return;
+        }
+
         // Accept the signature info only for the peer conversation twincode.
         final TwincodeOutbound twincodeOutbound = conversationImpl.getTwincodeOutbound();
         final TwincodeOutbound peerTwincodeOutbound = conversationImpl.getPeerTwincodeOutbound();
-        final SdpEncryptionStatus sdpEncryptionStatus = mPeerConnectionService.getSdpEncryptionStatus(connection.getPeerConnectionId());
+        final SdpEncryptionStatus sdpEncryptionStatus = mPeerConnectionService.getSdpEncryptionStatus(peerConnectionId);
         if (twincodeOutbound == null || peerTwincodeOutbound == null || !peerTwincodeOutbound.getId().equals(signatureInfoIQ.twincodeOutboundId)) {
             mTwinlifeImpl.assertion(ConversationAssertPoint.PROCESS_SIGNATURE_ERROR,
                     AssertPoint.createPeerConnectionId(connection.getPeerConnectionId())
@@ -5891,9 +6027,12 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             ObjectDescriptorImpl objectDescriptorImpl = pushObjectOperation.getObjectDescriptorImpl();
 
             // Update the received timestamp only the first time.
-            if (objectDescriptorImpl != null && objectDescriptorImpl.getReceivedTimestamp() <= 0) {
-                objectDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
-                updateDescriptor(objectDescriptorImpl, conversationImpl);
+            if (objectDescriptorImpl != null) {
+                if (objectDescriptorImpl.getReceivedTimestamp() <= 0) {
+                    objectDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
+                    updateDescriptor(objectDescriptorImpl, conversationImpl);
+                }
+                setTimestampAnnotation(objectDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
             }
         }
 
@@ -5915,6 +6054,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             if (objectDescriptorImpl != null && objectDescriptorImpl.getReceivedTimestamp() <= 0) {
                 objectDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
                 updateDescriptor(objectDescriptorImpl, conversationImpl);
+                setTimestampAnnotation(objectDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
             }
         }
 
@@ -5935,10 +6075,14 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             final UpdateDescriptorOperation updateDescriptorOperation = (UpdateDescriptorOperation) operation;
             final DescriptorImpl descriptorImpl = updateDescriptorOperation.getDescriptorImpl();
 
-            if (descriptorImpl != null && descriptorImpl.getReceivedTimestamp() < descriptorImpl.getUpdatedTimestamp()
-                    && descriptorImpl.getUpdatedTimestamp() > descriptorImpl.getCreatedTimestamp()) {
-                descriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
-                updateDescriptor(descriptorImpl, conversationImpl);
+            if (descriptorImpl != null) {
+                if (descriptorImpl.getReceivedTimestamp() < descriptorImpl.getUpdatedTimestamp()
+                        && descriptorImpl.getUpdatedTimestamp() > descriptorImpl.getCreatedTimestamp()) {
+                    descriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
+                    updateDescriptor(descriptorImpl, conversationImpl);
+                }
+
+                setTimestampAnnotation(descriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushObjectIQ.receivedTimestamp));
             }
         }
 
@@ -5976,7 +6120,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     fileDescriptorImpl.setReceivedTimestamp(-1L);
                 }
                 updateDescriptor(fileDescriptorImpl, conversationImpl);
-
+                setTimestampAnnotation(fileDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, -1L);
             }
         }
 
@@ -6010,6 +6154,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     fileDescriptorImpl.setReceivedTimestamp(-1L);
                 }
                 updateDescriptor(fileDescriptorImpl, conversationImpl);
+                setTimestampAnnotation(fileDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, -1L);
             }
         }
 
@@ -6041,15 +6186,17 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                         pushFileOperation.execute(connection);
                         return;
                     } else {
+                        long timestamp = connection.getAdjustedTime(onPushFileChunkIQ.receivedTimestamp);
+
                         // Update the received timestamp only the first time.
                         if (fileDescriptorImpl.getReceivedTimestamp() <= 0) {
-                            long timestamp = connection.getAdjustedTime(onPushFileChunkIQ.receivedTimestamp);
                             fileDescriptorImpl.setUpdatedTimestamp(timestamp);
                             fileDescriptorImpl.setReceivedTimestamp(timestamp);
                         }
                         updateDescriptor(fileDescriptorImpl, conversationImpl);
 
-                        done = true;
+                        setTimestampAnnotation(fileDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, timestamp);
+
                     }
                 }
 
@@ -6082,14 +6229,17 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                         pushFileOperation.execute(connection);
                         return;
                     } else {
+                        long timestamp = connection.getAdjustedTime(onPushFileChunkIQ.receivedTimestamp);
+
                         // Update the received timestamp only the first time.
                         if (fileDescriptorImpl.getReceivedTimestamp() <= 0) {
-                            long timestamp = connection.getAdjustedTime(onPushFileChunkIQ.receivedTimestamp);
                             fileDescriptorImpl.setUpdatedTimestamp(timestamp);
                             fileDescriptorImpl.setReceivedTimestamp(timestamp);
                         }
                         updateDescriptor(fileDescriptorImpl, conversationImpl);
-                        done = true;
+
+                        setTimestampAnnotation(fileDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, timestamp);
+
                     }
                 }
 
@@ -6114,10 +6264,14 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             PushGeolocationOperation pushGeolocationOperation = (PushGeolocationOperation) operation;
             GeolocationDescriptorImpl geolocationDescriptorImpl = pushGeolocationOperation.getGeolocationDescriptorImpl();
 
-            // Update the received timestamp only the first time.
-            if (geolocationDescriptorImpl != null && geolocationDescriptorImpl.getReceivedTimestamp() <= 0) {
-                geolocationDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushGeolocationIQ.receivedTimestamp));
-                updateDescriptor(geolocationDescriptorImpl, conversationImpl);
+            if (geolocationDescriptorImpl != null) {
+                // Update the received timestamp only the first time.
+                if (geolocationDescriptorImpl.getReceivedTimestamp() <= 0) {
+                    geolocationDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushGeolocationIQ.receivedTimestamp));
+                    updateDescriptor(geolocationDescriptorImpl, conversationImpl);
+                }
+
+                setTimestampAnnotation(geolocationDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushGeolocationIQ.receivedTimestamp));
             }
         }
 
@@ -6135,10 +6289,14 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             PushGeolocationOperation pushGeolocationOperation = (PushGeolocationOperation) operation;
             GeolocationDescriptorImpl geolocationDescriptorImpl = pushGeolocationOperation.getGeolocationDescriptorImpl();
 
-            // Update the received timestamp only the first time.
-            if (geolocationDescriptorImpl != null && geolocationDescriptorImpl.getReceivedTimestamp() <= 0) {
-                geolocationDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushGeolocationIQ.receivedTimestamp));
-                updateDescriptor(geolocationDescriptorImpl, conversationImpl);
+            if (geolocationDescriptorImpl != null) {
+                // Update the received timestamp only the first time.
+                if (geolocationDescriptorImpl.getReceivedTimestamp() <= 0) {
+                    geolocationDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushGeolocationIQ.receivedTimestamp));
+                    updateDescriptor(geolocationDescriptorImpl, conversationImpl);
+                }
+
+                setTimestampAnnotation(geolocationDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushGeolocationIQ.receivedTimestamp));
             }
         }
 
@@ -6157,9 +6315,13 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             TwincodeDescriptorImpl twincodeDescriptorImpl = pushTwincodeOperation.getTwincodeDescriptorImpl();
 
             // Update the received timestamp only the first time.
-            if (twincodeDescriptorImpl != null && twincodeDescriptorImpl.getReceivedTimestamp() <= 0) {
-                twincodeDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushTwincodeIQ.receivedTimestamp));
-                updateDescriptor(twincodeDescriptorImpl, conversationImpl);
+            if (twincodeDescriptorImpl != null) {
+                if (twincodeDescriptorImpl.getReceivedTimestamp() <= 0) {
+                    twincodeDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushTwincodeIQ.receivedTimestamp));
+                    updateDescriptor(twincodeDescriptorImpl, conversationImpl);
+                }
+
+                setTimestampAnnotation(twincodeDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushTwincodeIQ.receivedTimestamp));
             }
         }
 
@@ -6181,9 +6343,13 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             TwincodeDescriptorImpl twincodeDescriptorImpl = pushTwincodeOperation.getTwincodeDescriptorImpl();
 
             // Update the received timestamp only the first time.
-            if (twincodeDescriptorImpl != null && twincodeDescriptorImpl.getReceivedTimestamp() <= 0) {
-                twincodeDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushTwincodeIQ.receivedTimestamp));
-                updateDescriptor(twincodeDescriptorImpl, conversationImpl);
+            if (twincodeDescriptorImpl != null) {
+                if (twincodeDescriptorImpl.getReceivedTimestamp() <= 0) {
+                    twincodeDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushTwincodeIQ.receivedTimestamp));
+                    updateDescriptor(twincodeDescriptorImpl, conversationImpl);
+                }
+
+                setTimestampAnnotation(twincodeDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushTwincodeIQ.receivedTimestamp));
             }
         }
 
@@ -6477,6 +6643,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     fileDescriptorImpl.setReceivedTimestamp(-1);
                     fileDescriptorImpl.setReadTimestamp(-1);
                     mServiceProvider.updateDescriptorImplTimestamps(fileDescriptorImpl);
+                    setTimestampAnnotation(fileDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, -1L);
 
                     for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
                         mTwinlifeExecutor.execute(() -> serviceObserver.onUpdateDescriptor(DEFAULT_REQUEST_ID, conversationImpl, fileDescriptorImpl,
@@ -6491,6 +6658,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     objectDescriptorImpl.setReceivedTimestamp(-1);
                     objectDescriptorImpl.setReadTimestamp(-1);
                     updateDescriptor(objectDescriptorImpl, conversationImpl);
+                    setTimestampAnnotation(objectDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, -1L);
                 }
             } else if (operation.getType() == Operation.Type.INVITE_GROUP && operation instanceof GroupInviteOperation) {
                 GroupInviteOperation inviteOperation = (GroupInviteOperation) operation;
@@ -6499,6 +6667,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     invitation.setReceivedTimestamp(-1);
                     invitation.setReadTimestamp(-1);
                     updateDescriptor(invitation, conversationImpl);
+                    setTimestampAnnotation(invitation, conversationImpl, AnnotationType.RECEIVED, -1L);
                 }
             }
         }
@@ -7227,6 +7396,52 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                 }
             }
         }
+    }
+
+    private void setTimestampAnnotation(@NonNull DescriptorImpl descriptor, @NonNull ConversationImpl conversation, @NonNull AnnotationType annotationType, long timestamp) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "setTimestampAnnotation: descriptor=" + descriptor + " conversation=" + conversation + " annotationType=" + annotationType + " timestamp=" + timestamp);
+        }
+
+        if (annotationType != AnnotationType.RECEIVED && annotationType != AnnotationType.READ) {
+            Log.e(LOG_TAG, "setTimestampAnnotation() only handles RECEIVED and READ annotations, but annotationType is " + annotationType);
+            return;
+        }
+
+        if (!conversation.isGroup() || conversation.getPeerTwincodeOutbound() == null) {
+            return;
+        }
+
+        TwincodeOutbound peerTwincodeOutbound = conversation.getPeerTwincodeOutbound();
+
+        Map<TwincodeOutbound, List<DescriptorAnnotation>> annotations = mServiceProvider.listAnnotations(descriptor.getDescriptorId());
+
+        List<DescriptorAnnotation> peerAnnotations = annotations.get(peerTwincodeOutbound);
+
+        if (peerAnnotations == null) {
+            peerAnnotations = new ArrayList<>();
+        } else {
+            for (Iterator<DescriptorAnnotation> iterator = peerAnnotations.iterator(); iterator.hasNext(); ) {
+                DescriptorAnnotation annotation = iterator.next();
+
+                if (annotation.getType() == annotationType || annotation.getType() == AnnotationType.READ) {
+                    // annotationType already created, or annotationType is RECEIVED and READ annotation already exists
+                    if (DEBUG) {
+                        Log.d(LOG_TAG, "Annotation " + annotationType + " already exists for descriptor " + descriptor.getDescriptorId() + " and member " + peerTwincodeOutbound.getName());
+                    }
+                    return;
+                }
+
+                if (annotation.getType() == AnnotationType.RECEIVED && annotationType == AnnotationType.READ) {
+                    // READ replaces RECEIVED so we ignore this annotation: setAnnotations will remove it.
+                    iterator.remove();
+                }
+            }
+        }
+
+        peerAnnotations.add(new DescriptorAnnotation(annotationType, timestamp, 1));
+
+        mServiceProvider.setAnnotations(descriptor, peerTwincodeOutbound.getId(), peerAnnotations, new HashSet<>());
     }
 
     /**

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2024 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -172,9 +172,9 @@ public class CallDescriptorImpl extends DescriptorImpl implements ConversationSe
     private volatile long mDuration;
     private volatile TerminateReason mTerminateReason;
 
-    CallDescriptorImpl(@NonNull DescriptorId descriptorId, long cid, boolean video, boolean incomingCall) {
+    CallDescriptorImpl(@NonNull DescriptorId descriptorId, long cid, boolean video, boolean incomingCall, long creationDate) {
 
-        super(descriptorId, cid, 0, null, null);
+        super(descriptorId, cid, null, null, creationDate, 0, 0, 0, 0, 0, 0, 0);
 
         if (DEBUG) {
             Log.d(LOG_TAG, "CallDescriptorImpl: descriptorId=" + descriptorId + " cid=" + cid
@@ -319,9 +319,20 @@ public class CallDescriptorImpl extends DescriptorImpl implements ConversationSe
         mTerminateReason = terminateReason;
     }
 
-    void setAcceptedCall() {
+    void setCall(long endDate) {
 
-        setReadTimestamp(System.currentTimeMillis());
+        final long timestamp = getReadTimestamp();
+        if (timestamp > 0) {
+            mDuration = endDate - timestamp;
+        } else {
+            mDuration = 0;
+        }
+        mTerminateReason = TerminateReason.SUCCESS;
+    }
+
+    void setAcceptedCall(long timestamp) {
+
+        setReadTimestamp(timestamp);
         mAcceptedCall = true;
     }
 

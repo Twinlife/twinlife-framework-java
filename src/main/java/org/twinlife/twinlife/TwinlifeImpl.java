@@ -35,6 +35,7 @@ import org.twinlife.twinlife.TwincodeInboundService.TwincodeInboundServiceConfig
 import org.twinlife.twinlife.TwincodeOutboundService.TwincodeOutboundServiceConfiguration;
 import org.twinlife.twinlife.account.AccountServiceImpl;
 import org.twinlife.twinlife.accountMigration.AccountMigrationServiceImpl;
+import org.twinlife.twinlife.backup.BackupServiceImpl;
 import org.twinlife.twinlife.calls.PeerCallServiceImpl;
 import org.twinlife.twinlife.conversation.ConversationServiceImpl;
 import org.twinlife.twinlife.crypto.CryptoServiceImpl;
@@ -72,6 +73,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
     public static final String DATABASE_NAME = "twinlife.db";
     public static final String CIPHER_V3_DATABASE_NAME = "twinlife.cipher";
     public static final String CIPHER_V4_DATABASE_NAME = "twinlife-4.cipher";
+    public static final String RESTORE_DATABASE_NAME = "twinlife-4-restore.cipher";
 
     /*
      * <pre>
@@ -321,6 +323,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
     private volatile AccountMigrationServiceImpl mAccountMigrationServiceImpl;
     private volatile PeerCallServiceImpl mPeerCallServiceImpl;
     private volatile CryptoServiceImpl mCryptoServiceImpl;
+    private volatile BackupServiceImpl mBackupServiceImpl;
     protected TwinlifeSecuredConfiguration mTwinlifeSecuredConfiguration;
     protected final List<BaseServiceImpl<?>> mBaseServiceImpls = new ArrayList<>();
     private final DatabaseServiceImpl mDatabaseService;
@@ -403,6 +406,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         mAccountMigrationServiceImpl = null;
         mPeerCallServiceImpl = null;
         mCryptoServiceImpl = null;
+        mBackupServiceImpl = null;
 
         mTwinlifeSecuredConfiguration = null;
         mBaseServiceImpls.clear();
@@ -517,6 +521,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         mPeerCallServiceImpl = new PeerCallServiceImpl(this, mWebSocketConnection);
         mPeerConnectionServiceImpl = createPeerConnectionService(mWebSocketConnection, twinlifeConfiguration.peerConnectionServiceConfiguration);
         mAccountMigrationServiceImpl = new AccountMigrationServiceImpl(this, mWebSocketConnection);
+        mBackupServiceImpl = new BackupServiceImpl(this, mWebSocketConnection);
 
         // Setup and configure the device migration service before getting the Twinlife configuration.
         mBaseServiceImpls.add(mAccountMigrationServiceImpl);
@@ -586,6 +591,10 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         mBaseServiceImpls.add(mPeerCallServiceImpl);
         mPeerCallServiceImpl.configure(twinlifeConfiguration.peerCallServiceConfiguration);
         mTwinlifeConfiguration.peerCallServiceConfiguration = (PeerCallService.PeerCallServiceConfiguration) mPeerCallServiceImpl.getServiceConfiguration();
+
+        mBaseServiceImpls.add(mBackupServiceImpl);
+        mBackupServiceImpl.configure(twinlifeConfiguration.backupServiceConfiguration);
+        mTwinlifeConfiguration.backupServiceConfiguration = (BackupService.BackupServiceConfiguration) mBackupServiceImpl.getServiceConfiguration();
 
         // If a service factory is defined, create the additional service it provides (see "dev" flavor).
         if (sServiceFactory != null) {
@@ -775,6 +784,13 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         return mImageServiceImpl;
     }
 
+    @NonNull
+    public ImageServiceImpl getImageServiceImpl() {
+
+        return mImageServiceImpl;
+    }
+
+
     @Override
     @NonNull
     public AccountMigrationService getAccountMigrationService() {
@@ -796,6 +812,10 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
     public CryptoServiceImpl getCryptoService() {
 
         return mCryptoServiceImpl;
+    }
+
+    public BackupServiceImpl getBackupService() {
+        return mBackupServiceImpl;
     }
 
     public String getApplicationName() {
@@ -1157,6 +1177,15 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         return mTwincodeOutboundServiceImpl;
     }
 
+    @SuppressWarnings("unused")
+    public RepositoryServiceImpl getRepositoryServiceImpl() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getRepositoryServiceImpl");
+        }
+
+        return mRepositoryServiceImpl;
+    }
+
     @NonNull
     public PeerCallServiceImpl getPeerCallServiceImpl() {
 
@@ -1325,4 +1354,8 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
     protected abstract void closeDatabase();
 
     protected abstract Connection getConnection(@NonNull TwinlifeConfiguration configuration);
+
+    public abstract boolean commitRestoredDatabase();
+
+    public abstract boolean deleteRestoredDatabase();
 }

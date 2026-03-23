@@ -9,6 +9,7 @@
  *   Xiaobo Xie (Xiaobo.Xie@twinlife-systems.com)
  *   Chedi Baccari (Chedi.Baccari@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife;
@@ -229,6 +230,9 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
     // Database fields
     //
 
+    @NonNull
+    private final TwinlifeContextImpl mTwinlifeContext;
+    @NonNull
     private final ConfigurationService mConfigurationService;
     private volatile static boolean sPeerConnectionFactoryInitialized = false;
     @SuppressLint("StaticFieldLeak")
@@ -245,6 +249,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
 
     private final Object mTwinlifeSQLiteLock = new Object();
     private TwinlifeSQLiteOpenHelper mTwinlifeSQLiteOpenHelper;
+    private boolean mRestoreMode = false;
 
     public AndroidTwinlifeImpl(@NonNull TwinlifeContextImpl twinlifeContext, @NonNull Context context) {
         super(context, twinlifeContext.mTwinlifeExecutor);
@@ -254,6 +259,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         }
 
         sInstance = this;
+        mTwinlifeContext = twinlifeContext;
         mConfigurationService = twinlifeContext.getConfigurationService();
 
         // Get the external files first and cache it (see Android StrictMode).
@@ -514,6 +520,17 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         return null;
     }
 
+    public void onTwinlifeOnline() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onTwinlifeOnline");
+        }
+
+        super.onTwinlifeOnline();
+
+        final AndroidJobServiceImpl jobService = (AndroidJobServiceImpl) getJobService();
+        jobService.onTwinlifeOnline();
+    }
+
     @Override
     public void onDisconnect(@NonNull ErrorCategory error) {
         if (DEBUG) {
@@ -556,7 +573,14 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         mReconnectionTime = System.currentTimeMillis() + timeout;
 
         mWebSocketConnection.wakeupWorker();
+
+        // Inform the job service that we are now offline immediately (it will not re-schedule jobs yet).
+        final AndroidJobServiceImpl jobService = (AndroidJobServiceImpl) getJobService();
+        jobService.onTwinlifeOffline();
         super.onDisconnect(error);
+
+        // After the services are informed, let the job service setup a new schedule now that we are offline.
+        jobService.scheduleJobs();
     }
 
     @Override
@@ -692,6 +716,56 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         return errorCode;
     }
 
+    @NonNull
+    public BaseService.ErrorCode prepareDatabaseForRestore(boolean inPlaceRestore) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "prepareDatabaseForRestore: inPlaceRestore=" + inPlaceRestore);
+        }
+
+        String restoreDbName = getDatabaseName(true, getDatabaseVersion(true));
+        File restoreDb = mContext.getDatabasePath(restoreDbName);
+        if (restoreDb.exists()) {
+            if (!restoreDb.delete()) {
+                Log.w(LOG_TAG, "Could not delete database: " + restoreDb);
+                return BaseService.ErrorCode.DATABASE_ERROR;
+            }
+        }
+
+        closeDatabase();
+
+        if (inPlaceRestore) {
+            String currentDbName = getDatabaseName(false, getDatabaseVersion(false));
+            File currentDb = mContext.getDatabasePath(currentDbName);
+            if (currentDb.exists()) {
+                BaseService.ErrorCode errorCode = Utils.copyFile(currentDb, restoreDb);
+                if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                    Log.e(LOG_TAG, "Could not copy database: " + currentDb + " to " + restoreDb);
+                    return errorCode;
+                }
+            }
+        }
+
+        setRestoreMode(true);
+
+        try {
+            openDatabase();
+        } catch (DatabaseException e) {
+            return BaseService.ErrorCode.DATABASE_ERROR;
+        }
+
+        return BaseService.ErrorCode.SUCCESS;
+    }
+
+
+    public void setRestoreMode(boolean restoreMode) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "setRestoreMode: restoreMode=" + restoreMode);
+        }
+
+        mRestoreMode = restoreMode;
+        //TODO BKP: disable jobs, unsolicited IQs from the server, ...
+    }
+
     @Override
     protected Connection getConnection(@NonNull TwinlifeConfiguration configuration) {
         if (DEBUG) {
@@ -716,67 +790,18 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
                 return;
             }
 
-            File databaseFile = mContext.getDatabasePath(CIPHER_V4_DATABASE_NAME);
+            int cipherVersion = getDatabaseVersion(mRestoreMode);
+            final String name = getDatabaseName(mRestoreMode, cipherVersion);
+            final String key = getDatabaseKey(cipherVersion);
+            final SQLiteDatabaseHook hook = getDatabaseHook(cipherVersion);
 
-            final int cipherVersion;
-            if (databaseFile.exists()) {
-                cipherVersion = 4;
-            } else {
-                // Check if an old database exists and try to migrate into an SQLcipher database.
-                // If the migration fails (file system is full), continue using the old database.
-                File oldCipher = mContext.getDatabasePath(CIPHER_V3_DATABASE_NAME);
-                if (oldCipher.exists()) {
-                    if (tryMigrateCipher3Database(oldCipher)) {
-                        cipherVersion = 4;
-                    } else {
-                        databaseFile = oldCipher;
-                        cipherVersion = 3;
-                    }
-                } else {
-                    File oldFile = mContext.getDatabasePath(DATABASE_NAME);
+            File databaseFile = mContext.getDatabasePath(name);
 
-                    if (oldFile.exists() && !tryMigrateDatabase(oldFile)) {
-                        databaseFile = oldFile;
-                        cipherVersion = 0;
-                    } else {
-                        cipherVersion = 4;
-                    }
-                }
-            }
-
+            // TODO BKP: this deletes the restored DB when the user runs the app for the first time
+            // and performs a restore.
             if (mTwinlifeSecuredConfiguration.createdKey && databaseFile.exists()) {
                 Log.e(LOG_TAG, "openDatabase: a previous database exists but a new key was generated");
                 Utils.deleteFile(LOG_TAG, databaseFile);
-            }
-
-            final String name;
-            final String key;
-            final SQLiteDatabaseHook hook;
-            switch (cipherVersion) {
-                case 4:
-                    name = CIPHER_V4_DATABASE_NAME;
-                    // If the key is 96 bytes, this it contains the encryption key followed by the cipher salt
-                    // and we must setup cipher_plaintext_header_size to 32 bytes.  The database was created on iOS.
-                    if (mTwinlifeSecuredConfiguration.databaseKey.length() == 96) {
-                        hook = new Cipher5Hook();
-                        key = "x'" + mTwinlifeSecuredConfiguration.databaseKey + "'";
-                    } else {
-                        key = mTwinlifeSecuredConfiguration.databaseKey;
-                        hook = null;
-                    }
-                    break;
-
-                case 3:
-                    name = CIPHER_V3_DATABASE_NAME;
-                    key = mTwinlifeSecuredConfiguration.databaseKey;
-                    hook = new Cipher3Hook();
-                    break;
-
-                default:
-                    name = DATABASE_NAME;
-                    key = null;
-                    hook = null;
-                    break;
             }
 
             if (BuildConfig.ENABLE_DUMP) {
@@ -792,12 +817,175 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             } catch (RuntimeException exception) {
                 if (exception.getCause() instanceof DatabaseException) {
                     throw (DatabaseException) exception.getCause();
+                } else {
+                    throw new DatabaseException(exception);
                 }
 
             } catch (Exception exception) {
                 Log.e(LOG_TAG, "Database exception", exception);
             }
         }
+    }
+
+    public boolean commitRestoredDatabase() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "commitRestoredDatabase");
+        }
+
+        if (!mRestoreMode) {
+            Log.w(LOG_TAG, "Not it restore mode, ignoring commit DB request");
+            return false;
+        }
+
+        closeDatabase();
+
+        mRestoreMode = false;
+
+        for (String existingDbName : new String[]{CIPHER_V4_DATABASE_NAME, CIPHER_V3_DATABASE_NAME, DATABASE_NAME}) {
+            File existingDb = mContext.getDatabasePath(existingDbName);
+
+            if (existingDb.exists()) {
+                if (DEBUG) {
+                    Log.d(LOG_TAG, "Deleting existing DB: " + existingDb.getPath());
+                }
+                Utils.deleteFile(LOG_TAG, existingDb);
+            }
+        }
+
+        String restoredDbName = getDatabaseName(true, 4);
+        String newDbName = getDatabaseName(false, 4);
+
+        File restoredDb = mContext.getDatabasePath(restoredDbName);
+        File newDb = mContext.getDatabasePath(newDbName);
+
+        if (!restoredDb.renameTo(newDb)) {
+            Log.e(LOG_TAG, "Could not move database " + restoredDb + " to " + newDb);
+            return false;
+        }
+
+
+        try {
+            openDatabase();
+            return true;
+        } catch (DatabaseException e) {
+            mTwinlifeContext.fireFatalError(BaseService.ErrorCode.DATABASE_ERROR);
+            return false;
+        }
+    }
+
+    public boolean deleteRestoredDatabase() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "deleteRestoreDatabase");
+        }
+
+        if (!mRestoreMode) {
+            Log.w(LOG_TAG, "Not it restore mode, ignoring delete DB request");
+            return true;
+        }
+
+        closeDatabase();
+
+        String restoredDbName = getDatabaseName(true, 4);
+
+        File restoredDb = mContext.getDatabasePath(restoredDbName);
+
+        if (restoredDb.exists()) {
+            return restoredDb.delete();
+        }
+
+        try {
+            mRestoreMode = false;
+            openDatabase();
+        } catch (DatabaseException e) {
+            mTwinlifeContext.fireFatalError(BaseService.ErrorCode.DATABASE_ERROR);
+            return false;
+        }
+
+
+        return true;
+    }
+
+    private int getDatabaseVersion(boolean restoreMode) {
+
+        if (restoreMode) {
+            return 4;
+        }
+
+        File databaseFile = mContext.getDatabasePath(CIPHER_V4_DATABASE_NAME);
+        if (databaseFile.exists()) {
+            return 4;
+        } else {
+            // Check if an old database exists and try to migrate into an SQLcipher database.
+            // If the migration fails (file system is full), continue using the old database.
+            File oldCipher = mContext.getDatabasePath(CIPHER_V3_DATABASE_NAME);
+            if (oldCipher.exists()) {
+                if (tryMigrateCipher3Database(oldCipher)) {
+                    return 4;
+                } else {
+                    return 3;
+                }
+            } else {
+                File oldFile = mContext.getDatabasePath(DATABASE_NAME);
+
+                if (oldFile.exists() && !tryMigrateDatabase(oldFile)) {
+                    return 0;
+                } else {
+                    return 4;
+                }
+            }
+        }
+    }
+
+    @NonNull
+    private String getDatabaseName(boolean restoreMode, int cipherVersion) {
+
+        if (restoreMode) {
+            return RESTORE_DATABASE_NAME;
+        }
+
+        switch (cipherVersion) {
+            case 4:
+                return CIPHER_V4_DATABASE_NAME;
+
+            case 3:
+                return CIPHER_V3_DATABASE_NAME;
+
+            default:
+                return DATABASE_NAME;
+        }
+    }
+
+    private String getDatabaseKey(int cipherVersion) {
+        switch (cipherVersion) {
+            case 4:
+                // If the key is 96 bytes, it contains the encryption key followed by the cipher salt
+                // and we must set up cipher_plaintext_header_size to 32 bytes.  The database was created on iOS.
+                if (mTwinlifeSecuredConfiguration.databaseKey.length() == 96) {
+                    return "x'" + mTwinlifeSecuredConfiguration.databaseKey + "'";
+                } else {
+                    return mTwinlifeSecuredConfiguration.databaseKey;
+                }
+
+            case 3:
+                return mTwinlifeSecuredConfiguration.databaseKey;
+
+            default:
+                return null;
+        }
+    }
+
+    @Nullable
+    private SQLiteDatabaseHook getDatabaseHook(int cipherVersion) {
+
+        if (cipherVersion == 4 && mTwinlifeSecuredConfiguration.databaseKey.length() == 96) {
+            return new Cipher5Hook();
+        }
+
+        if (cipherVersion == 3) {
+            return new Cipher3Hook();
+        }
+
+        return null;
     }
 
     @Override

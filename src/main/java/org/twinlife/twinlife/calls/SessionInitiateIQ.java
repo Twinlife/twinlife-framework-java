@@ -134,15 +134,17 @@ class SessionInitiateIQ extends BinaryPacketIQ {
     }
 
     @NonNull
+    final
     String from;
     @NonNull
+    final
     String to;
     @NonNull
     final UUID sessionId;
     final int offer;
     final int offerToReceive;
     final int priority;
-    long expirationDeadline;
+    final long expirationDeadline;
     final int majorVersion;
     final int minorVersion;
     final int frameSize;

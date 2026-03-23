@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -27,6 +27,7 @@ import org.twinlife.twinlife.SNIProxyDescriptor;
 import org.twinlife.twinlife.TrustMethod;
 import org.twinlife.twinlife.Twincode;
 import org.twinlife.twinlife.TwincodeInbound;
+import org.twinlife.twinlife.TwincodeInfo;
 import org.twinlife.twinlife.TwincodeOutbound;
 import org.twinlife.twinlife.TwincodeOutboundService;
 import org.twinlife.twinlife.TwincodeURI;
@@ -37,6 +38,7 @@ import org.twinlife.twinlife.twincode.GetInvitationCodeIQ;
 import org.twinlife.twinlife.twincode.GetTwincodeIQ;
 import org.twinlife.twinlife.twincode.InvokeTwincodeIQ;
 import org.twinlife.twinlife.twincode.OnCreateInvitationCodeIQ;
+import org.twinlife.twinlife.twincode.OnGetAllTwincodesIQ;
 import org.twinlife.twinlife.twincode.OnGetInvitationCodeIQ;
 import org.twinlife.twinlife.twincode.OnGetTwincodeIQ;
 import org.twinlife.twinlife.twincode.OnRefreshTwincodeIQ;
@@ -78,19 +80,23 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
     private static final UUID ON_CREATE_INVITATION_CODE_SCHEMA_ID = UUID.fromString("93cf2a0c-82cb-43ea-98c6-43563807fadf");
     private static final UUID GET_INVITATION_CODE_SCHEMA_ID = UUID.fromString("95335487-91fa-4cdc-939b-e047a068e94d");
     private static final UUID ON_GET_INVITATION_CODE_SCHEMA_ID = UUID.fromString("a16cf169-81dd-4a47-8787-5856f409e017");
+    private static final UUID GET_ALL_TWINCODES_SCHEMA_ID = UUID.fromString("0e83785c-350e-43c4-a683-2751f7fe869b");
+    private static final UUID ON_GET_ALL_TWINCODES_SCHEMA_ID = UUID.fromString("ca422038-7ae9-4dd3-829d-f8107b817f9a");
 
-    private static final BinaryPacketIQSerializer IQ_GET_TWINCODE_SERIALIZER = GetTwincodeIQ.createSerializer(GET_TWINCODE_SCHEMA_ID, 2);
+    private static final BinaryPacketIQSerializer IQ_GET_TWINCODE_SERIALIZER = GetTwincodeIQ.createSerializer(GET_TWINCODE_SCHEMA_ID, 3);
     private static final BinaryPacketIQSerializer IQ_ON_GET_TWINCODE_SERIALIZER = OnGetTwincodeIQ.createSerializer(ON_GET_TWINCODE_SCHEMA_ID, 2);
-    private static final BinaryPacketIQSerializer IQ_UPDATE_TWINCODE_SERIALIZER = UpdateTwincodeIQ.createSerializer(UPDATE_TWINCODE_SCHEMA_ID, 2);
+    private static final BinaryPacketIQSerializer IQ_UPDATE_TWINCODE_SERIALIZER = UpdateTwincodeIQ.createSerializer(UPDATE_TWINCODE_SCHEMA_ID, 3);
     private static final BinaryPacketIQSerializer IQ_ON_UPDATE_TWINCODE_SERIALIZER = OnUpdateTwincodeIQ.createSerializer(ON_UPDATE_TWINCODE_SCHEMA_ID, 1);
     private static final BinaryPacketIQSerializer IQ_REFRESH_TWINCODE_SERIALIZER = RefreshTwincodeIQ.createSerializer(REFRESH_TWINCODE_SCHEMA_ID, 2);
     private static final BinaryPacketIQSerializer IQ_ON_REFRESH_TWINCODE_SERIALIZER = OnRefreshTwincodeIQ.createSerializer(ON_REFRESH_TWINCODE_SCHEMA_ID, 2);
-    private static final BinaryPacketIQSerializer IQ_INVOKE_TWINCODE_SERIALIZER = InvokeTwincodeIQ.createSerializer(INVOKE_TWINCODE_SCHEMA_ID, 2);
+    private static final BinaryPacketIQSerializer IQ_INVOKE_TWINCODE_SERIALIZER = InvokeTwincodeIQ.createSerializer(INVOKE_TWINCODE_SCHEMA_ID, 3);
     private static final BinaryPacketIQSerializer IQ_ON_INVOKE_TWINCODE_SERIALIZER = InvocationIQ.createSerializer(ON_INVOKE_TWINCODE_SCHEMA_ID, 1);
-    private static final BinaryPacketIQSerializer IQ_CREATE_INVITATION_CODE_SERIALIZER = CreateInvitationCodeIQ.createSerializer(CREATE_INVITATION_CODE_SCHEMA_ID, 1);
+    private static final BinaryPacketIQSerializer IQ_CREATE_INVITATION_CODE_SERIALIZER = CreateInvitationCodeIQ.createSerializer(CREATE_INVITATION_CODE_SCHEMA_ID, 2);
     private static final BinaryPacketIQSerializer IQ_ON_CREATE_INVITATION_CODE_SERIALIZER = OnCreateInvitationCodeIQ.createSerializer(ON_CREATE_INVITATION_CODE_SCHEMA_ID, 1);
-    private static final BinaryPacketIQSerializer IQ_GET_INVITATION_CODE_SERIALIZER = GetInvitationCodeIQ.createSerializer(GET_INVITATION_CODE_SCHEMA_ID, 1);
+    private static final BinaryPacketIQSerializer IQ_GET_INVITATION_CODE_SERIALIZER = GetInvitationCodeIQ.createSerializer(GET_INVITATION_CODE_SCHEMA_ID, 2);
     private static final BinaryPacketIQSerializer IQ_ON_GET_INVITATION_CODE_SERIALIZER = OnGetInvitationCodeIQ.createSerializer(ON_GET_INVITATION_CODE_SCHEMA_ID, 1);
+    public static final BinaryPacketIQSerializer IQ_GET_ALL_TWINCODES_SERIALIZER = BinaryPacketIQ.createDefaultSerializer(GET_ALL_TWINCODES_SCHEMA_ID, 1);
+    public static final BinaryPacketIQSerializer IQ_ON_GET_ALL_TWINCODES_SERIALIZER = OnGetAllTwincodesIQ.createSerializer(ON_GET_ALL_TWINCODES_SCHEMA_ID, 1);
 
     private static class PendingRequest {
     }
@@ -215,6 +221,15 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
         }
     }
 
+    private static final class GetAllTwincodesPendingRequest extends PendingRequest {
+        @NonNull
+        final Consumer<Map<UUID, List<TwincodeInfo>>> complete;
+
+        private GetAllTwincodesPendingRequest(@NonNull Consumer<Map<UUID, List<TwincodeInfo>>> complete) {
+            this.complete = complete;
+        }
+    }
+
     private final TwincodeOutboundServiceProvider mServiceProvider;
     private final String mServiceJid;
     private final HashMap<Long, PendingRequest> mPendingRequests = new HashMap<>();
@@ -246,6 +261,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
         connection.addPacketListener(IQ_ON_INVOKE_TWINCODE_SERIALIZER, this::onInvokeTwincode);
         connection.addPacketListener(IQ_ON_CREATE_INVITATION_CODE_SERIALIZER, this::onCreateInvitationCode);
         connection.addPacketListener(IQ_ON_GET_INVITATION_CODE_SERIALIZER, this::onGetInvitationCode);
+        connection.addPacketListener(IQ_ON_GET_ALL_TWINCODES_SERIALIZER, this::onGetAllTwincodes);
 
         mServiceProvider = new TwincodeOutboundServiceProvider(this, twinlifeImpl.getDatabaseService());
         mServiceJid = TWINLIFE_SERVICE + "." + connection.getDomain();
@@ -321,6 +337,23 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
     // Implement TwincodeOutboundService interface
     //
 
+    @NonNull
+    public List<TwincodeOutbound> getLocalTwincodes() {
+        return mServiceProvider.loadTwincodes();
+    }
+
+    public TwincodeOutbound getLocalTwincode(@NonNull UUID twincodeOutboundId) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getLocalTwincode: twincodeOutboundId=" + twincodeOutboundId);
+        }
+
+        if (!isServiceOn()) {
+            return null;
+        }
+
+        return mServiceProvider.loadTwincode(twincodeOutboundId);
+    }
+
     @Override
     public void getTwincode(@NonNull UUID twincodeOutboundId, long refreshPeriod, @NonNull Consumer<TwincodeOutbound> complete) {
         if (DEBUG) {
@@ -387,6 +420,26 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
 
         final GetTwincodeIQ getTwincodeIQ = new GetTwincodeIQ(IQ_GET_TWINCODE_SERIALIZER, requestId, twincodeOutboundId);
         sendDataPacket(getTwincodeIQ, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    @Override
+    public void getAllTwincodes(@NonNull Consumer<Map<UUID, List<TwincodeInfo>>> complete) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getAllTwincodes");
+        }
+
+        if (!isServiceOn()) {
+            complete.onGet(ErrorCode.SERVICE_UNAVAILABLE, null);
+            return;
+        }
+
+        final long requestId = newRequestId();
+        synchronized (mPendingRequests) {
+            mPendingRequests.put(requestId, new GetAllTwincodesPendingRequest(complete));
+        }
+
+        final BinaryPacketIQ getAllTwincodesIQ = new BinaryPacketIQ(IQ_GET_ALL_TWINCODES_SERIALIZER, requestId);
+        sendDataPacket(getAllTwincodesIQ, DEFAULT_REQUEST_TIMEOUT);
     }
 
     @Override
@@ -729,6 +782,11 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
                 label = Utils.toString(twincodeId);
                 break;
 
+            case Meeting:
+                uri = TwincodeURI.MEETING_ACTION + TwincodeURI.CALL_PATH + Utils.toString(twincodeId);
+                label = Utils.toString(twincodeId);
+                break;
+
             case Transfer:
                 uri = TwincodeURI.TRANSFER_ACTION + TwincodeURI.CALL_PATH + Utils.toString(twincodeId);
                 label = Utils.toString(twincodeId);
@@ -817,6 +875,10 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
 
             case TwincodeURI.CALL_ACTION:
                 kind = TwincodeURI.Kind.Call;
+                break;
+
+            case TwincodeURI.MEETING_ACTION:
+                kind = TwincodeURI.Kind.Meeting;
                 break;
 
             case TwincodeURI.TRANSFER_ACTION:
@@ -970,6 +1032,25 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
         complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(kind, twincodeId, options, pubKey, uri.toString(), label));
     }
 
+    @Nullable
+    public TwincodeOutbound restoreTwincode(long databaseId, UUID twincodeId, long creationDate, long modificationDate,
+                                            List<AttributeNameValue> attributes, int flags) {
+        return mServiceProvider.restoreTwincode(databaseId, twincodeId, creationDate, modificationDate, attributes, flags);
+    }
+
+    @NonNull
+    public TwincodeOutbound restoreExistingTwincode(@NonNull TwincodeOutboundImpl twincodeOutbound, long modificationDate, @NonNull List<AttributeNameValue> attributes, @NonNull List<String> deleteAttributeNames) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreExistingTwincode: twincodeOutbound=" + twincodeOutbound + " attributes=" + attributes);
+        }
+
+        List<AttributeNameValue> restoredAttributes = twincodeOutbound.getAttributes(attributes, deleteAttributeNames);
+
+        mServiceProvider.updateTwincode(twincodeOutbound, restoredAttributes, modificationDate, twincodeOutbound.isSigned());
+
+        return twincodeOutbound;
+    }
+
     //
     // Private Methods
     //
@@ -1039,6 +1120,31 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
 
             refreshRequest.complete.onGet(ErrorCode.SUCCESS, previousAttributes);
         }
+    }
+
+    private void onGetAllTwincodes(@NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onGetAllTwincodes: iq=" + iq);
+        }
+
+        if (!(iq instanceof OnGetAllTwincodesIQ)) {
+            return;
+        }
+
+        final long requestId = iq.getRequestId();
+        receivedIQ(requestId);
+
+        final GetAllTwincodesPendingRequest request;
+        synchronized (mPendingRequests) {
+            request = (GetAllTwincodesPendingRequest) mPendingRequests.remove(requestId);
+        }
+
+        if (request == null) {
+            return;
+        }
+
+        final OnGetAllTwincodesIQ onGetAllTwincodesIQ = (OnGetAllTwincodesIQ) iq;
+        request.complete.onGet(ErrorCode.SUCCESS, onGetAllTwincodesIQ.getTwincodeIdsBySchema());
     }
 
     /**

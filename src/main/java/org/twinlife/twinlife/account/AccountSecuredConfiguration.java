@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2017-2024 twinlife SA.
+ *  Copyright (c) 2017-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
  *   Olivier Dupont (Oliver.Dupont@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.account;
@@ -142,10 +143,12 @@ class AccountSecuredConfiguration {
     private static final int SERIALIZER_BUFFER_DEFAULT_SIZE = 1024;
 
     private static final UUID SCHEMA_ID = UUID.fromString("17a04202-d50a-4150-a490-de671e639dc4");
+    private static final int SCHEMA_VERSION_5 = 5;
     private static final int SCHEMA_VERSION_4 = 4;
     private static final int SCHEMA_VERSION_3 = 3;
     private static final int SCHEMA_VERSION_2 = 2;
     private static final int SCHEMA_VERSION_1 = 1;
+    private static final AccountSecuredConfigurationSerializer_5 SERIALIZER_5 = new AccountSecuredConfigurationSerializer_5();
     private static final AccountSecuredConfigurationSerializer_34 SERIALIZER_4 = new AccountSecuredConfigurationSerializer_34(SCHEMA_VERSION_4);
     private static final AccountSecuredConfigurationSerializer_34 SERIALIZER_3 = new AccountSecuredConfigurationSerializer_34(SCHEMA_VERSION_3);
     private static final AccountSecuredConfigurationSerializer_2 SERIALIZER_2 = new AccountSecuredConfigurationSerializer_2();
@@ -162,6 +165,81 @@ class AccountSecuredConfiguration {
     private String subscribedFeatures;
     @Nullable
     private UUID environmentId;
+    private int incarnationCount;
+
+    static class AccountSecuredConfigurationSerializer_5 extends Serializer {
+
+        AccountSecuredConfigurationSerializer_5() {
+
+            super(SCHEMA_ID, 5, AccountSecuredConfiguration.class);
+        }
+
+        @Override
+        public void serialize(@NonNull SerializerFactory serializerFactory, @NonNull Encoder encoder, @NonNull Object object) throws SerializerException {
+
+            encoder.writeUUID(schemaId);
+            encoder.writeInt(schemaVersion);
+
+            AccountSecuredConfiguration accountSecuredConfiguration = (AccountSecuredConfiguration) object;
+            switch (accountSecuredConfiguration.authenticationAuthority) {
+                case DEVICE:
+                    encoder.writeEnum(0);
+                    break;
+
+                case TWINLIFE:
+                    encoder.writeEnum(1);
+                    break;
+
+                case UNREGISTERED:
+                    encoder.writeEnum(2);
+                    break;
+
+                case DISABLED:
+                    encoder.writeEnum(3);
+                    break;
+            }
+            encoder.writeBoolean(accountSecuredConfiguration.isSignOut);
+            encoder.writeOptionalString(accountSecuredConfiguration.deviceUsername);
+            encoder.writeOptionalString(accountSecuredConfiguration.devicePassword);
+            encoder.writeOptionalString(accountSecuredConfiguration.subscribedFeatures);
+            encoder.writeOptionalUUID(accountSecuredConfiguration.environmentId);
+            encoder.writeInt(accountSecuredConfiguration.incarnationCount);
+        }
+
+        @NonNull
+        @Override
+        public Object deserialize(@NonNull SerializerFactory serializerFactory, @NonNull Decoder decoder) throws SerializerException {
+
+            int value = decoder.readEnum();
+            AuthenticationAuthority authenticationAuthority;
+            switch (value) {
+                case 0:
+                default:
+                    authenticationAuthority = AuthenticationAuthority.DEVICE;
+                    break;
+
+                case 1:
+                    authenticationAuthority = AuthenticationAuthority.TWINLIFE;
+                    break;
+
+                case 2:
+                    authenticationAuthority = AuthenticationAuthority.UNREGISTERED;
+                    break;
+
+                case 3:
+                    authenticationAuthority = AuthenticationAuthority.DISABLED;
+                    break;
+
+            }
+            boolean isSignOut = decoder.readBoolean();
+            String deviceUsername = decoder.readOptionalString();
+            String devicePassword = decoder.readOptionalString();
+            String subscribedFeatures = decoder.readOptionalString();
+            UUID environmentId = decoder.readOptionalUUID();
+            int incarnationCount = decoder.readInt();
+            return new AccountSecuredConfiguration(authenticationAuthority, isSignOut, deviceUsername, devicePassword, subscribedFeatures, environmentId, incarnationCount);
+        }
+    }
 
     // Used for version 3 and version 4 (iOS support).
     static class AccountSecuredConfigurationSerializer_34 extends Serializer {
@@ -232,7 +310,7 @@ class AccountSecuredConfiguration {
             String devicePassword = decoder.readOptionalString();
             String subscribedFeatures = decoder.readOptionalString();
             UUID environmentId = decoder.readOptionalUUID();
-            return new AccountSecuredConfiguration(authenticationAuthority, isSignOut, deviceUsername, devicePassword, subscribedFeatures, environmentId);
+            return new AccountSecuredConfiguration(authenticationAuthority, isSignOut, deviceUsername, devicePassword, subscribedFeatures, environmentId, 0);
         }
     }
 
@@ -312,7 +390,7 @@ class AccountSecuredConfiguration {
             // Skip the rememberPassword
             decoder.readBoolean();
             String subscribedFeatures = decoder.readOptionalString();
-            return new AccountSecuredConfiguration(authenticationAuthority, isSignOut, deviceUsername, devicePassword, subscribedFeatures, null);
+            return new AccountSecuredConfiguration(authenticationAuthority, isSignOut, deviceUsername, devicePassword, subscribedFeatures, null, 0);
         }
     }
 
@@ -357,7 +435,7 @@ class AccountSecuredConfiguration {
             decoder.readBoolean();
 
             return new AccountSecuredConfiguration(/*serializerFactory, */authenticationAuthority, isSignOut, deviceUsername, devicePassword,
-                    null, null);
+                    null, null, 0);
         }
     }
 
@@ -365,7 +443,7 @@ class AccountSecuredConfiguration {
 
     private AccountSecuredConfiguration(@NonNull AuthenticationAuthority authenticationAuthority, boolean isSignOut,
                                         @Nullable String deviceUsername, @Nullable String devicePassword, @Nullable String subscribedFeatures,
-                                        @Nullable UUID environmentId) {
+                                        @Nullable UUID environmentId, int incarnationCount) {
         if (DEBUG) {
             Log.d(LOG_TAG, "SecuredConfiguration: authenticationAuthority=" + authenticationAuthority +
                     " isSignOut=" + isSignOut + " deviceUsername=" + deviceUsername + " devicePassword=" + devicePassword +
@@ -378,6 +456,7 @@ class AccountSecuredConfiguration {
         this.devicePassword = devicePassword;
         this.subscribedFeatures = subscribedFeatures;
         this.environmentId = environmentId;
+        this.incarnationCount = incarnationCount;
     }
 
     @NonNull
@@ -434,6 +513,14 @@ class AccountSecuredConfiguration {
         this.environmentId = environmentId;
     }
 
+    public int getIncarnationCount() {
+        return incarnationCount;
+    }
+
+    public void setIncarnationCount(int incarnationCount) {
+        this.incarnationCount = incarnationCount;
+    }
+
     public boolean isReconnectable() {
 
         return (authenticationAuthority == AuthenticationAuthority.DEVICE);
@@ -465,6 +552,17 @@ class AccountSecuredConfiguration {
         }
 
         SecuredConfiguration config = configurationService.getSecuredConfiguration(ACCOUNT_SERVICE_SECURED_CONFIGURATION_KEY);
+
+        return init(configurationService, serializerFactory, accountServiceConfiguration, config);
+    }
+
+    @NonNull
+    static AccountSecuredConfiguration init(@NonNull ConfigurationService configurationService, @NonNull SerializerFactory serializerFactory,
+                                            @NonNull AccountServiceConfiguration accountServiceConfiguration, @NonNull SecuredConfiguration config) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "init: configurationService=" + configurationService + " serializerFactory=" + serializerFactory + " accountServiceConfiguration=" + accountServiceConfiguration);
+        }
+
         byte[] content = config.getData();
         if (content != null) {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(content);
@@ -474,6 +572,10 @@ class AccountSecuredConfiguration {
                 int schemaVersion = binaryDecoder.readInt();
 
                 if (AccountSecuredConfiguration.SCHEMA_ID.equals(schemaId)) {
+                    if (AccountSecuredConfiguration.SCHEMA_VERSION_5 == schemaVersion) {
+
+                        return (AccountSecuredConfiguration) AccountSecuredConfiguration.SERIALIZER_5.deserialize(serializerFactory, binaryDecoder);
+                    }
                     if (AccountSecuredConfiguration.SCHEMA_VERSION_4 == schemaVersion) {
 
                         return (AccountSecuredConfiguration) AccountSecuredConfiguration.SERIALIZER_4.deserialize(serializerFactory, binaryDecoder);
@@ -499,7 +601,7 @@ class AccountSecuredConfiguration {
         }
 
         // A new account is now always unregistered.
-        AccountSecuredConfiguration accountSecuredConfiguration = new AccountSecuredConfiguration(AuthenticationAuthority.UNREGISTERED, false, null, null, null, null);
+        AccountSecuredConfiguration accountSecuredConfiguration = new AccountSecuredConfiguration(AuthenticationAuthority.UNREGISTERED, false, null, null, null, null, 0);
 
         // Migration from SharedPreferences
         ConfigurationService.Configuration oldConfig = configurationService.getConfiguration(ACCOUNT_SERVICE_PREFERENCES);
@@ -579,13 +681,13 @@ class AccountSecuredConfiguration {
 
     void save(@NonNull ConfigurationService configurationService, @NonNull SerializerFactory serializerFactory) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "synchronize");
+            Log.d(LOG_TAG, "save: configurationService=" + configurationService + " serializerFactory=" + serializerFactory);
         }
 
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream(SERIALIZER_BUFFER_DEFAULT_SIZE);
         BinaryEncoder binaryEncoder = new BinaryEncoder(outputStream);
         try {
-            AccountSecuredConfiguration.SERIALIZER_4.serialize(serializerFactory, binaryEncoder, this);
+            AccountSecuredConfiguration.SERIALIZER_5.serialize(serializerFactory, binaryEncoder, this);
             SecuredConfiguration config = configurationService.getSecuredConfiguration(ACCOUNT_SERVICE_SECURED_CONFIGURATION_KEY);
             config.setData(outputStream.toByteArray());
             configurationService.saveSecuredConfiguration(config);

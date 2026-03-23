@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2014-2025 twinlife SA.
+ *  Copyright (c) 2014-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.repository;
@@ -26,6 +27,7 @@ import org.twinlife.twinlife.RepositoryObjectFactory;
 import org.twinlife.twinlife.RepositoryService;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.TrustMethod;
+import org.twinlife.twinlife.TwinlifeContext;
 import org.twinlife.twinlife.TwinlifeImpl;
 import org.twinlife.twinlife.crypto.CryptoServiceImpl;
 import org.twinlife.twinlife.datatype.ArrayData;
@@ -38,6 +40,7 @@ import org.xmlpull.v1.XmlPullParserFactory;
 
 import java.io.StringReader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -253,6 +256,19 @@ public class RepositoryServiceImpl extends BaseServiceImpl<RepositoryService.Ser
         return mServiceProvider.findObject(true, key, mServiceProvider.getFactories());
     }
 
+    @Nullable
+    public RepositoryObject findObjectById(@NonNull UUID id) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "findObjectById: id=" + id);
+        }
+
+        if (!isServiceOn()) {
+            return null;
+        }
+
+        return mServiceProvider.findObject(false, id, mServiceProvider.getFactories());
+    }
+
     @Override
     public void updateObject(@NonNull RepositoryObject object,
                              @NonNull Consumer<RepositoryObject> complete) {
@@ -274,6 +290,26 @@ public class RepositoryServiceImpl extends BaseServiceImpl<RepositoryService.Ser
         }
 
         complete.onGet(ErrorCode.FEATURE_NOT_IMPLEMENTED, null);
+    }
+
+    @Override
+    @NonNull
+    public ErrorCode saveAttributes(@NonNull RepositoryObject object) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "saveAttributes: object=" + object);
+        }
+
+        if (!isServiceOn()) {
+            return ErrorCode.SERVICE_UNAVAILABLE;
+        }
+
+        final ErrorCode result = mServiceProvider.saveAttributes(object);
+        if (result == ErrorCode.SUCCESS) {
+            for (RepositoryService.ServiceObserver serviceObserver : getServiceObservers()) {
+                mTwinlifeExecutor.execute(() -> serviceObserver.onUpdateObject(object));
+            }
+        }
+        return result;
     }
 
     @Override
@@ -315,6 +351,98 @@ public class RepositoryServiceImpl extends BaseServiceImpl<RepositoryService.Ser
             return;
         }
         complete.onGet(ErrorCode.FEATURE_NOT_IMPLEMENTED, null);
+    }
+
+    @NonNull
+    public List<RepositoryObject> getLocalObjects(@NonNull List<UUID> supportedSchemaIds) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getLocalObjects: supportedSchemaIds=" + supportedSchemaIds);
+        }
+
+
+        if (!isServiceOn()) {
+            return Collections.emptyList();
+        }
+
+        return mServiceProvider.loadRepositoryObjects(supportedSchemaIds);
+    }
+
+    @Nullable
+    public RepositoryObject restoreObject(@NonNull UUID schemaId, long databaseId, @NonNull UUID objectId, long creationDate,
+                                          @NonNull List<AttributeNameValue> attributes) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreObject: schemaId=" + schemaId + " databaseId=" + databaseId + " objectId=" + objectId + " creationDate=" + creationDate + " attributes=" + attributes);
+        }
+
+        RepositoryObjectFactoryImpl<?> factory = mServiceProvider.getFactory(schemaId);
+
+        if (factory == null) {
+            Log.w(LOG_TAG, "No factory found for schemaId: " + schemaId);
+            return null;
+        }
+
+        return mServiceProvider.importObject(databaseId, objectId, creationDate, factory, attributes, null);
+    }
+
+    public void syncObjectAfterRestore(@NonNull TwinlifeContext twinlifeContext, @NonNull RepositoryObject object, @NonNull Consumer<RepositoryObject> consumer) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "updateObjectAfterRestore: object=" + object);
+        }
+
+        RepositoryObjectFactoryImpl<?> factory = mServiceProvider.getFactory(object.getDatabaseId().getSchemaId());
+
+        if (factory == null) {
+            Log.w(LOG_TAG, "No factory found for schemaId: " + object.getDatabaseId().getSchemaId());
+            consumer.onGet(ErrorCode.BAD_REQUEST, object);
+            return;
+        }
+
+        factory.syncObject(twinlifeContext, object, consumer);
+    }
+
+    public void deleteObjectAfterRestore(@NonNull TwinlifeContext twinlifeContext, @NonNull RepositoryObject object, @NonNull Consumer<RepositoryObject> consumer) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "deleteObjectAfterRestore: object=" + object + " consumer=" + consumer);
+        }
+
+        RepositoryObjectFactoryImpl<?> factory = mServiceProvider.getFactory(object.getDatabaseId().getSchemaId());
+
+        if (factory == null) {
+            Log.w(LOG_TAG, "No factory found for schemaId: " + object.getDatabaseId().getSchemaId());
+            consumer.onGet(ErrorCode.BAD_REQUEST, object);
+            return;
+        }
+
+        factory.deleteObject(twinlifeContext, object, consumer);
+    }
+
+    public RepositoryObject restoreExistingObject(@NonNull UUID schemaId, long databaseId, @NonNull UUID objectId, long creationDate,
+                                                  long modificationDate, @NonNull List<AttributeNameValue> attributes) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreExistingObject: schemaId=" + schemaId + " databaseId=" + databaseId + " objectId=" + objectId + " creationDate=" + creationDate + " modificationDate=" + modificationDate + " attributes=" + attributes);
+        }
+
+        RepositoryObjectFactoryImpl<RepositoryObject> factory = mServiceProvider.getFactory(schemaId);
+        if (factory == null) {
+            Log.w(LOG_TAG, "No factory found for schemaId: " + schemaId);
+            return null;
+        }
+
+        RepositoryObject repositoryObject = mServiceProvider.loadObject(databaseId, objectId, factory);
+
+        if (repositoryObject == null) {
+            Log.w(LOG_TAG, "Object not found for ID: " + databaseId);
+            return null;
+        }
+
+        String name = AttributeNameValue.getStringAttribute(attributes, "name");
+        String description = AttributeNameValue.getStringAttribute(attributes, "description");
+
+        factory.loadObject(repositoryObject, name, description, attributes, repositoryObject.getModificationDate());
+
+        mServiceProvider.updateObject(repositoryObject, repositoryObject.getModificationDate());
+
+        return repositoryObject;
     }
 
     @Override

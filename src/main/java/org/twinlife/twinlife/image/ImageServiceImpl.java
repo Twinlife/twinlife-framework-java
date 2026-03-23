@@ -42,6 +42,7 @@ import org.twinlife.twinlife.util.Utils;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -214,8 +215,14 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
     private final ImageServiceProvider mServiceProvider;
     @SuppressLint("UseSparseArrays")
     private final HashMap<Long, PendingRequest> mPendingRequests = new HashMap<>();
+    @NonNull
     private final File mCacheDir;
+    @NonNull
     private final File mLocalImagesDir;
+    @NonNull
+    private final File mRestoredCacheDir;
+    @NonNull
+    private final File mRestoredImagesDir;
     private final long mMaxImageSize = 4 * 1024 * 1024; // 4Mb PNG/JPG file max
 
     private static final int MAX_ENTRIES = 1024;
@@ -243,6 +250,8 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
         mServiceProvider = new ImageServiceProvider(this, twinlifeImpl.getDatabaseService());
         mCacheDir = new File(twinlifeImpl.getCacheDir(), CACHE_NAME);
         mLocalImagesDir = new File(twinlifeImpl.getFilesDir(), Twinlife.LOCAL_IMAGES_DIR);
+        mRestoredImagesDir = new File(twinlifeImpl.getFilesDir(), Twinlife.RESTORED_IMAGES_DIR);
+        mRestoredCacheDir = new File(twinlifeImpl.getCacheDir(), Twinlife.RESTORED_CACHE_DIR);
         mImageTools = imageTools;
         mUploadChunkSize = DEFAULT_CHUNK_SIZE;
         mCheckUpload = true;
@@ -534,6 +543,43 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
         sendDataPacket(getImageIQ, DEFAULT_REQUEST_TIMEOUT);
     }
 
+    @Nullable
+    public ImageInfo getImageInfo(@NonNull ImageId imageId) {
+        return mServiceProvider.loadImage(imageId);
+    }
+
+    @Nullable
+    public byte[] getLocalImageData(@NonNull ImageId imageId) {
+        final ImageInfo info = mServiceProvider.loadImage(imageId);
+        if (info == null) {
+            return null;
+        }
+
+        File path = getLocalImagePath(info.imageId);
+        if (path.exists()) {
+            try (FileInputStream input = new FileInputStream(path)) {
+                byte[] data = new byte[(int) path.length()];
+                input.read(data);
+                return data;
+            } catch (IOException e) {
+                Log.e(LOG_TAG, "Could not read image " + path, e);
+            }
+        } else {
+            path = getCachedImagePath(info.imageId, Kind.NORMAL);
+            if (path.exists()) {
+                try (FileInputStream input = new FileInputStream(path)) {
+                    byte[] data = new byte[(int) path.length()];
+                    input.read(data);
+                    return data;
+                } catch (IOException e) {
+                    Log.e(LOG_TAG, "Could not read image " + path, e);
+                }
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Create an image identifier associated with the given image and its thumbnail.
      * The image can be retrieved through `getImage`.  Once the image is saved and an identifier
@@ -675,23 +721,96 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
         }
     }
 
+    @Nullable
+    public ExportedImageId restoreLocalImage(@NonNull UUID imageId, boolean locale, @Nullable File imagePath, @Nullable Bitmap thumbnail) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreLocalImage: imageId=" + imageId + " imagePath=" + imagePath + " thumbnail=" + thumbnail);
+        }
+
+        final byte[] thumbnailData = thumbnail != null ? mImageTools.getImageData(thumbnail) : null;
+
+        final ExportedImageId exportedImageId = mServiceProvider.createImage(imageId, locale, thumbnailData,
+                new byte[]{}, 0, 0);
+        if (exportedImageId != null && imagePath != null) {
+            File restoredImagePath = getRestoredImagePath(imageId, locale);
+            if (restoredImagePath.getParentFile() != null && !restoredImagePath.getParentFile().exists()) {
+                restoredImagePath.getParentFile().mkdirs();
+            }
+
+            try {
+                mImageTools.copyImage(imagePath, restoredImagePath, LOCAL_IMAGE_WIDTH, LOCAL_IMAGE_HEIGHT, true);
+                imagePath.delete();
+            } catch (IOException e) {
+                Log.e(LOG_TAG, "Could not copy restored image " + imageId, e);
+                return null;
+            }
+        }
+
+        return exportedImageId;
+    }
+
+    public ErrorCode commitRestoredImages() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "commitRestoredImages");
+        }
+
+        if (mRestoredImagesDir.exists()) {
+            if (mLocalImagesDir.exists()) {
+                mLocalImagesDir.delete();
+            } else {
+                mLocalImagesDir.mkdirs();
+            }
+            boolean moved = mRestoredImagesDir.renameTo(mLocalImagesDir);
+
+            if (!moved) {
+                Log.e(LOG_TAG, "Could not move " + mRestoredImagesDir + " to " + mLocalImagesDir);
+                return ErrorCode.NO_STORAGE_SPACE;
+            }
+        }
+
+        File[] restoredImages = mRestoredCacheDir.listFiles();
+
+        if (restoredImages == null || restoredImages.length == 0) {
+            if (DEBUG) {
+                Log.d(LOG_TAG, "No restored images in cache directory");
+            }
+            return ErrorCode.SUCCESS;
+        }
+
+        for (File file : restoredImages) {
+            mCacheDir.mkdirs();
+
+            File dest = new File(mCacheDir, file.getName());
+            if (dest.exists()) {
+                dest.delete();
+            }
+            boolean moved = file.renameTo(dest);
+            if (!moved) {
+                Log.e(LOG_TAG, "Could not move " + file + " to " + dest);
+                return ErrorCode.NO_STORAGE_SPACE;
+            }
+        }
+
+        return ErrorCode.SUCCESS;
+    }
+
     /**
      * Create a copy of an existing image.  Once the server has copied the image and allocated
      * a new image identifier, the consumer onGet operation is called with the new identifier.
      * When the image identified was not found, the onGet operation receives the ITEM_NOT_FOUND
      * error and a null identifier.
      *
-     * @param imageId  the image identifier.
+     * @param exportedImageId  the image identifier.
      * @param consumer the consumer handler.
      */
     @Override
-    public void copyImage(@NonNull ImageId imageId, @NonNull Consumer<ExportedImageId> consumer) {
+    public void copyImage(@NonNull ImageId exportedImageId, @NonNull Consumer<ExportedImageId> consumer) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "copyImage: imageId=" + imageId);
+            Log.d(LOG_TAG, "copyImage: imageId=" + exportedImageId);
         }
 
         // We must know the original image Id (it can be different than imageId).
-        final ImageInfo image = mServiceProvider.loadImage(imageId);
+        final ImageInfo image = mServiceProvider.loadImage(exportedImageId);
         if (image == null) {
             consumer.onGet(ErrorCode.ITEM_NOT_FOUND, null);
             return;
@@ -720,7 +839,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
         long requestId = newRequestId();
         CopyImageIQ copyImageIQ = new CopyImageIQ(IQ_COPY_IMAGE_SERIALIZER, requestId, image.imageId);
 
-        CopyImagePendingRequest request = new CopyImagePendingRequest(imageId, consumer);
+        CopyImagePendingRequest request = new CopyImagePendingRequest(exportedImageId, consumer);
         synchronized (mPendingRequests) {
             mPendingRequests.put(requestId, request);
         }
@@ -732,27 +851,27 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
      * cache and if it was created by the current user it is also removed on the server.
      * The onGet operation is called when the image is removed.
      *
-     * @param imageId  the image identifier.
+     * @param exportedImageId  the image identifier.
      * @param consumer the consumer handler.
      */
     @Override
-    public void deleteImage(@NonNull ImageId imageId, @NonNull Consumer<ImageId> consumer) {
+    public void deleteImage(@NonNull ImageId exportedImageId, @NonNull Consumer<ImageId> consumer) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "deleteImage: imageId=" + imageId);
+            Log.d(LOG_TAG, "deleteImage: imageId=" + exportedImageId);
         }
 
-        final DeleteImageInfo info = mServiceProvider.deleteImage(imageId, true);
+        final DeleteImageInfo info = mServiceProvider.deleteImage(exportedImageId, true);
         if (info == null) {
-            consumer.onGet(ErrorCode.ITEM_NOT_FOUND, imageId);
+            consumer.onGet(ErrorCode.ITEM_NOT_FOUND, exportedImageId);
             return;
         }
 
         if (info.status == DeleteImageInfo.Status.DELETE_NONE) {
             // We must keep the image data because a copy exist.
-            mThumbnailCache.remove(imageId);
-            mImageCache.remove(imageId);
+            mThumbnailCache.remove(exportedImageId);
+            mImageCache.remove(exportedImageId);
 
-            consumer.onGet(ErrorCode.SUCCESS, imageId);
+            consumer.onGet(ErrorCode.SUCCESS, exportedImageId);
             return;
         }
 
@@ -760,16 +879,16 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
             // No copy exist, we can remove the image.
             removeCachedImagePath(info.publicId);
 
-            mThumbnailCache.remove(imageId);
-            mImageCache.remove(imageId);
+            mThumbnailCache.remove(exportedImageId);
+            mImageCache.remove(exportedImageId);
 
-            consumer.onGet(ErrorCode.SUCCESS, imageId);
+            consumer.onGet(ErrorCode.SUCCESS, exportedImageId);
             return;
         }
 
         final long requestId = newRequestId();
         final DeleteImageIQ deleteImageIQ = new DeleteImageIQ(IQ_DELETE_IMAGE_SERIALIZER, requestId, info.publicId);
-        final DeleteImagePendingRequest request = new DeleteImagePendingRequest(imageId, info.publicId, consumer);
+        final DeleteImagePendingRequest request = new DeleteImagePendingRequest(exportedImageId, info.publicId, consumer);
         synchronized (mPendingRequests) {
             mPendingRequests.put(requestId, request);
         }
@@ -779,22 +898,22 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
     /**
      * Remove the image identified by the UUID from the local cache.
      *
-     * @param imageId the image identifier.
+     * @param exportedImageId the image identifier.
      */
     @Override
-    public void evictImage(@NonNull ImageId imageId) {
+    public void evictImage(@NonNull ImageId exportedImageId) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "evictImage: imageId=" + imageId);
+            Log.d(LOG_TAG, "evictImage: imageId=" + exportedImageId);
         }
 
         // Remove local images from the database.
-        final UUID result = mServiceProvider.evictImage(imageId);
+        final UUID result = mServiceProvider.evictImage(exportedImageId);
         if (result != null) {
             removeCachedImagePath(result);
         }
 
-        mThumbnailCache.remove(imageId);
-        mImageCache.remove(imageId);
+        mThumbnailCache.remove(exportedImageId);
+        mImageCache.remove(exportedImageId);
     }
 
     @Override
@@ -809,35 +928,40 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
 
     @Override
     @Nullable
-    public ExportedImageId getPublicImageId(@NonNull ImageId imageId) {
+    public ExportedImageId getPublicImageId(@NonNull ImageId exportedImageId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "getPublicImageId");
         }
 
-        return mServiceProvider.getPublicImageId(imageId);
+        return mServiceProvider.getPublicImageId(exportedImageId);
     }
 
     @Override
     @Nullable
-    public ExportedImageId getImageId(@NonNull UUID imageId) {
+    public ExportedImageId getImageId(@NonNull UUID exportedImageId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "getImageId");
         }
 
-        return mServiceProvider.getImageId(imageId);
+        return mServiceProvider.getImageId(exportedImageId);
     }
 
-    void notifyDeleted(@NonNull ImageId imageId, @NonNull UUID publicImageId) {
+    @NonNull
+    public List<ImageId> getLocalImageInfos() {
+        return mServiceProvider.listLocalImages();
+    }
+
+    void notifyDeleted(@NonNull ImageId exportedImageId, @NonNull UUID publicImageId) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "notifyDeleted imageId=" + imageId + " publicImageId=" + publicImageId);
+            Log.d(LOG_TAG, "notifyDeleted imageId=" + exportedImageId + " publicImageId=" + publicImageId);
         }
 
         mTwinlifeExecutor.execute(() -> {
             removeCachedImagePath(publicImageId);
 
             // Cleanup the cache.
-            mThumbnailCache.remove(imageId);
-            mImageCache.remove(imageId);
+            mThumbnailCache.remove(exportedImageId);
+            mImageCache.remove(exportedImageId);
         });
     }
 
@@ -1301,45 +1425,58 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
         }
     }
 
-    private void removeCachedImagePath(@NonNull UUID imageId) {
+    private void removeCachedImagePath(@NonNull UUID exportedImageId) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "getCachedImagePath: imageId=" + imageId);
+            Log.d(LOG_TAG, "getCachedImagePath: imageId=" + exportedImageId);
         }
 
         File file;
 
-        file = getCachedImagePath(imageId, Kind.NORMAL);
+        file = getCachedImagePath(exportedImageId, Kind.NORMAL);
         Utils.deleteFile(LOG_TAG, file);
-        file = getCachedImagePath(imageId, Kind.LARGE);
+        file = getCachedImagePath(exportedImageId, Kind.LARGE);
         Utils.deleteFile(LOG_TAG, file);
     }
 
     @NonNull
-    private File getLocalImagePath(@NonNull UUID imageId) {
+    private File getLocalImagePath(@NonNull UUID exportedImageId) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "getLocalImagePath: imageId=" + imageId);
+            Log.d(LOG_TAG, "getLocalImagePath: imageId=" + exportedImageId);
         }
 
         // Note: we must use the same format as on iOS: UUID in lower case with .img extension.
-        return new File(mLocalImagesDir, imageId + ".img");
+        return new File(mLocalImagesDir, exportedImageId + ".img");
     }
 
     @NonNull
-    private File getCachedImagePath(@NonNull UUID imageId, @NonNull ImageService.Kind kind) {
+    private File getCachedImagePath(@NonNull UUID exportedImageId, @NonNull ImageService.Kind kind) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "getCachedImagePath: imageId=" + imageId + " kind=" + kind);
+            Log.d(LOG_TAG, "getCachedImagePath: imageId=" + exportedImageId + " kind=" + kind);
         }
 
         switch (kind) {
             case THUMBNAIL:
-                return new File(mCacheDir, imageId + "-thumb.jpg");
+                return new File(mCacheDir, exportedImageId + "-thumb.jpg");
 
             case LARGE:
-                return new File(mCacheDir, imageId + "-large.jpg");
+                return new File(mCacheDir, exportedImageId + "-large.jpg");
 
             case NORMAL:
             default:
-                return new File(mCacheDir, imageId + "-normal.jpg");
+                return new File(mCacheDir, exportedImageId + "-normal.jpg");
+        }
+    }
+
+    @NonNull
+    private File getRestoredImagePath(@NonNull UUID exportedImageId, boolean locale) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getRestoredImagePath: exportedImageId=" + exportedImageId + " locale=" + locale);
+        }
+
+        if (locale) {
+            return new File(mRestoredImagesDir, exportedImageId + ".img");
+        } else {
+            return new File(mRestoredCacheDir, exportedImageId + "-normal.jpg");
         }
     }
 

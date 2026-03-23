@@ -246,6 +246,11 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
     }
 
     @Override
+    public List<TwincodeInbound> getLocalTwincodes() {
+        return mServiceProvider.loadTwincodes();
+    }
+
+    @Override
     public void getTwincode(@NonNull UUID twincodeInboundId, @NonNull TwincodeOutbound twincodeOutbound,
                             @NonNull Consumer<TwincodeInbound> complete) {
         if (DEBUG) {
@@ -379,6 +384,23 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
 
         final TriggerPendingInvocationsIQ triggerPendingInvocationsIQ = new TriggerPendingInvocationsIQ(IQ_TRIGGER_PENDING_INVOCATIONS_SERIALIZER, requestId, null);
         sendDataPacket(triggerPendingInvocationsIQ, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    @Nullable
+    public TwincodeInbound restoreTwincode(long databaseId, @NonNull UUID twincodeId, @NonNull TwincodeOutbound twincodeOutbound,
+                                           @Nullable UUID twincodeFactoryId, long modificationDate) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreTwincode: databaseId=" + databaseId + " twincodeId=" + twincodeId +
+                    " twincodeOutbound=" + twincodeOutbound + " twincodeFactoryId=" + twincodeFactoryId +
+                    " modificationDate=" + modificationDate);
+        }
+
+        if (!isServiceOn()) {
+
+            return null;
+        }
+
+        return mServiceProvider.restoreTwincode(databaseId, twincodeId, twincodeOutbound, twincodeFactoryId, modificationDate);
     }
 
     /**

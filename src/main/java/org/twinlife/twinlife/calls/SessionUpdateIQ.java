@@ -92,10 +92,11 @@ class SessionUpdateIQ extends BinaryPacketIQ {
     }
 
     @NonNull
+    final
     String to;
     @NonNull
     final UUID sessionId;
-    long expirationDeadline;
+    final long expirationDeadline;
     final int updateType;
     @NonNull
     final byte[] sdp;

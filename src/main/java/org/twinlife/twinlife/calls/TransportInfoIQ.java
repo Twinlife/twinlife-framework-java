@@ -117,10 +117,11 @@ class TransportInfoIQ extends BinaryPacketIQ {
     }
 
     @NonNull
+    final
     String to;
     @NonNull
     final UUID sessionId;
-    long expirationDeadline;
+    final long expirationDeadline;
     final int mode;
     @NonNull
     final byte[] sdp;

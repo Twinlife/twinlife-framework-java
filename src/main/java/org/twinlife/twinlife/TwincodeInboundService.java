@@ -35,6 +35,8 @@ public interface TwincodeInboundService extends BaseService<BaseService.ServiceO
 
     void addListener(@NonNull String action, @NonNull InvocationListener observer);
 
+    List<TwincodeInbound> getLocalTwincodes();
+
     void getTwincode(@NonNull UUID twincodeInboundId, @NonNull TwincodeOutbound twincodeOutbound,
                      @NonNull Consumer<TwincodeInbound> complete);
 

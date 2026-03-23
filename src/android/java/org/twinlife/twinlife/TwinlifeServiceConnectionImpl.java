@@ -22,8 +22,6 @@ import android.util.Log;
 
 import org.twinlife.twinlife.util.Logger;
 
-import java.security.Key;
-
 
 /**
  * Android twinlife context with management of Android twinlife service.

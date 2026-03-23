@@ -4,6 +4,7 @@
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.crypto;
@@ -38,8 +39,11 @@ import org.twinlife.twinlife.util.Logger;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -119,6 +123,25 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         } finally {
             keyInfo.dispose();
         }
+    }
+
+    @Nullable
+    public RawKeyInfo getRawKeyInfo(@NonNull TwincodeOutbound twincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getRawKeyInfo: twincodeOutbound=" + twincodeOutbound);
+        }
+
+        return mServiceProvider.loadRawTwincodeKey(twincodeOutbound);
+
+    }
+
+    @NonNull
+    public ErrorCode restoreKeyInfo(@NonNull TwincodeOutbound twincodeOutbound, @NonNull RawKeyInfo rawKeyInfo) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreKeyInfo: twincodeOutbound=" + twincodeOutbound + " rawKeyInfo=" + rawKeyInfo);
+        }
+
+        return mServiceProvider.restoreKey(twincodeOutbound, rawKeyInfo);
     }
 
     /**
@@ -993,6 +1016,57 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         }
 
         mServiceProvider.validateSecrets((TwincodeOutboundImpl) twincodeOutbound, (TwincodeOutboundImpl) peerTwincodeOutbound);
+    }
+
+
+    @NonNull
+    public byte[] deriveKey(@NonNull byte[] password, @NonNull byte[] salt) {
+        CryptoKey cryptoKey = CryptoKey.create(CryptoKey.Kind.ECDSA);
+
+        byte[] derivedKey = new byte[32];
+        cryptoKey.deriveKeyPBKDF2HMACSHA256(password, salt, 10000, derivedKey);
+        cryptoKey.dispose();
+        return derivedKey;
+    }
+
+    /**
+     * Wraps {@code outputStream} in a {@link CryptoOutputStream}, using {@code password} as encryption key.
+     *
+     * @param outputStream The encrypted output stream to wrap.
+     * @param password     The encryption password.
+     * @return a {@link CryptoOutputStream} wrapping {@param outputStream}.
+     */
+    @Nullable
+    public OutputStream wrapCryptoOutputStream(@NonNull OutputStream outputStream, @NonNull byte[] password) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "wrapCryptoOutputStream: outputStream=" + outputStream + " password=" + Arrays.toString(password));
+        }
+
+        CryptoBox cryptoBox = CryptoBox.create(CryptoBox.Kind.AES_GCM);
+        int status = cryptoBox.bind(password);
+        if (status != 1) {
+            Log.e(LOG_TAG, "bind failed with error " + status);
+            return null;
+        }
+
+        return new CryptoOutputStream(outputStream, 4096, cryptoBox);
+    }
+
+    @Nullable
+    public InputStream wrapCryptoInputStream(@NonNull InputStream inputStream, @NonNull byte[] password) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "wrapCryptoInputStream: inputStream=" + inputStream + " password=" + Arrays.toString(password));
+        }
+
+        CryptoBox cryptoBox = CryptoBox.create(CryptoBox.Kind.AES_GCM);
+
+        int status = cryptoBox.bind(password);
+        if (status != 1) {
+            Log.e(LOG_TAG, "bind failed with error " + status);
+            return null;
+        }
+
+        return new CryptoInputStream(inputStream, cryptoBox);
     }
 
     /**

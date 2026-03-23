@@ -92,6 +92,7 @@ class AssertionIQ extends BinaryPacketIQ {
                 for (Object value : assertionIQ.values.list) {
                     int kind = 0;
                     if (value instanceof Pair) {
+                        //noinspection unchecked
                         Pair<Object, Object> p = (Pair<Object, Object>) value;
                         if (p.first instanceof AssertPoint.Parameter) {
                             switch ((AssertPoint.Parameter)p.first) {

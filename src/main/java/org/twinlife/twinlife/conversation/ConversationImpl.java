@@ -199,6 +199,11 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
     }
 
     @Override
+    public long getCreationDate() {
+        return mCreationDate;
+    }
+
+    @Override
     public boolean isActive() {
 
         return mIsActive;
@@ -244,13 +249,13 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
         mPermissions = permissions;
     }
 
-    int getFlags() {
+    public int getFlags() {
 
         return mFlags;
     }
 
     @Nullable
-    UUID getPeerResourceId() {
+    public UUID getPeerResourceId() {
 
         return mPeerResourceId;
     }
@@ -261,7 +266,7 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
     }
 
     @NonNull
-    UUID getResourceId() {
+    public UUID getResourceId() {
 
         return mResourceId;
     }
@@ -271,7 +276,7 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
         mIsActive = isActive;
     }
 
-    long getPermissions() {
+    public long getPermissions() {
 
         return mPermissions;
     }

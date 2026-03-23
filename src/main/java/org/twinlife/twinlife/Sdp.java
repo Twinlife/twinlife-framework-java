@@ -24,7 +24,7 @@ import java.util.zip.Inflater;
  * The SDP can be compressed or encrypted.
  */
 public class Sdp {
-    static int COMPRESS_LIMIT = 256;
+    static final int COMPRESS_LIMIT = 256;
 
     private final boolean mCompressed;
     private final byte[] mSdp;

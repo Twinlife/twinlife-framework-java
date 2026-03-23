@@ -1,9 +1,10 @@
 /*
- *  Copyright (c) 2023-2024 twinlife SA.
+ *  Copyright (c) 2023-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.database;
@@ -49,6 +50,18 @@ import java.util.concurrent.locks.ReentrantLock;
 public class DatabaseServiceImpl implements BaseServiceProvider {
     private static final String LOG_TAG = "DatabaseServiceImpl";
     private static final boolean DEBUG = false;
+
+    // List of columns that we have to retrieve for the TwincodeObjectFactory implemented by TwincodeOutbountServiceProvider.
+    public static final String TWINCODE_OUT_COLUMNS = "twout.id, twout.twincodeId, twout.modificationDate, twout.name,"
+            + " twout.avatarId, twout.description, twout.capabilities, twout.attributes, twout.flags, twout.creationDate";
+    public static final String PEER_TWINCODE_COLUMNS = "po.id, po.twincodeId, po.modificationDate, po.name,"
+            + " po.avatarId, po.description, po.capabilities, po.attributes, po.flags, po.creationDate";
+    public static final int TWINCODE_COLUMN_COUNT = 10;
+
+    // Likewise for TwincodeInboundServiceProvider.
+    public static final String TWINCODE_IN_COLUMNS = "ti.id, ti.twincodeId, ti.factoryId, ti.twincodeOutbound,"
+            + " ti.modificationDate, ti.capabilities, ti.attributes";
+    public static final int TWINCODE_IN_COLUMN_COUNT = 7;
 
     /**
      * sequence table:
@@ -469,8 +482,7 @@ public class DatabaseServiceImpl implements BaseServiceProvider {
             }
         }
 
-        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT"
-                + " ti.id, ti.twincodeId, ti.factoryId, ti.twincodeOutbound, ti.modificationDate, ti.capabilities, ti.attributes"
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT " + DatabaseServiceImpl.TWINCODE_IN_COLUMNS
                 + " FROM twincodeInbound AS ti"
                 + " WHERE ti.twincodeId = ?", new String[]{ twincodeInboundId.toString() })) {
             if (cursor.moveToNext()) {
@@ -495,9 +507,7 @@ public class DatabaseServiceImpl implements BaseServiceProvider {
             }
         }
 
-        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT"
-                + " twout.id, twout.twincodeId, twout.modificationDate, twout.name,"
-                + " twout.avatarId, twout.description, twout.capabilities, twout.attributes, twout.flags"
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT " + TWINCODE_OUT_COLUMNS
                 + " FROM twincodeOutbound AS twout"
                 + " WHERE twout.twincodeId = ?", new String[]{ twincodeOutboundId.toString() })) {
             if (cursor.moveToNext()) {
@@ -520,9 +530,7 @@ public class DatabaseServiceImpl implements BaseServiceProvider {
             return (TwincodeOutbound) obj;
         }
 
-        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT"
-                + " twout.id, twout.twincodeId, twout.modificationDate, twout.name,"
-                + " twout.avatarId, twout.description, twout.capabilities, twout.attributes, twout.flags"
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT " + TWINCODE_OUT_COLUMNS
                 + " FROM twincodeOutbound AS twout"
                 + " WHERE twout.id = ?", new String[]{ Long.toString(twincodeOutboundId) })) {
             if (cursor.moveToNext()) {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024-2025 twinlife SA.
+ *  Copyright (c) 2024-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -19,6 +19,7 @@ import java.util.UUID;
 public class TwincodeURI {
     public static final String PARAM_ID = BuildConfig.INVITATION_PARAM_ID;
     public static final String CALL_ACTION = "call." + Twinlife.DOMAIN;
+    public static final String MEETING_ACTION = "meet." + Twinlife.DOMAIN;
     public static final String TRANSFER_ACTION = "transfer." + Twinlife.DOMAIN;
     // https://invite.twin.me/?twincodeId=...
     public static final String INVITE_ACTION = "invite." + Twinlife.DOMAIN;
@@ -31,6 +32,7 @@ public class TwincodeURI {
     public enum Kind {
         Invitation,
         Call,
+        Meeting,
         Transfer,
         AccountMigration,
         Authenticate,

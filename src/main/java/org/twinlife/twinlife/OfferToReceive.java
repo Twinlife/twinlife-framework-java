@@ -12,9 +12,9 @@ import androidx.annotation.NonNull;
 
 public class OfferToReceive {
 
-    public boolean audio;
-    public boolean video;
-    public boolean data;
+    public final boolean audio;
+    public final boolean video;
+    public final boolean data;
 
     public OfferToReceive(boolean audio, boolean video, boolean data) {
 

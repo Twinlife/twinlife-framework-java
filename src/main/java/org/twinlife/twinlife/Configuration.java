@@ -19,10 +19,10 @@ public class Configuration {
     public static final int MAX_FRAME_SIZE = 921600; // HD: 1280x720
     public static final int MAX_FRAME_RATE = 60;
 
-    public int maxSentFrameSize;
-    public int maxSentFrameRate;
-    public int maxReceivedFrameSize;
-    public int maxReceivedFrameRate;
+    public final int maxSentFrameSize;
+    public final int maxSentFrameRate;
+    public final int maxReceivedFrameSize;
+    public final int maxReceivedFrameRate;
     @NonNull
     public final TurnServer[] turnServers;
     @NonNull

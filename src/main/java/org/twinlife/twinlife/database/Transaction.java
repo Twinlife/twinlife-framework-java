@@ -4,6 +4,7 @@
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.database;
@@ -409,10 +410,22 @@ public class Transaction implements Closeable {
                                                 int flags,
                                                 long modificationDate) throws DatabaseException {
 
-        final TwincodeObjectFactory<TwincodeInbound> factory = mDatabaseService.getTwincodeInboundFactory();
         long id = allocateId(DatabaseTable.TABLE_TWINCODE_INBOUND);
-        DatabaseIdentifier identifier = new DatabaseIdentifier(factory, id);
-        return factory.storeObject(this, identifier, twincodeId, attributes, flags, modificationDate,
+        return storeTwincodeInbound(id, twincodeId, twincodeOutbound, twincodeFactoryId, attributes, flags, modificationDate);
+    }
+
+    @NonNull
+    public TwincodeInbound storeTwincodeInbound(long databaseId, @NonNull UUID twincodeId,
+                                                @NonNull TwincodeOutbound twincodeOutbound,
+                                                @Nullable UUID twincodeFactoryId,
+                                                @Nullable List<AttributeNameValue> attributes,
+                                                int flags,
+                                                long modificationDate) throws DatabaseException {
+
+        final TwincodeObjectFactory<TwincodeInbound> factory = mDatabaseService.getTwincodeInboundFactory();
+        DatabaseIdentifier identifier = new DatabaseIdentifier(factory, databaseId);
+
+        return factory.storeObject(this, identifier, twincodeId, attributes, flags, modificationDate, modificationDate,
                 0, 0, 0, (TwincodeInbound twincodeInbound) -> {
                     TwincodeInboundImpl twincodeInboundImpl = (TwincodeInboundImpl) twincodeInbound;
                     twincodeInboundImpl.setTwincodeOutbound(twincodeOutbound);
@@ -457,6 +470,21 @@ public class Transaction implements Closeable {
     }
 
     @NonNull
+    public TwincodeOutbound storeTwincodeOutbound(long databaseId, @NonNull UUID twincodeId,
+                                                  @Nullable List<AttributeNameValue> attributes,
+                                                  int flags, long creationDate,
+                                                  long modificationDate, long refreshPeriod,
+                                                  long refreshDate, long refreshTimestamp) throws DatabaseException {
+        final TwincodeObjectFactory<TwincodeOutbound> factory = mDatabaseService.getTwincodeOutboundFactory();
+        final DatabaseIdentifier identifier = new DatabaseIdentifier(factory, databaseId);
+        return factory.storeObject(this, identifier, twincodeId, attributes, flags, creationDate, modificationDate,
+                refreshPeriod, refreshDate, refreshTimestamp, (TwincodeOutbound twincodeOutbound) -> {
+                    final TwincodeOutboundImpl twincodeOutboundImpl = (TwincodeOutboundImpl) twincodeOutbound;
+                    storeAvatar(twincodeOutboundImpl, attributes);
+                });
+    }
+
+    @NonNull
     public TwincodeOutbound storeTwincodeOutbound(@NonNull UUID twincodeId,
                                                   @Nullable List<AttributeNameValue> attributes,
                                                   int flags,
@@ -466,7 +494,7 @@ public class Transaction implements Closeable {
         final TwincodeObjectFactory<TwincodeOutbound> factory = mDatabaseService.getTwincodeOutboundFactory();
         final long id = allocateId(DatabaseTable.TABLE_TWINCODE_OUTBOUND);
         final DatabaseIdentifier identifier = new DatabaseIdentifier(factory, id);
-        return factory.storeObject(this, identifier, twincodeId, attributes, flags, modificationDate,
+        return factory.storeObject(this, identifier, twincodeId, attributes, flags, modificationDate, modificationDate,
                 refreshPeriod, refreshDate, refreshTimestamp, (TwincodeOutbound twincodeOutbound) -> {
                     final TwincodeOutboundImpl twincodeOutboundImpl = (TwincodeOutboundImpl) twincodeOutbound;
                     storeAvatar(twincodeOutboundImpl, attributes);
@@ -486,7 +514,7 @@ public class Transaction implements Closeable {
         final TwincodeObjectFactory<TwincodeOutbound> factory = mDatabaseService.getTwincodeOutboundFactory();
         final long id = allocateId(DatabaseTable.TABLE_TWINCODE_OUTBOUND);
         final DatabaseIdentifier identifier = new DatabaseIdentifier(factory, id);
-        return factory.storeObject(this, identifier, twincodeId, new ArrayList<>(), 0, 0,
+        return factory.storeObject(this, identifier, twincodeId, new ArrayList<>(), 0, 0, 0,
                 TwincodeOutboundService.REFRESH_PERIOD, 0, 0, (TwincodeOutbound twincodeOutbound) -> {
                     TwincodeOutboundImpl twincodeOutboundImpl = (TwincodeOutboundImpl) twincodeOutbound;
 

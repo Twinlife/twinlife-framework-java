@@ -4,6 +4,7 @@
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.database;
@@ -32,7 +33,7 @@ public interface TwincodeObjectFactory<T extends DatabaseObject> extends Databas
 
     T storeObject(@NonNull Transaction transaction, @NonNull DatabaseIdentifier identifier,
                   @NonNull UUID twincodeId, @Nullable List<BaseService.AttributeNameValue> attributes,
-                  int flags,
+                  int flags, long creationDate,
                   long modificationDate, long refreshPeriod,
                   long refreshDate, long refreshTimestamp,
                   @Nullable Initializer<T> initializer) throws DatabaseException;

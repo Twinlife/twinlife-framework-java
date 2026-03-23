@@ -138,7 +138,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
         final long timestamp;
         String key;
         String value;
-        Map<String, String> attributes;
+        final Map<String, String> attributes;
 
         Event(String eventId, Map<String, String> attributes) {
 

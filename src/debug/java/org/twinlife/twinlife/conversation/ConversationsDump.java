@@ -90,44 +90,6 @@ public class ConversationsDump implements ConversationServiceImpl.ConversationVi
             result.add(Utils.toLog(conversation.getTwincodeOutboundId()));
             result.add(Utils.toLog(conversation.getPeerTwincodeOutboundId()));
             result.add(Utils.toLog(conversation.getContactId()));
-            /* switch (conversationImpl.getIncomingState()) {
-                case OPEN:
-                    result.add("I");
-                    break;
-                case CLOSED:
-                    result.add("F");
-                    break;
-                case OPENING:
-                    result.add("o");
-                    break;
-            }
-            switch (conversationImpl.getOutgoingState()) {
-                case OPEN:
-                    result.add("O");
-                    break;
-                case CLOSED:
-                    result.add("F");
-                    break;
-                case OPENING:
-                    result.add("o");
-                    break;
-            }
-            UUID peerConnectionId = conversationImpl.getOutgoingPeerConnectionId();
-            if (peerConnectionId != null) {
-                result.add(Utils.toLog(peerConnectionId));
-            } else {
-                result.add("");
-            }
-            if (conversationImpl.getPeerMajorVersion() != 1 && conversationImpl.getPeerMinorVersion() != 0) {
-                result.add(conversationImpl.getPeerMajorVersion() + "." + conversationImpl.getPeerMinorVersion());
-            } else {
-                result.add("");
-            }
-            if (groupConversation != null) {
-                result.add(groupConversation.getMembers().size() + " M");
-            } else {
-                result.add("");
-            }*/
             if (operations != null) {
                 result.add(Integer.toString(operations.getCount()));
             } else {

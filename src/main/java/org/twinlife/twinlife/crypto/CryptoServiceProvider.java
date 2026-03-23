@@ -4,6 +4,7 @@
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.crypto;
@@ -168,9 +169,7 @@ class CryptoServiceProvider extends DatabaseServiceProvider {
 
         final String[] params = { twincodeId.toString() };
         try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT k.flags, k.modificationDate, k.signingKey,"
-                + " k.encryptionKey,"
-                + " twout.id, twout.twincodeId, twout.modificationDate, twout.name,"
-                + " twout.avatarId, twout.description, twout.capabilities, twout.attributes, twout.flags"
+                + " k.encryptionKey, " + DatabaseServiceImpl.TWINCODE_OUT_COLUMNS
                 + " FROM twincodeOutbound AS twout"
                 + " INNER JOIN twincodeKeys AS k ON k.id=twout.id"
                 + " WHERE twout.twincodeId=?", params)) {
@@ -224,6 +223,33 @@ class CryptoServiceProvider extends DatabaseServiceProvider {
             byte[] encryptionKey = cursor.getBlob(3);
             return new KeyInfo(twincodeOutbound, modificationDate, flags,
                     signingKey, encryptionKey, 0, 0, null);
+
+        } catch (DatabaseException exception) {
+            mService.onDatabaseException(exception);
+            return null;
+        }
+    }
+
+    @Nullable
+    RawKeyInfo loadRawTwincodeKey(@NonNull TwincodeOutbound twincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "loadRawTwincodeKey: twincodeOutbound=" + twincodeOutbound);
+        }
+
+        final long id = twincodeOutbound.getDatabaseId().getId();
+        final String[] params = {Long.toString(id)};
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT k.flags, k.modificationDate, k.signingKey,"
+                + " k.encryptionKey FROM twincodeKeys AS k WHERE k.id=?", params)) {
+            if (!cursor.moveToFirst()) {
+
+                return null;
+            }
+
+            int flags = cursor.getInt(0);
+            long modificationDate = cursor.getLong(1);
+            byte[] signingKey = cursor.getBlob(2);
+            byte[] encryptionKey = cursor.getBlob(3);
+            return new RawKeyInfo(modificationDate, modificationDate, signingKey, encryptionKey, flags);
 
         } catch (DatabaseException exception) {
             mService.onDatabaseException(exception);
@@ -888,6 +914,25 @@ class CryptoServiceProvider extends DatabaseServiceProvider {
 
         } catch (Exception exception) {
             return mService.onDatabaseException(exception);
+        }
+    }
+
+    @NonNull
+    ErrorCode restoreKey(@NonNull TwincodeOutbound twincodeOutbound, @NonNull RawKeyInfo rawKeyInfo) {
+        try (Transaction transaction = newTransaction()) {
+            final ContentValues values = new ContentValues();
+            values.put(Columns.ID, twincodeOutbound.getDatabaseId().getId());
+            values.put(Columns.SIGNING_KEY, rawKeyInfo.signingKey);
+            values.put(Columns.ENCRYPTION_KEY, rawKeyInfo.encryptionKey);
+            values.put(Columns.FLAGS, rawKeyInfo.flags);
+            values.put(Columns.CREATION_DATE, rawKeyInfo.creationDate);
+            values.put(Columns.MODIFICATION_DATE, rawKeyInfo.modificationDate);
+            values.put(Columns.NONCE_SEQUENCE, 0);
+            transaction.insertOrIgnore(Tables.TWINCODE_KEYS, null, values);
+            transaction.commit();
+            return ErrorCode.SUCCESS;
+        } catch (Exception e) {
+            return mService.onDatabaseException(e);
         }
     }
 }

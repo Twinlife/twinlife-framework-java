@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2022-2025 twinlife SA.
+ *  Copyright (c) 2022-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -20,7 +20,7 @@ import java.util.UUID;
 
 public interface PeerCallService extends BaseService<PeerCallService.ServiceObserver> {
 
-    String VERSION = "1.4.2";
+    String VERSION = "1.5.1";
 
     enum MemberStatus {
         NEW_MEMBER,
@@ -29,9 +29,9 @@ public interface PeerCallService extends BaseService<PeerCallService.ServiceObse
     }
 
     class MemberInfo {
-        public MemberStatus status;
-        public String memberId;
-        public UUID p2pSessionId;
+        public final MemberStatus status;
+        public final String memberId;
+        public final UUID p2pSessionId;
 
         public MemberInfo(@NonNull String memberId) {
             this.memberId = memberId;
@@ -51,7 +51,7 @@ public interface PeerCallService extends BaseService<PeerCallService.ServiceObse
         default void onCreateCallRoom(long requestId, @NonNull UUID callRoomId, @NonNull String memberId, int maxMemberCount){}
 
         default void onJoinCallRoom(long requestId, @NonNull UUID callRoomId, @NonNull String memberId,
-                            @NonNull List<MemberInfo> members){}
+                                    @NonNull List<MemberInfo> members){}
 
         default void onLeaveCallRoom(long requestId, @NonNull UUID callRoomId){}
 
@@ -117,6 +117,19 @@ public interface PeerCallService extends BaseService<PeerCallService.ServiceObse
      * @param memberId the member id to remove.
      */
     void leaveCallRoom(long requestId, @NonNull UUID callRoomId, @NonNull String memberId);
+
+    /**
+     * Join the meeting represented by a meeting twincode.
+     * The `twincodeOut` must be owned by the current user and represents the current user in the meeting.
+     * A call room is created when a first user joins the meeting and a list of existing members will be returned.
+     * The response is received by the onJoinCallRoom() observer.
+     *
+     * @param requestId the request identifier.
+     * @param meetingTwincodeId the meeting twincode to join.
+     * @param twincodeOut the member twincode.
+     * @param waitTime the delay to wait.
+     */
+    void joinMeeting(long requestId, @NonNull UUID meetingTwincodeId, @NonNull UUID twincodeOut, int waitTime);
 
     /**
      * Destroy the call room.  Only the creator of the call room is allowed to destroy the call room.

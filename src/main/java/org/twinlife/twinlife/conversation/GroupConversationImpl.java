@@ -159,6 +159,11 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
     }
 
     @Override
+    public long getCreationDate() {
+        return mCreationDate;
+    }
+
+    @Override
     @NonNull
     public UUID getContactId() {
 
@@ -209,7 +214,7 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
         mIncomingConversation.mPermissions = permissions;
     }
 
-    long getPermissions() {
+    public long getPermissions() {
 
         return mPermissions;
     }
@@ -241,7 +246,7 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
         return true;
     }
 
-    int getFlags() {
+    public int getFlags() {
 
         return mFlags;
     }
@@ -346,7 +351,7 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
     }
 
     @NonNull
-    GroupMemberConversationImpl getIncomingConversation() {
+    public GroupMemberConversationImpl getIncomingConversation() {
         return mIncomingConversation;
     }
 

@@ -256,6 +256,7 @@ class SessionTerminateIQ extends BinaryPacketIQ {
     }
 
     @NonNull
+    final
     String to;
     @NonNull
     final UUID sessionId;

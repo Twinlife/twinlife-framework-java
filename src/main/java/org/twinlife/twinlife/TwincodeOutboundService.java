@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -17,12 +17,13 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
 public interface TwincodeOutboundService extends BaseService<TwincodeOutboundService.ServiceObserver> {
 
-    String VERSION = "2.2.0";
+    String VERSION = "2.2.1";
 
     long LONG_REFRESH_PERIOD = 24 * 3600 * 1000; // 1 day (ms)
 
@@ -90,6 +91,8 @@ public interface TwincodeOutboundService extends BaseService<TwincodeOutboundSer
      */
     void getSignedTwincodeWithSecret(@NonNull UUID twincodeOutboundId, @NonNull String publicKey, int keyIndex, @Nullable byte[] secretKey,
                                      @NonNull TrustMethod trust, @NonNull Consumer<TwincodeOutbound> complete);
+
+    void getAllTwincodes(@NonNull Consumer<Map<UUID, List<TwincodeInfo>>> complete);
 
     /**
      * Refresh the twincode by getting the attributes from the server, checking that the twincode is still valid

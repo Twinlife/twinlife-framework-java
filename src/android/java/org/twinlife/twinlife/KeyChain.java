@@ -97,7 +97,6 @@ final class KeyChain {
     private final Key mOldSecuredKey;
     @NonNull
     private final String mKeyPrefix;
-    private final boolean mCreated;
     private final boolean mIsDefaultSecretKey;
     private final Twinlife mTwinlife;
     private final boolean mIsGCMKey;
@@ -208,7 +207,7 @@ final class KeyChain {
         mIsGCMKey = hasGCMKey;
         mSecuredKey = securedKey;
         mOldSecuredKey = oldSecuredKey;
-        mCreated = created;
+        boolean mCreated = created;
 
         // To migrate safely from the legacy storage with the default secret key and use
         // a key from the Android Keystore, the entries are prefixed by 'gs.':
@@ -432,27 +431,6 @@ final class KeyChain {
             return false;
         }
     }
-
-    /* @RequiresApi(Build.VERSION_CODES.M)
-    private static void generateSecuredKeyM(@NonNull Twinlife twinlife) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "generateSecuredKeyM");
-        }
-
-        try {
-            KeyGenerator keyGenerator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, AndroidKeyStore);
-            KeyGenParameterSpec.Builder keySpec = new KeyGenParameterSpec.Builder(TWINLIFE_SECRET_KEY, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT);
-            keySpec.setBlockModes(KeyProperties.BLOCK_MODE_CBC);
-            keySpec.setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_PKCS7);
-            keySpec.setKeySize(256);
-
-            keyGenerator.init(keySpec.build());
-            keyGenerator.generateKey();
-        } catch (Exception exception) {
-            Log.e(LOG_TAG, "generateSecuredKeyM: exception=" + exception);
-            twinlife.exception(AndroidAssertPoint.KEYCHAIN_CREATE, exception, null);
-        }
-    }*/
 
     @SuppressLint("ApplySharedPref")
     private static boolean generateSecuredKeyJellyBeanMR2(@NonNull Context context, @NonNull SharedPreferences sharedPreferences, @NonNull Twinlife twinlife) {

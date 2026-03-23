@@ -159,7 +159,7 @@ public class TwincodeInboundImpl extends DatabaseObjectImpl implements TwincodeI
     // Package specific Methods
     //
 
-    long getModificationDate() {
+    public long getModificationDate() {
 
         return mModificationDate;
     }

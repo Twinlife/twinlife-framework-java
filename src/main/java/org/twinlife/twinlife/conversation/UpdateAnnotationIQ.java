@@ -180,7 +180,8 @@ class UpdateAnnotationIQ extends BinaryPacketIQ {
                         default:
                             throw new SerializerException("Invalid annotation");
                     }
-                    encoder.writeInt(annotation.getValue());
+
+                    encoder.writeLong(annotation.getValue());
                 }
             }
         }
@@ -224,7 +225,7 @@ class UpdateAnnotationIQ extends BinaryPacketIQ {
                 while (annotationCount > 0) {
                     annotationCount--;
                     final int updateType = decoder.readEnum();
-                    final int value = decoder.readInt();
+                    final long value = decoder.readLong();
                     switch (updateType) {
                         case 1:
                             list.add (new DescriptorAnnotation(AnnotationType.FORWARD, value, 0));

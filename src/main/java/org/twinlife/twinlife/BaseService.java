@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife;
@@ -15,6 +16,7 @@ import androidx.annotation.Nullable;
 import org.twinlife.twinlife.util.Utils;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
@@ -33,7 +35,8 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
         IMAGE_SERVICE_ID,
         ACCOUNT_MIGRATION_SERVICE_ID,
         PEER_CALL_SERVICE_ID,
-        CRYPTO_SERVICE_ID
+        CRYPTO_SERVICE_ID,
+        BACKUP_SERVICE_ID
     }
 
     long UNDEFINED_REQUEST_ID = -1L;
@@ -81,6 +84,8 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
         FILE_NOT_FOUND,
         FILE_NOT_SUPPORTED,
         DATABASE_CORRUPTION,
+        RESTORE_IN_PROGRESS,  // The account is currently being restored on another device. Retry later to see if the restore failed/was rolled back.
+        ACCOUNT_RESTORED,    // The account was successfully restored on another device. This device can no longer be used to access it.
         EXISTS;
 
         public static int fromErrorCode(@Nullable ErrorCode errorCode) {
@@ -196,6 +201,15 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
 
                     case DATABASE_CORRUPTION:
                         return 36;
+
+                    case RESTORE_IN_PROGRESS:
+                        return 37;
+
+                    case ACCOUNT_RESTORED:
+                        return 38;
+
+                    case EXISTS:
+                        return 39;
                 }
             }
             return 7;
@@ -235,10 +249,6 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
 
                 case 7:
                     errorCode = ErrorCode.LIBRARY_ERROR;
-                    break;
-
-                case 8:
-                    errorCode = ErrorCode.LIBRARY_TOO_OLD;
                     break;
 
                 case 9:
@@ -353,6 +363,19 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
                     errorCode = ErrorCode.DATABASE_CORRUPTION;
                     break;
 
+                case 37:
+                    errorCode = ErrorCode.RESTORE_IN_PROGRESS;
+                    break;
+
+                case 38:
+                    errorCode = ErrorCode.ACCOUNT_RESTORED;
+                    break;
+
+                case 39:
+                    errorCode = ErrorCode.EXISTS;
+                    break;
+
+                case 8:
                 default:
                     errorCode = ErrorCode.LIBRARY_TOO_OLD;
                     break;
@@ -368,7 +391,7 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
         @NonNull
         public final String version;
         public boolean serviceOn;
-        public long cacheExpireTimeout;
+        public final long cacheExpireTimeout;
 
         public BaseServiceConfiguration(BaseServiceId baseServiceId, @NonNull String version, boolean serviceOn) {
 
@@ -458,6 +481,27 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
                 }
             }
             return null;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) return false;
+            AttributeNameValue that = (AttributeNameValue) o;
+            return Objects.equals(name, that.name) && Objects.equals(value, that.value);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, value);
+        }
+
+        @NonNull
+        @Override
+        public String toString() {
+            return "AttributeNameValue[" +
+                    "name='" + name + '\'' +
+                    ", value=" + value +
+                    ']';
         }
     }
 

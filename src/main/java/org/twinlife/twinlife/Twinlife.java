@@ -5,6 +5,7 @@
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife;
@@ -30,6 +31,8 @@ public interface Twinlife {
     // Common directory names used in 'files' directory.
     String CONVERSATIONS_DIR = "conversations";
     String LOCAL_IMAGES_DIR = "pictures";
+    String RESTORED_IMAGES_DIR = "restoredPictures";
+    String RESTORED_CACHE_DIR = "restoredCache";
     String TMP_DIR = "tmp";
     String OLD_TMP_DIR = "images"; // Legacy tmp directory: images are removed when application was restarted.
 
@@ -48,6 +51,11 @@ public interface Twinlife {
 
     @NonNull
     ErrorCode getDatabaseStatus();
+
+    @NonNull
+    ErrorCode prepareDatabaseForRestore(boolean createDatabase);
+
+    void setRestoreMode(boolean restoreMode);
 
     void stop();
 

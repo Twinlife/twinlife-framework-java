@@ -29,6 +29,7 @@ import org.twinlife.twinlife.ImageId;
 import org.twinlife.twinlife.TrustMethod;
 import org.twinlife.twinlife.Twincode;
 import org.twinlife.twinlife.TwincodeOutbound;
+import org.twinlife.twinlife.TwincodeOutboundService;
 import org.twinlife.twinlife.database.Columns;
 import org.twinlife.twinlife.database.DatabaseDump;
 import org.twinlife.twinlife.database.DatabaseServiceImpl;
@@ -215,7 +216,8 @@ class TwincodeOutboundServiceProvider extends DatabaseServiceProvider implements
         final String capabilities = cursor.getString(offset + 5);
         final byte[] content = cursor.getBlob(offset + 6);
         final int flags = cursor.getInt(offset + 7);
-        return new TwincodeOutboundImpl(identifier, twincodeId, modificationDate, name, description,
+        final long creationDate = cursor.getLong(offset + 8);
+        return new TwincodeOutboundImpl(identifier, twincodeId, creationDate, modificationDate, name, description,
                 avatarId != 0 ? new ImageId(avatarId) : null, capabilities, content, flags);
     }
 
@@ -237,7 +239,8 @@ class TwincodeOutboundServiceProvider extends DatabaseServiceProvider implements
         final String capabilities = cursor.getString(offset + 5);
         final byte[] content = cursor.getBlob(offset + 6);
         final int flags = cursor.getInt(offset + 7);
-        twincodeOutbound.update(modificationDate, name, description,
+        final long creationDate = cursor.getInt(offset + 8);
+        twincodeOutbound.update(creationDate, modificationDate, name, description,
                 avatarId != 0 ? new ImageId(avatarId) : null, capabilities, content, flags);
         return true;
     }
@@ -246,7 +249,7 @@ class TwincodeOutboundServiceProvider extends DatabaseServiceProvider implements
     public TwincodeOutbound storeObject(@NonNull Transaction transaction, @NonNull DatabaseIdentifier identifier,
                                         @NonNull UUID twincodeId,
                                         @Nullable List<AttributeNameValue> attributes,
-                                        int flags,
+                                        int flags, long creationDate,
                                         long modificationDate, long refreshPeriod,
                                         long refreshDate, long refreshTimestamp,
                                         @Nullable Initializer<TwincodeOutbound> initializer) throws DatabaseException {
@@ -317,6 +320,36 @@ class TwincodeOutboundServiceProvider extends DatabaseServiceProvider implements
         }
     }
 
+    /**
+     * Get a list of all twincodes in the database.
+     *
+     * @return the list of twincodes.
+     */
+    @NonNull
+    public List<TwincodeOutbound> loadTwincodes() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "loadTwincodes");
+        }
+
+        List<TwincodeOutbound> twincodes = new ArrayList<>();
+
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT twincodeId FROM twincodeOutbound", null)) {
+            while (cursor.moveToNext()) {
+                UUID twincodeId = cursor.getUUID(0);
+                if (twincodeId != null) {
+                    TwincodeOutbound twincodeOutbound = loadTwincode(twincodeId);
+                    if (twincodeOutbound != null) {
+                        twincodes.add(twincodeOutbound);
+                    }
+                }
+            }
+        } catch (Exception exception) {
+            mService.onDatabaseException(exception);
+        }
+        return twincodes;
+    }
+
+
     //
     // Package scoped methods
     //
@@ -367,6 +400,36 @@ class TwincodeOutboundServiceProvider extends DatabaseServiceProvider implements
 
         } catch (Exception exception) {
             mService.onDatabaseException(exception);
+        }
+    }
+
+    @Nullable
+    TwincodeOutbound restoreTwincode(long databaseId, @NonNull UUID twincodeId,
+                                     long creationDate, long modificationDate, List<AttributeNameValue> attributes, int flags) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "restoreTwincode: databaseId=" + databaseId + " twincodeId=" + twincodeId +
+                    " creationDate=" + creationDate + " modificationDate=" + modificationDate + " flags=" + flags);
+        }
+
+        try (Transaction transaction = newTransaction()) {
+            Long id = mDatabase.longQuery("SELECT"
+                    + " twout.id"
+                    + " FROM twincodeOutbound AS twout"
+                    + " WHERE twout.twincodeId = ?", new String[]{twincodeId.toString()});
+
+            if (id != null) {
+                throw new IllegalStateException("Twincode " + twincodeId + " already exists in database");
+            }
+
+            TwincodeOutbound twincodeOutbound = transaction.storeTwincodeOutbound(databaseId, twincodeId, attributes, flags,
+                    modificationDate, modificationDate, TwincodeOutboundService.REFRESH_PERIOD, 0, 0);
+
+            transaction.commit();
+            return twincodeOutbound;
+
+        } catch (Exception exception) {
+            mService.onDatabaseException(exception);
+            return null;
         }
     }
 

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2025 twinlife SA.
+ *  Copyright (c) 2018-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -39,7 +39,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.twinlife.twinlife.JobService.Priority.MESSAGE;
 
-public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObserver implements JobService {
+public abstract class AndroidJobServiceImpl implements JobService {
     private static final String LOG_TAG = "AndroidJobServiceImpl";
     private static final boolean DEBUG = false;
     private static final boolean INFO = BuildConfig.ENABLE_INFO_LOG;
@@ -50,6 +50,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     private static final int STOP_FOREGROUND_DISCONNECT_DELAY = 500; // ms
     private static final int BACKGROUND_DISCONNECT_DELAY = 10_000; // ms
     private static final long MIN_FOREGROUND_TIME = 4000; // ms
+    private static final long VERY_LONG_TIMEOUT = 5 * 3600 * 1000; // 5h
 
     protected static final int ALARM_MIN_DELAY = 10 * 60 * 1000;       // 10mn
     protected static final int ALARM_ACTIVE_DELAY = 60 * 60 * 1000;   // 60mn (Firebase not available)
@@ -593,7 +594,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
     @NonNull
     public ScheduledFuture<?> scheduleAtFixedRate(@NonNull Runnable work, long initialDelay, long period) {
 
-        return mExecutor.scheduleAtFixedRate(work, initialDelay, period, TimeUnit.SECONDS);
+        return mExecutor.scheduleWithFixedDelay(work, initialDelay, period, TimeUnit.SECONDS);
     }
 
     /**
@@ -673,7 +674,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             }
         }
         if (needLock) {
-            mProcessingLock.acquire();
+            mProcessingLock.acquire(VERY_LONG_TIMEOUT);
         }
 
         return new ProcessingLockImpl(this);
@@ -703,7 +704,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
             }
         }
         if (needLock) {
-            mInteractiveLock.acquire();
+            mInteractiveLock.acquire(VERY_LONG_TIMEOUT);
         }
 
         return new InteractiveLockImpl(this);
@@ -727,7 +728,6 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         return new VoIPLockImpl(this);
     }
 
-    @Override
     synchronized public void onTwinlifeOnline() {
         if (DEBUG) {
             Log.d(LOG_TAG, "onTwinlifeOnline");
@@ -742,14 +742,12 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         }
     }
 
-    @Override
     synchronized public void onTwinlifeOffline() {
         if (DEBUG) {
             Log.d(LOG_TAG, "onTwinlifeOffline");
         }
 
         mOnline = false;
-        scheduleJobs();
     }
 
     /**
@@ -1330,7 +1328,7 @@ public abstract class AndroidJobServiceImpl extends TwinlifeContext.DefaultObser
         }
     }
 
-    private synchronized void scheduleJobs() {
+    public synchronized void scheduleJobs() {
         if (DEBUG) {
             Log.d(LOG_TAG, "scheduleJobs");
         }

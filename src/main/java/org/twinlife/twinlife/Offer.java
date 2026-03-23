@@ -16,10 +16,10 @@ public class Offer {
 
     public boolean audio;
     public boolean video;
-    public boolean videoBell;
-    public boolean data;
+    public final boolean videoBell;
+    public final boolean data;
     public boolean group;
-    public boolean transfer;
+    public final boolean transfer;
     public Version version;
 
     public Offer(boolean audio, boolean video, boolean videoBell, boolean data){

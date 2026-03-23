@@ -1,9 +1,10 @@
 /*
- *  Copyright (c) 2021-2024 twinlife SA.
+ *  Copyright (c) 2021-2025 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.account;
@@ -21,6 +22,31 @@ import java.util.UUID;
 
 /**
  * Authenticate Request after the AuthChallenge request IQ.
+ *
+ * Schema version 3
+ * <pre>
+ * {
+ *  "schemaId":"BF0A6327-FD04-4DFF-998E-72253CFD91E5",
+ *  "schemaVersion":"3",
+ *
+ *  "type":"record",
+ *  "name":"AuthRequestIQ",
+ *  "namespace":"org.twinlife.schemas.account",
+ *  "super":"org.twinlife.schemas.BinaryPacketIQ"
+ *  "fields": [
+ *     {"name":"accountIdentifier", "type":"string"},
+ *     {"name":"resourceIdentifier", "type":"string"},
+ *     {"name":"deviceNonce", "type":"bytes"},
+ *     {"name":"deviceProof", "type":"bytes"},
+ *     {"name":"deviceState", "type":"int"}
+ *     {"name":"deviceLatency", "type":"int"},
+ *     {"name":"deviceTimestamp", "type":"long"},
+ *     {"name":"serverTimestamp", "type":"long"},
+ *     {"name":"incarnationCount", "type":"int"}
+ *  ]
+ * }
+ *
+ * </pre>
  *
  * Schema version 2
  * <pre>
@@ -91,6 +117,7 @@ class AuthRequestIQ extends BinaryPacketIQ {
             encoder.writeInt(authRequestIQ.deviceLatency);
             encoder.writeLong(authRequestIQ.deviceTimestamp);
             encoder.writeLong(authRequestIQ.serverTimestamp);
+            encoder.writeInt(authRequestIQ.incarnationCount);
         }
 
         @Override
@@ -120,11 +147,12 @@ class AuthRequestIQ extends BinaryPacketIQ {
     final int deviceLatency;
     final long deviceTimestamp;
     final long serverTimestamp;
+    final int incarnationCount;
 
     AuthRequestIQ(@NonNull BinaryPacketIQSerializer serializer, long requestId,
                   @NonNull String accountIdentifier, @NonNull String resourceIdentifier, @NonNull byte[] deviceNone,
                   @NonNull byte[] deviceProof, int deviceState, int deviceLatency,
-                  long deviceTimestamp, long serverTimestamp) {
+                  long deviceTimestamp, long serverTimestamp, int incarnationCount) {
 
         super(serializer, requestId);
 
@@ -136,6 +164,7 @@ class AuthRequestIQ extends BinaryPacketIQ {
         this.deviceLatency = deviceLatency;
         this.deviceTimestamp = deviceTimestamp;
         this.serverTimestamp = serverTimestamp;
+        this.incarnationCount = incarnationCount;
     }
 
     //

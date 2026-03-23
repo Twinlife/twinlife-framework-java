@@ -479,7 +479,6 @@ abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServi
         terminatePeerConnection(peerConnectionId, TerminateReason.CONNECTIVITY_ERROR);
     }
 
-    @SuppressWarnings("StringBufferReplaceableByString")
     @Override
     public void onDataChannelMessage(@NonNull UUID peerConnectionId, @NonNull ByteBuffer buffer, boolean leadingPadding) {
         if (DEBUG) {

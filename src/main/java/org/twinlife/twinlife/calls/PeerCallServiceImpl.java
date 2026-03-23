@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2022-2025 twinlife SA.
+ *  Copyright (c) 2022-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -60,6 +60,8 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
     private static final UUID ON_LEAVE_CALL_ROOM_SCHEMA_ID = UUID.fromString("ae2211fe-60ed-4518-ae90-e9dc5393f0d9");
     private static final UUID DESTROY_CALL_ROOM_SCHEMA_ID = UUID.fromString("f4e195c7-3f84-4e05-a268-b4e3a956a787");
     private static final UUID ON_DESTROY_CALL_ROOM_SCHEMA_ID = UUID.fromString("fac9a8de-c608-4d8f-b0e0-6c390584c41a");
+    private static final UUID JOIN_MEETING_SCHEMA_ID = UUID.fromString("02166307-8400-4521-bec1-1be77d6233e7");
+    private static final UUID ON_JOIN_MEETING_SCHEMA_ID = UUID.fromString("64728bdd-d4b7-4042-b90d-d94c6a56fae6");
 
     private static final UUID SESSION_INITIATE_SCHEMA_ID = UUID.fromString("0ac5f97d-0fa1-4e18-bd99-c13297086752");
     private static final UUID SESSION_ACCEPT_SCHEMA_ID = UUID.fromString("fd545960-d9ac-4e3e-bddf-76f381f163a5");
@@ -87,6 +89,8 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
     private static final BinaryPacketIQSerializer IQ_ON_LEAVE_CALL_ROOM_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_LEAVE_CALL_ROOM_SCHEMA_ID, 1);
     private static final BinaryPacketIQSerializer IQ_DESTROY_CALL_ROOM_SERIALIZER = DestroyCallRoomIQ.createSerializer(DESTROY_CALL_ROOM_SCHEMA_ID, 1);
     private static final BinaryPacketIQSerializer IQ_ON_DESTROY_CALL_ROOM_SERIALIZER = BinaryPacketIQ.createDefaultSerializer(ON_DESTROY_CALL_ROOM_SCHEMA_ID, 1);
+    private static final BinaryPacketIQSerializer IQ_JOIN_MEETING_SERIALIZER = JoinMeetingIQ.createSerializer_1(JOIN_MEETING_SCHEMA_ID, 1);
+    private static final BinaryPacketIQSerializer IQ_ON_JOIN_MEETING_SERIALIZER = OnJoinMeetingIQ.createSerializer(ON_JOIN_MEETING_SCHEMA_ID, 1);
 
     static final BinaryPacketIQSerializer IQ_SESSION_INITIATE_SERIALIZER = SessionInitiateIQ.createSerializer(SESSION_INITIATE_SCHEMA_ID, 1);
     static final BinaryPacketIQSerializer IQ_SESSION_ACCEPT_SERIALIZER = SessionAcceptIQ.createSerializer(SESSION_ACCEPT_SCHEMA_ID, 1);
@@ -188,6 +192,8 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
         serializerFactory.addSerializer(IQ_DESTROY_CALL_ROOM_SERIALIZER);
         serializerFactory.addSerializer(IQ_ON_DESTROY_CALL_ROOM_SERIALIZER);
         serializerFactory.addSerializer(IQ_ON_INVITE_CALL_ROOM_SERIALIZER);
+        serializerFactory.addSerializer(IQ_JOIN_MEETING_SERIALIZER);
+        serializerFactory.addSerializer(IQ_ON_JOIN_MEETING_SERIALIZER);
 
         serializerFactory.addSerializer(IQ_SESSION_INITIATE_SERIALIZER);
         serializerFactory.addSerializer(IQ_SESSION_ACCEPT_SERIALIZER);
@@ -215,6 +221,7 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
         connection.addPacketListener(IQ_ON_DESTROY_CALL_ROOM_SERIALIZER, this::onDestroyCallRoom);
         connection.addPacketListener(IQ_INVITE_CALL_ROOM_SERIALIZER, this::onInviteCallRoom);
         connection.addPacketListener(IQ_MEMBER_NOTIFICATION_SERIALIZER, this::onMemberNotification);
+        connection.addPacketListener(IQ_ON_JOIN_MEETING_SERIALIZER, this::onJoinMeeting);
 
         // Signaling IQ.
         connection.addPacketListener(IQ_SESSION_INITIATE_SERIALIZER, this::onSessionInitiate);
@@ -348,6 +355,31 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
         }
 
         JoinCallRoomIQ joinCallRoomIQ = new JoinCallRoomIQ(IQ_JOIN_CALL_ROOM_SERIALIZER, requestId, callRoomId, twincodeOut, p2pSessions);
+        sendDataPacket(joinCallRoomIQ, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    /**
+     * Join the meeting represented by a meeting twincode.
+     * The `twincodeOut` must be owned by the current user and represents the current user in the meeting.
+     * A call room is created when a first user joins the meeting and a list of existing members will be returned.
+     * The response is received by the onJoinCallRoom() observer.
+     *
+     * @param requestId the request identifier.
+     * @param meetingTwincodeId the meeting twincode to join.
+     * @param twincodeOut the member twincode.
+     * @param waitTime the delay to wait.
+     */
+    @Override
+    public void joinMeeting(long requestId, @NonNull UUID meetingTwincodeId, @NonNull UUID twincodeOut, int waitTime) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "joinMeeting: requestId=" + requestId + " meetingTwincodeId=" + meetingTwincodeId + " twincodeOut=" + twincodeOut);
+        }
+
+        synchronized (mPendingRequests) {
+            mPendingRequests.put(requestId, new CallRoomPendingRequest(meetingTwincodeId));
+        }
+
+        JoinMeetingIQ joinCallRoomIQ = new JoinMeetingIQ(IQ_JOIN_MEETING_SERIALIZER, requestId, meetingTwincodeId, twincodeOut, waitTime);
         sendDataPacket(joinCallRoomIQ, DEFAULT_REQUEST_TIMEOUT);
     }
 
@@ -795,6 +827,49 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
 
         for (final PeerCallService.ServiceObserver serviceObserver : getServiceObservers()) {
             mTwinlifeExecutor.execute(() -> serviceObserver.onJoinCallRoom(requestId, request.callRoomId, onJoinCallRoomIQ.memberId, members));
+        }
+    }
+
+    /**
+     * Response received after we have asked to join the call room.
+     *
+     * @param iq the InviteCallRoom notification.
+     */
+    private void onJoinMeeting(@NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onJoinMeeting: iq=" + iq);
+        }
+
+        if (!(iq instanceof OnJoinMeetingIQ)) {
+            return;
+        }
+
+        final long requestId = iq.getRequestId();
+        receivedIQ(requestId);
+
+        // Get the pending request or terminate.
+        final CallRoomPendingRequest request;
+        synchronized (mPendingRequests) {
+            request = (CallRoomPendingRequest) mPendingRequests.remove(requestId);
+        }
+        if (request == null) {
+            return;
+        }
+
+        final OnJoinMeetingIQ onJoinMeetingIQ = (OnJoinMeetingIQ) iq;
+        final List<MemberInfo> members = new ArrayList<>();
+        if (onJoinMeetingIQ.members != null) {
+            for (final MemberSessionInfo member : onJoinMeetingIQ.members) {
+                if (member.p2pSessionId == null) {
+                    members.add(new MemberInfo(member.memberId));
+                } else {
+                    members.add(new MemberInfo(member.memberId, member.p2pSessionId));
+                }
+            }
+        }
+
+        for (final PeerCallService.ServiceObserver serviceObserver : getServiceObservers()) {
+            mTwinlifeExecutor.execute(() -> serviceObserver.onJoinCallRoom(requestId, onJoinMeetingIQ.callRoomId, onJoinMeetingIQ.memberId, members));
         }
     }
 

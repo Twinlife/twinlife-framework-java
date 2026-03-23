@@ -10,13 +10,11 @@
 package org.twinlife.twinlife;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.util.BinaryCompactDecoder;
 import org.twinlife.twinlife.util.Utils;
 
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 
 public class TwinlifeConfiguration {
 
@@ -45,6 +43,7 @@ public class TwinlifeConfiguration {
     protected AccountMigrationService.AccountMigrationServiceConfiguration accountMigrationServiceConfiguration;
     protected PeerCallService.PeerCallServiceConfiguration peerCallServiceConfiguration;
     protected CryptoService.CryptoServiceServiceConfiguration cryptoServiceConfiguration;
+    protected BackupService.BackupServiceConfiguration backupServiceConfiguration;
 
     protected TwinlifeConfiguration() {
 
@@ -62,6 +61,7 @@ public class TwinlifeConfiguration {
         accountMigrationServiceConfiguration = new AccountMigrationService.AccountMigrationServiceConfiguration();
         peerCallServiceConfiguration = new PeerCallService.PeerCallServiceConfiguration();
         cryptoServiceConfiguration = new CryptoService.CryptoServiceServiceConfiguration();
+        backupServiceConfiguration = new BackupService.BackupServiceConfiguration();
     }
 
     public void read(@NonNull byte[] data) throws SerializerException {

@@ -30,7 +30,9 @@ import org.twinlife.twinlife.database.Tables;
 import org.twinlife.twinlife.database.Transaction;
 import org.twinlife.twinlife.util.EventMonitor;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -99,7 +101,7 @@ class ImageServiceProvider extends DatabaseServiceProvider implements ImagesClea
     //
 
     @Nullable
-    ExportedImageId createImage(@NonNull UUID imageId, boolean locale, @NonNull byte[] thumbnail,
+    ExportedImageId createImage(@NonNull UUID imageId, boolean locale, @Nullable byte[] thumbnail,
                                 @NonNull byte[] imageSha, long remain1Size, long remain2Size) {
         if (DEBUG) {
             Log.d(LOG_TAG, "createImage: imageId=" + imageId
@@ -378,6 +380,26 @@ class ImageServiceProvider extends DatabaseServiceProvider implements ImagesClea
             mService.onDatabaseException(exception);
             return result;
         }
+    }
+
+    @NonNull
+    List<ImageId> listLocalImages() {
+        List<ImageId> result = new ArrayList<>();
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT id, flags FROM image", null)) {
+            while (cursor.moveToNext()) {
+                long localId = cursor.getLong(0);
+                ImageInfo.Status status = toImageStatus(cursor.isNull(1), cursor.getInt(1));
+                boolean local = status == ImageInfo.Status.LOCALE || status == ImageInfo.Status.OWNER;
+
+                if (localId != 0 && local) {
+                    result.add(new ImageId(localId));
+                }
+            }
+        } catch (DatabaseException exception) {
+            mService.onDatabaseException(exception);
+        }
+
+        return result;
     }
 
     /**

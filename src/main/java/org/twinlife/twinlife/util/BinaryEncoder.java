@@ -334,6 +334,7 @@ public class BinaryEncoder implements Encoder {
             writeUUID(((ExportedImageId) attr.value).getExportedId());
         } else if (attr.value instanceof List) {
             writeEnum(5);
+            //noinspection unchecked
             writeAttributes((List) attr.value);
         } else {
             throw new SerializerException("Unsupported Attribute: " + attr);

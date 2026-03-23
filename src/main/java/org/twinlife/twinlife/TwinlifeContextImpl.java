@@ -547,6 +547,12 @@ public class TwinlifeContextImpl implements TwinlifeContext {
         return mTwinlifeImpl.getPeerCallService();
     }
 
+    @NonNull
+    @Override
+    public BackupService getBackupService() {
+        return mTwinlifeImpl.getBackupService();
+    }
+
     @Override
     @NonNull
     public final Map<String, ServiceStats> getServiceStats() {

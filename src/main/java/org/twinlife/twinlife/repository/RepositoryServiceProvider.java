@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2014-2025 twinlife SA.
+ *  Copyright (c) 2014-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -18,6 +18,7 @@ import android.util.Log;
 import android.util.Pair;
 
 import org.twinlife.twinlife.BaseService;
+import org.twinlife.twinlife.BaseService.ErrorCode;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.DatabaseCursor;
@@ -238,6 +239,27 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
     }
 
     /**
+     * Load from the database all repository objects.
+     *
+     * @return all the objects stored in the DB.
+     */
+    @NonNull
+    List<RepositoryObject> loadRepositoryObjects(@NonNull List<UUID> supportedSchemaIds) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "loadRepositoryObjects");
+        }
+
+        List<RepositoryObject> res = new ArrayList<>();
+        for (RepositoryObjectFactoryImpl<RepositoryObject> factory : mFactories) {
+            if (supportedSchemaIds.contains(factory.getSchemaId())) {
+                res.addAll(listObjects(factory, null));
+            }
+        }
+
+        return res;
+    }
+
+    /**
      * Load from the database the repository object with the given uuid or given database id and factory.
      * The factory is used to know the object schema and create instance of that object
      * to load it from the database.
@@ -271,13 +293,13 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
                 + "r.description, r.attributes, r.modificationDate, r.owner");
 
         if ((mode & RepositoryObjectFactory.USE_OUTBOUND) != 0) {
-            query.append(", twout.id, twout.twincodeId, twout.modificationDate, twout.name, twout.avatarId, twout.description, twout.capabilities, twout.attributes, twout.flags");
+            query.append(", " + DatabaseServiceImpl.TWINCODE_OUT_COLUMNS);
         }
         if ((mode & RepositoryObjectFactory.USE_PEER_OUTBOUND) != 0) {
-            query.append(", po.id, po.twincodeId, po.modificationDate, po.name, po.avatarId, po.description, po.capabilities, po.attributes, po.flags");
+            query.append(", " + DatabaseServiceImpl.PEER_TWINCODE_COLUMNS);
         }
         if ((mode & RepositoryObjectFactory.USE_INBOUND) != 0) {
-            query.append(", ti.id, ti.twincodeId, ti.factoryId, ti.twincodeOutbound, ti.modificationDate, ti.capabilities, ti.attributes");
+            query.append(", " + DatabaseServiceImpl.TWINCODE_IN_COLUMNS);
         }
         query.append(" FROM repository AS r");
         if ((mode & RepositoryObjectFactory.USE_INBOUND) != 0) {
@@ -331,13 +353,13 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
         final QueryBuilder query = new QueryBuilder("r.id, r.uuid, r.creationDate, r.name, r.description, r.attributes, r.modificationDate, r.owner");
 
         if ((mode & RepositoryObjectFactory.USE_OUTBOUND) != 0) {
-            query.append(", twout.id, twout.twincodeId, twout.modificationDate, twout.name, twout.avatarId, twout.description, twout.capabilities, twout.attributes, twout.flags");
+            query.append(", " + DatabaseServiceImpl.TWINCODE_OUT_COLUMNS);
         }
         if ((mode & RepositoryObjectFactory.USE_PEER_OUTBOUND) != 0) {
-            query.append(", po.id, po.twincodeId, po.modificationDate, po.name, po.avatarId, po.description, po.capabilities, po.attributes, po.flags");
+            query.append(", " + DatabaseServiceImpl.PEER_TWINCODE_COLUMNS);
         }
         if ((mode & RepositoryObjectFactory.USE_INBOUND) != 0) {
-            query.append(", ti.id, ti.twincodeId, ti.factoryId, ti.twincodeOutbound, ti.modificationDate, ti.capabilities, ti.attributes");
+            query.append(", " + DatabaseServiceImpl.TWINCODE_IN_COLUMNS);
         }
         query.append(" FROM repository AS r");
         if ((mode & RepositoryObjectFactory.USE_INBOUND) != 0) {
@@ -389,10 +411,10 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
         }
 
         final QueryBuilder query = new QueryBuilder("r.schemaId,"
-                + " r.id, r.uuid, r.creationDate, r.name, r.description, r.attributes, r.modificationDate, r.owner,"
-                + " twout.id, twout.twincodeId, twout.modificationDate, twout.name, twout.avatarId, twout.description, twout.capabilities, twout.attributes, twout.flags,"
-                + " po.id, po.twincodeId, po.modificationDate, po.name, po.avatarId, po.description, po.capabilities, po.attributes, po.flags,"
-                + " ti.id, ti.twincodeId, ti.factoryId, ti.twincodeOutbound, ti.modificationDate, ti.capabilities, ti.attributes");
+                + " r.id, r.uuid, r.creationDate, r.name, r.description, r.attributes, r.modificationDate, r.owner"
+                + ", " + DatabaseServiceImpl.TWINCODE_OUT_COLUMNS
+                + ", " + DatabaseServiceImpl.PEER_TWINCODE_COLUMNS
+                + ", " + DatabaseServiceImpl.TWINCODE_IN_COLUMNS);
 
         if (withInboundId) {
             query.append(" FROM twincodeInbound AS ti"
@@ -547,6 +569,13 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
     RepositoryObject importObject(@NonNull UUID objectId, long creationDate, @NonNull RepositoryObjectFactoryImpl<?> factory,
                                   @NonNull List<BaseService.AttributeNameValue> attributes,
                                   @Nullable UUID objectKey) {
+        return importObject(null, objectId, creationDate, factory, attributes, objectKey);
+    }
+
+    @Nullable
+    RepositoryObject importObject(@Nullable Long databaseId, @NonNull UUID objectId, long creationDate, @NonNull RepositoryObjectFactoryImpl<?> factory,
+                                  @NonNull List<BaseService.AttributeNameValue> attributes,
+                                  @Nullable UUID objectKey) {
         if (DEBUG) {
             Log.d(LOG_TAG, "importObject: objectId=" + objectId);
         }
@@ -554,7 +583,7 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
         long now = System.currentTimeMillis();
         try (Transaction transaction = newTransaction()) {
 
-            long id = transaction.allocateId(DatabaseTable.TABLE_REPOSITORY_OBJECT);
+            long id = databaseId != null ? databaseId : transaction.allocateId(DatabaseTable.TABLE_REPOSITORY_OBJECT);
             DatabaseIdentifier identifier = new DatabaseIdentifier(factory, id);
             RepositoryObject object = factory.importObject(transaction, identifier, objectId, objectKey, now, attributes);
             if (object != null) {
@@ -625,6 +654,31 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
 
         } catch (Exception exception) {
             mService.onDatabaseException(exception);
+        }
+    }
+
+    @NonNull
+    ErrorCode saveAttributes(@NonNull RepositoryObject object) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "saveAttributes: object=" + object);
+        }
+
+        try (Transaction transaction = newTransaction()) {
+
+            final long modificationDate = System.currentTimeMillis();
+            final ContentValues values = new ContentValues();
+            values.put(Columns.MODIFICATION_DATE, modificationDate);
+
+            final List<BaseService.AttributeNameValue> otherAttributes = object.getAttributes(false);
+            final byte[] data = BinaryCompactEncoder.serialize(otherAttributes);
+            values.put(Columns.ATTRIBUTES, data);
+
+            transaction.updateWithId(Tables.REPOSITORY, values, object.getDatabaseId().getId());
+            transaction.commit();
+            return ErrorCode.SUCCESS;
+
+        } catch (Exception exception) {
+            return mService.onDatabaseException(exception);
         }
     }
 
@@ -806,17 +860,17 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
         if ((mode & RepositoryObjectFactory.USE_OUTBOUND) != 0) {
             TwincodeOutbound twincodeOutbound = mDatabase.loadTwincodeOutbound(cursor, offset);
             result.setTwincodeOutbound(twincodeOutbound);
-            offset += 9;
+            offset += DatabaseServiceImpl.TWINCODE_COLUMN_COUNT;
         }
         if ((mode & RepositoryObjectFactory.USE_PEER_OUTBOUND) != 0) {
             TwincodeOutbound twincodeOutbound = mDatabase.loadTwincodeOutbound(cursor, offset);
             result.setPeerTwincodeOutbound(twincodeOutbound);
-            offset += 9;
+            offset += DatabaseServiceImpl.TWINCODE_COLUMN_COUNT;
         }
         if ((mode & RepositoryObjectFactory.USE_INBOUND) != 0) {
             TwincodeInbound twincodeInbound = mDatabase.loadTwincodeInbound(cursor, offset);
             result.setTwincodeInbound(twincodeInbound);
-            // offset += 7;
+            // offset += TWINCODE_IN_COLUMN_COUNT;
         }
         if (!result.isValid()) {
             mService.notifyInvalid(result);
