@@ -23,6 +23,7 @@ import java.util.UUID;
  * Set push token request IQ.
  *
  * Schema version 1
+ *  Date: 2021/12/07
  * <pre>
  * {
  *  "schemaId":"3c1115d7-ed74-4445-b689-63e9c10eb50c",

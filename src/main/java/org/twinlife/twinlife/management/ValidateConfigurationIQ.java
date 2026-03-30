@@ -25,7 +25,10 @@ import java.util.UUID;
 /**
  * Validate configuration IQ.
  *
- * Schema version 1 AND Schema version 2
+ * Schema version 2
+ *  Date: 2023/07/12
+ * Schema version 1
+ *  Date: 2021/12/07
  * <pre>
  * {
  *  "schemaId":"437466BB-B2AC-4A53-9376-BFE263C98220",

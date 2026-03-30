@@ -23,6 +23,8 @@ import java.util.UUID;
  * Create twincode response IQ.
  * <p>
  * Schema version 1
+ *  Date: 2022/11/04
+ *
  * <pre>
  * {
  *  "schemaId":"6c0442f5-b0bf-4b7e-9ae5-40ad720b1f71",

@@ -37,6 +37,7 @@ import java.util.UUID;
  * This IQ reports technical information when an assertion represented by an AssertPoint failed.
  *
  * Schema version 1
+ *  Date: 2025/07/25
  * <pre>
  * {
  *  "schemaId":"debcf418-2d3d-4477-97e1-8f7b4507ce8a",

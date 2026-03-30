@@ -23,7 +23,9 @@ import java.util.UUID;
 /**
  * Authenticate Request after the AuthChallenge request IQ.
  *
- * Schema version 3
+ * Schema version 3: add incarnationCount field
+ *  Date: 2025/12/04
+ *
  * <pre>
  * {
  *  "schemaId":"BF0A6327-FD04-4DFF-998E-72253CFD91E5",
@@ -49,6 +51,8 @@ import java.util.UUID;
  * </pre>
  *
  * Schema version 2
+ *  Date: 2022/06/17
+ *
  * <pre>
  * {
  *  "schemaId":"BF0A6327-FD04-4DFF-998E-72253CFD91E5",
@@ -73,6 +77,8 @@ import java.util.UUID;
  * </pre>
  *
  * Schema version 1
+ *  Date: 2021/12/07
+ *
  * <pre>
  * {
  *  "schemaId":"BF0A6327-FD04-4DFF-998E-72253CFD91E5",

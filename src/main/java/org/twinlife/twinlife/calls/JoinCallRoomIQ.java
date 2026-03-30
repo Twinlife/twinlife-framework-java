@@ -28,6 +28,14 @@ import java.util.UUID;
  * Join the call room request IQ.
  *
  * Schema version 3
+ *  Date: 2025/07/28
+ *
+ * Schema version 2
+ *  Date: 2024/03/04
+ *
+ * Schema version 1
+ *  Date: 2022/06/01
+ *
  * <pre>
  * {
  *  "schemaId":"f34ce0b8-8b1c-4384-b7a3-19fddcfd2789",

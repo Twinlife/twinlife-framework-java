@@ -24,6 +24,8 @@ import java.util.UUID;
  * Subscribe Feature Response IQ.
  *
  * Schema version 1
+ *  Date: 2022/09/13
+ *
  * <pre>
  * {
  *  "schemaId":"50FEC907-1D63-4617-A099-D495971930EF",

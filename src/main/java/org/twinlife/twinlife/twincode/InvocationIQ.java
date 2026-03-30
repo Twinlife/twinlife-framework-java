@@ -23,6 +23,8 @@ import java.util.UUID;
  * Invoke twincode response IQ.
  *
  * Schema version 1
+ *  Date: 2022/11/04
+ *
  * <pre>
  * {
  *  "schemaId":"35d11e72-84d7-4a3b-badd-9367ef8c9e43",
@@ -41,6 +43,8 @@ import java.util.UUID;
  * Acknowledge invocation IQ.
  *
  * Schema version 1
+ *  Date: 2022/11/04
+ *
  * <pre>
  * {
  *  "schemaId":"eee63e5e-8af1-41e9-9a1b-79806a0056a2",

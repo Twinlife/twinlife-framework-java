@@ -6,10 +6,21 @@
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  */
 
+package org.twinlife.twinlife.util;
+
+import androidx.annotation.NonNull;
+
+import org.twinlife.twinlife.Decoder;
+import org.twinlife.twinlife.SerializerException;
+import org.twinlife.twinlife.SerializerFactory;
+
+import java.util.UUID;
+
 /*
  * <pre>
  *
  * Schema version 1
+ *  Date: 2015/11/03
  *
  * {
  *  "type":"record",
@@ -22,16 +33,6 @@
  *
  * </pre>
  */
-
-package org.twinlife.twinlife.util;
-
-import androidx.annotation.NonNull;
-
-import org.twinlife.twinlife.Decoder;
-import org.twinlife.twinlife.SerializerException;
-import org.twinlife.twinlife.SerializerFactory;
-
-import java.util.UUID;
 
 public class ResultIQ extends IQ {
 

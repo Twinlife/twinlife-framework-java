@@ -26,6 +26,11 @@ import java.util.UUID;
  * Image creation IQ.
  *
  * Schema version 2
+ *  Date: 2025/07/18
+ *  (changed the schemaId because it was used by account migration P2P service)
+ * Schema version 1
+ *  Date: 2020/06/01
+ *
  * <pre>
  * {
  *  "schemaId":"ea6b4372-3c7d-4ce8-92d8-87a589906a01",
@@ -42,8 +47,8 @@ import java.util.UUID;
  *     {"name":"thumbnail", "type":"bytes"}
  *  ]
  * }
- *
  * </pre>
+
  */
 class CreateImageIQ extends BinaryPacketIQ {
 

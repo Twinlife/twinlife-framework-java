@@ -24,6 +24,7 @@ import java.util.UUID;
  * Image copy response IQ.
  *
  * Schema version 1
+ *  Date: 2020/06/01
  * <pre>
  * {
  *  "schemaId":"9fe6e706-2442-455b-8c7e-384d371560c1",

@@ -25,6 +25,8 @@ import java.util.UUID;
  * Get twincode IQ.
  *
  * Schema version 1
+ *  Date: 2025/04/13
+ *
  * <pre>
  * {
  *  "schemaId":"3a9ca7c4-6153-426d-b716-d81fd625293c",

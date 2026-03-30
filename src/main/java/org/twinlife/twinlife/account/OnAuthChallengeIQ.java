@@ -23,7 +23,9 @@ import java.util.UUID;
 /**
  * Authenticate Challenge Response IQ.
  *
- * Schema version 2
+ * Schema version 2: add serverTimestamp field
+ *  Date: 2021/12/07
+ *
  * <pre>
  * {
  *  "schemaId":"A5F47729-2FEE-4B38-AC91-3A67F3F9E1B6",
@@ -43,6 +45,7 @@ import java.util.UUID;
  * </pre>
  *
  * Schema version 1
+ *  Date: 2021/12/07
  * <pre>
  * {
  *  "schemaId":"A5F47729-2FEE-4B38-AC91-3A67F3F9E1B6",

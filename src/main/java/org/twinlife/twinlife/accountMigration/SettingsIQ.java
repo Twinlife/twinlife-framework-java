@@ -26,6 +26,8 @@ import java.util.UUID;
  * Settings IQ.
  *
  * Schema version 1
+ *  Date: 2020/11/23
+ *
  * <pre>
  * {
  *  "schemaId":"09557d03-3af7-4151-aa60-c6a4b992e18b",

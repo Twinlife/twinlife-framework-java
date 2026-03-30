@@ -24,6 +24,8 @@ import java.util.UUID;
  * Terminate restore response IQ.
  *
  * Schema version 1
+ *  Date: 2025/12/04
+ *
  * <pre>
  * {
  *  "schemaId":"a9945fd0-7f68-42ea-8b41-f6bc4d22cfb4",

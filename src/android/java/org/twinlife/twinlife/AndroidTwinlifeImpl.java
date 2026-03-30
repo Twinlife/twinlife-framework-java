@@ -173,7 +173,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             if (dir != null) {
                 dir = new File(dir, "images");
                 if (dir.exists()) {
-                    Utils.cleanupTemporaryDirectory(dir);
+                    Utils.cleanupTemporaryDirectory(dir, 0);
                 }
             }
             final File cacheDir = AndroidTwinlifeImpl.this.getCacheDir();
@@ -184,7 +184,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
                 if (dbSpaceAvailable < 100 * 1024 * 1024) {
                     Utils.deleteDirectory(cacheDir);
                 } else {
-                    Utils.cleanupTemporaryDirectory(cacheDir);
+                    Utils.cleanupTemporaryDirectory(cacheDir, 0);
                 }
             }
 

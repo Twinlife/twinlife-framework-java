@@ -23,6 +23,8 @@ import java.util.UUID;
  * Delete account Request IQ.
  *
  * Schema version 1
+ *  Date: 2021/12/07
+ *
  * <pre>
  * {
  *  "schemaId":"60e72a89-c1ef-49fa-86a8-0793e5e662e4",

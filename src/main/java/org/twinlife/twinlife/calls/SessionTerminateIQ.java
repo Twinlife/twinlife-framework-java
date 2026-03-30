@@ -24,6 +24,8 @@ import java.util.UUID;
  * Session Terminate request IQ.
  *
  * Schema version 1
+ *  Date: 2022/06/01
+ *
  * <pre>
  * {
  *  "schemaId":"342d4d82-d91f-437b-bcf2-a2051bd94ac1",

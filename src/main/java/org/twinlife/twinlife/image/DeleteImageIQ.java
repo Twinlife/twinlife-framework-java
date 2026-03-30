@@ -24,6 +24,7 @@ import java.util.UUID;
  * Image delete IQ.
  *
  * Schema version 1
+ *  Date: 2020/06/01
  * <pre>
  * {
  *  "schemaId":"22a99e04-6485-4808-9f08-4e421e2e5241",

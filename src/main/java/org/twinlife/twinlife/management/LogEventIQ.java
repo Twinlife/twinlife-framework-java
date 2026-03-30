@@ -25,6 +25,7 @@ import java.util.UUID;
  * Log event request IQ.
  *
  * Schema version 1
+ *  Date: 2021/12/07
  * <pre>
  * {
  *  "schemaId":"a2065d6f-a7aa-43cd-9c0e-030ece70d234",

@@ -22,7 +22,8 @@ import java.util.UUID;
 /**
  * Authenticate Request Response IQ.
  *
- * Schema version 2
+ * Schema version 2: add serverTimestamp, serverLatency and deviceTimestamp fields
+ *  Date: 2022/07/19
  * <pre>
  * {
  *  "schemaId":"9CEE4256-D2B7-4DE3-A724-1F61BB1454C8",
@@ -42,6 +43,7 @@ import java.util.UUID;
  * </pre>
  *
  * Schema version 1
+ *  Date: 2021/12/07
  * <pre>
  * {
  *  "schemaId":"9CEE4256-D2B7-4DE3-A724-1F61BB1454C8",

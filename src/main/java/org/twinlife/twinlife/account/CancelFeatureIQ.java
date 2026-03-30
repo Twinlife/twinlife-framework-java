@@ -24,6 +24,8 @@ import java.util.UUID;
  * Cancel Feature Request IQ.
  *
  * Schema version 1
+ *  Date: 2022/09/19
+ *
  * <pre>
  * {
  *  "schemaId":"0B20EF35-A5D9-45F2-9B97-C6B3D15983FA",

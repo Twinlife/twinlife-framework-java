@@ -22,8 +22,12 @@ import java.util.UUID;
 
 /**
  * Authenticate Challenge Request IQ.
+ * Schema version 1
+ *  Date: 2021/12/07
  *
- * Schema version 1, Schema version 2
+ * Schema version 2
+ *  Date: 2022/06/17
+ *
  * <pre>
  * {
  *  "schemaId":"91780AB7-016A-463B-9901-434E52C200AE",

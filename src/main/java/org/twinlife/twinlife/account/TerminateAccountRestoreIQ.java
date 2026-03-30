@@ -19,6 +19,29 @@ import org.twinlife.twinlife.util.BinaryPacketIQ;
 
 import java.util.UUID;
 
+/**
+ * Terminate account restore Request IQ.
+ *
+ * Schema version 1
+ *  Date: 2025/07/01
+ *
+ * <pre>
+ * {
+ *  "schemaId":"2810fd0c-3973-41f3-912b-57872d881b2d",
+ *  "schemaVersion":"1",
+ *
+ *  "type":"record",
+ *  "name":"TerminateAccountRestoreIQ",
+ *  "namespace":"org.twinlife.schemas.account",
+ *  "super":"org.twinlife.schemas.BinaryPacketIQ"
+ *  "fields": [
+ *     {"name":"commit", "type":"boolean"}
+ *  ]
+ * }
+ *
+ * </pre>
+ */
+
 public class TerminateAccountRestoreIQ extends BinaryPacketIQ {
 
     private static class TerminateAccountRestoreIQSerializer extends BinaryPacketIQSerializer {

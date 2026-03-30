@@ -23,6 +23,8 @@ import java.util.UUID;
  * Change account password request IQ.
  *
  * Schema version 1
+ *  Date: 2023/01/05
+ *
  * <pre>
  * {
  *  "schemaId":"f7295462-019e-4bd5-b830-20f98f8a9735",

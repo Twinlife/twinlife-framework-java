@@ -23,6 +23,7 @@ import java.util.UUID;
  * Destroy the call room request IQ.
  *
  * Schema version 1
+ *  Date: 2022/06/29
  * <pre>
  * {
  *  "schemaId":"f4e195c7-3f84-4e05-a268-b4e3a956a787",

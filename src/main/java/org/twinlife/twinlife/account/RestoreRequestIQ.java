@@ -22,6 +22,8 @@ import java.util.UUID;
  * Restore Request after the RestoreChallenge request IQ.
  *
  * Schema version 1
+ *  Date: 2025/12/04
+ *
  * <pre>
  * {
  *  "schemaId":"8576bcf4-5901-4e54-b5d5-7e3b70622a7f",

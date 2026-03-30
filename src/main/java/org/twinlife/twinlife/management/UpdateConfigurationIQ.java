@@ -23,6 +23,7 @@ import java.util.UUID;
  * Update configuration IQ.
  *
  * Schema version 1 AND schema version 2
+ *  Date: 2021/12/07
  * <pre>
  * {
  *  "schemaId":"3b726b45-c3fc-4062-8ecd-0ddab2dd1537",

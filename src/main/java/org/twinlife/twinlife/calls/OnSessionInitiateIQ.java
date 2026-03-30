@@ -23,6 +23,7 @@ import java.util.UUID;
  * Session Initiate response IQ.
  *
  * Schema version 1
+ *  Date: 2022/06/29
  * <pre>
  * {
  *  "schemaId":"34469234-0f9b-48ea-88b1-f353808b6492",

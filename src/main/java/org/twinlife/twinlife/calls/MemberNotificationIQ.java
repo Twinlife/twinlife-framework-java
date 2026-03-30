@@ -25,6 +25,7 @@ import java.util.UUID;
  * Member notification IQ.
  *
  * Schema version 1
+ *  Date: 2022/06/29
  * <pre>
  * {
  *  "schemaId":"f7460e42-387c-41fe-97c3-18a5f2a97052",

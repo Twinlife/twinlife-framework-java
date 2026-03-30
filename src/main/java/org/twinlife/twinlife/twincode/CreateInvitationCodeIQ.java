@@ -24,6 +24,8 @@ import java.util.UUID;
  * Create invitation code IQ.
  * <p>
  * Schema version 1
+ *  Date: 2025/04/13
+ *
  * <pre>
  * {
  *  "schemaId":"8dcfcba5-b8c0-4375-a501-d24534ed4a3b",

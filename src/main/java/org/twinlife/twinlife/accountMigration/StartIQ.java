@@ -24,6 +24,8 @@ import java.util.UUID;
  * Start migration IQ.
  *
  * Schema version 1
+ *  Date: 2020/11/23
+ *
  * <pre>
  * {
  *  "schemaId":"8a26fefe-6bd5-45e2-9098-3d736d8a1c4e",

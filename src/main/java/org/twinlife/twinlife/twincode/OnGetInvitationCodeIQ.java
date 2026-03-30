@@ -24,6 +24,9 @@ import java.util.UUID;
 
 /**
  * Get invitation code response IQ.
+ * <p>
+ * Schema version 1
+ *  Date: 2025/04/13
  *
  * <pre>
  * {

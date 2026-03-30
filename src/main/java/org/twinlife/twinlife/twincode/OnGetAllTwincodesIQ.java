@@ -24,6 +24,8 @@ import java.util.*;
  * Used by the app to synchronize twincodeOutbounds during a backup restore.
  * <p>
  * Schema version 1
+ *  Date: 2025/08/25
+ *
  * <pre>
  * {
  *  "schemaId":"ca422038-7ae9-4dd3-829d-f8107b817f9a",

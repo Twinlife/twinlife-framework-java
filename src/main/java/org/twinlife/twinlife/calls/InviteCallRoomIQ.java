@@ -24,6 +24,7 @@ import java.util.UUID;
  * Invite a member in the call room request IQ.
  *
  * Schema version 1
+ *  Date: 2022/06/29
  * <pre>
  * {
  *  "schemaId":"8974ff91-a6c6-42d7-b2a2-fc11041892bd",

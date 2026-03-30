@@ -23,6 +23,8 @@ import java.util.UUID;
  * Delete twincode IQ.
  * <p>
  * Schema version 1
+ *  Date: 2022/11/04
+ *
  * <pre>
  * {
  *  "schemaId":"cf8f2889-4ee2-4e50-a26a-5cbd475bb07a",

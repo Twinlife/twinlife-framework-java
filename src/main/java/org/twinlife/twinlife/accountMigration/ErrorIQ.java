@@ -25,6 +25,8 @@ import java.util.UUID;
  * Error message IQ.
  *
  * Schema version 1
+ *  Date: 2020/11/26
+ *
  * <pre>
  * {
  *  "schemaId":"42705574-8e05-47fd-9742-ffd86a923cea",

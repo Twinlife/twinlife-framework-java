@@ -25,6 +25,8 @@ import java.util.UUID;
  * Transport Info request IQ.
  *
  * Schema version 1
+ *  Date: 2022/06/01
+ *
  * <pre>
  * {
  *  "schemaId":"fdf1bba1-0c16-4b12-a59c-0f70cf4da1d9",

@@ -24,6 +24,8 @@ import java.util.UUID;
  * Query stats response IQ.
  *
  * Schema version 1
+ *  Date: 2020/11/23
+ *
  * <pre>
  * {
  *  "schemaId":"0906f883-6adf-4d90-9252-9ab401fbe531",

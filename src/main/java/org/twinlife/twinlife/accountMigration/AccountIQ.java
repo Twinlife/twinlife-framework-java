@@ -24,7 +24,9 @@ import java.util.UUID;
 /**
  * Account IQ.
  *
- * Schema version 2
+ * Schema version 2: remove environmentId field.
+ *  Date: 2021/12/07
+ *
  * <pre>
  * {
  *  "schemaId":"04A8EFC7-F261-4D19-A0E0-0248359CB4DF",
@@ -46,6 +48,8 @@ import java.util.UUID;
  * format with past version: to simplify, we can migrate only between versions with the schema 3 of accountConfiguration.
  *
  * Schema version 1
+ *  Date: 2020/11/23
+ *
  * <pre>
  * {
  *  "schemaId":"04A8EFC7-F261-4D19-A0E0-0248359CB4DF",

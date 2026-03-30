@@ -24,6 +24,8 @@ import java.util.UUID;
  * Shutdown IQ.
  *
  * Schema version 1
+ *  Date: 2020/11/23
+ *
  * <pre>
  * {
  *  "schemaId":"05c90756-d56c-4e2f-92bf-36b2d3f31b76",

@@ -26,6 +26,7 @@ import java.util.UUID;
  * Validate configuration response IQ.
  *
  * Schema version 2
+ *  Date: 2023/07/12
  * <pre>
  * {
  *  "schemaId":"A0589646-2B24-4D22-BE5B-6215482C8748",
@@ -57,6 +58,7 @@ import java.util.UUID;
  * </pre>
  *
  * Schema version 1
+ *  Date: 2021/12/07
  * <pre>
  * {
  *  "schemaId":"A0589646-2B24-4D22-BE5B-6215482C8748",

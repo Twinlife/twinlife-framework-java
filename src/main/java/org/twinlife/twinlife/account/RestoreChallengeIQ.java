@@ -24,6 +24,8 @@ import java.util.UUID;
  * Restore challenge IQ.
  * <p>
  * Schema version 1
+ *  Date: 2025/12/04
+ *
  * <pre>
  * {
  *  "schemaId":"093b4e5c-3040-48d1-9981-cb1f20c16d89",

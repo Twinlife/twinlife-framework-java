@@ -288,8 +288,9 @@ public class Utils {
      * Cleanup old temporary files that should have been removed.
      *
      * @param dir the directory to cleanup.
+     * @param beforeDate only delete files created before the specified date.
      */
-    public static void cleanupTemporaryDirectory(@NonNull File dir) {
+    public static void cleanupTemporaryDirectory(@NonNull File dir, long beforeDate) {
         if (DEBUG) {
             Log.d(LOG_TAG, "cleanupTemporaryDirectory dir=" + dir);
         }
@@ -300,7 +301,7 @@ public class Utils {
         final File[] files = dir.listFiles(filter);
         if (files != null) {
             for (File file : files) {
-                if (file.isFile()) {
+                if (file.isFile() && (beforeDate == 0 || file.lastModified() < beforeDate)) {
                     Utils.deleteFile(LOG_TAG, file);
                 }
             }

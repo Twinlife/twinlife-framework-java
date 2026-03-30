@@ -22,6 +22,8 @@ import java.util.UUID;
  * Join meeting response IQ.
  *
  * Schema version 1
+ *  Date: 2026/01/15
+ *
  * <pre>
  * {
  *  "schemaId":"64728bdd-d4b7-4042-b90d-d94c6a56fae6",

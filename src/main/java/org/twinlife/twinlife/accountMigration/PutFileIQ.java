@@ -26,6 +26,8 @@ import java.util.UUID;
  * File upload IQ.
  *
  * Schema version 1
+ *  Date: 2020/11/23
+ *
  * <pre>
  * {
  *  "schemaId":"ccc791c2-3a5c-4d83-ab06-48137a4ad262",

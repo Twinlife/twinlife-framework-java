@@ -24,6 +24,8 @@ import java.util.UUID;
  * Session Update request IQ.
  *
  * Schema version 1
+ *  Date: 2022/06/01
+ *
  * <pre>
  * {
  *  "schemaId":"44f0c7d0-8d03-453d-8587-714ef92087ae",

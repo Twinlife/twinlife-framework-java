@@ -23,6 +23,8 @@ import java.util.UUID;
  * Session Ping request IQ.
  *
  * Schema version 1
+ *  Date: 2023/02/13
+ *
  * <pre>
  * {
  *  "schemaId":"f2cb4a52-7928-42cb-8439-248388b9a4c7",
