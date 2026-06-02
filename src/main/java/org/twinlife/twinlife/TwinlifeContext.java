@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2014-2025 twinlife SA.
+ *  Copyright (c) 2014-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -184,6 +184,12 @@ public interface TwinlifeContext {
 
     @NonNull
     BackupService getBackupService();
+
+    @NonNull
+    SecureRosterService getSecureRosterService();
+
+    @NonNull
+    CryptoService getCryptoService();
 
     @NonNull
     Map<String, ServiceStats> getServiceStats();

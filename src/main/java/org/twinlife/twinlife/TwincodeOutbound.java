@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023-2025 twinlife SA.
+ *  Copyright (c) 2023-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -50,6 +50,13 @@ public interface TwincodeOutbound extends Twincode, DatabaseObject {
      * @return true if the twincode public key is trusted.
      */
     boolean isTrusted();
+
+    /**
+     * Whether the twincode was created by this application.
+     *
+     * @return true if we are owner of the twincode.
+     */
+    boolean isOwner();
 
     /**
      * Whether the twincode public key is trusted and how.

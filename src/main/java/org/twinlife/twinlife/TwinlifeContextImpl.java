@@ -553,6 +553,26 @@ public class TwinlifeContextImpl implements TwinlifeContext {
         return mTwinlifeImpl.getBackupService();
     }
 
+    @NonNull
+    @Override
+    public SecureRosterService getSecureRosterService() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getSecureRosterService");
+        }
+
+        return mTwinlifeImpl.getSecureRosterService();
+    }
+
+    @Override
+    @NonNull
+    public CryptoService getCryptoService() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getCryptoService");
+        }
+
+        return mTwinlifeImpl.getCryptoService();
+    }
+
     @Override
     @NonNull
     public final Map<String, ServiceStats> getServiceStats() {

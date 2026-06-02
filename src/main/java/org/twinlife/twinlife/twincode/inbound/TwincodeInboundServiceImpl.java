@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -24,6 +24,7 @@ import org.twinlife.twinlife.RepositoryService;
 import org.twinlife.twinlife.TrustMethod;
 import org.twinlife.twinlife.TwincodeInbound;
 import org.twinlife.twinlife.TwincodeInboundService;
+import org.twinlife.twinlife.TwincodeInfo;
 import org.twinlife.twinlife.TwincodeInvocation;
 import org.twinlife.twinlife.TwincodeOutbound;
 import org.twinlife.twinlife.TwinlifeImpl;
@@ -41,6 +42,7 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.ServiceObserver> implements TwincodeInboundService {
@@ -250,6 +252,15 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
         return mServiceProvider.loadTwincodes();
     }
 
+    @Nullable
+    public TwincodeInbound getTwincodeInbound(@NonNull TwincodeOutbound twincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getTwincodeInbound: twincodeOutbound=" + twincodeOutbound);
+        }
+
+        return mServiceProvider.getTwincodeInbound(twincodeOutbound);
+    }
+
     @Override
     public void getTwincode(@NonNull UUID twincodeInboundId, @NonNull TwincodeOutbound twincodeOutbound,
                             @NonNull Consumer<TwincodeInbound> complete) {
@@ -343,6 +354,31 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
     }
 
     @Override
+    public void syncTwincodes(@NonNull Consumer<Void> complete) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "syncTwincodes");
+        }
+
+        if (!isServiceOn()) {
+            return;
+        }
+
+        mTwinlifeImpl.getTwincodeOutboundService().getAllTwincodes((ErrorCode errorCode, Map<UUID, List<TwincodeInfo>> twincodes) -> {
+            if (errorCode == ErrorCode.SUCCESS && twincodes != null) {
+                final List<TwincodeInfo> unknown = mServiceProvider.syncTwincodes(twincodes);
+                if (unknown != null) {
+                    // Delete unknown twincode outbounds (ignore result, ignore errors, don't retry).
+                    for (TwincodeInfo toDelete : unknown) {
+                        mTwinlifeImpl.getTwincodeFactoryServiceImpl().deleteTwincode(toDelete.twincodeFactoryId, (ErrorCode e, UUID f) -> {
+                        });
+                    }
+                }
+            }
+            complete.onGet(errorCode, null);
+        });
+    }
+
+    @Override
     public void acknowledgeInvocation(@NonNull UUID invocationId, @NonNull ErrorCode errorCode) {
         if (DEBUG) {
             Log.d(LOG_TAG, "acknowledgeInvocation: invocationId=" + invocationId + " errorCode=" + errorCode);
@@ -360,9 +396,13 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
             errorCode = ErrorCode.EXPIRED;
         }
 
-        final AcknowledgeInvocationIQ invocationIQ = new AcknowledgeInvocationIQ(IQ_ACKNOWLEDGE_INVOCATION_SERIALIZER, newRequestId(), invocationId, errorCode);
-        sendDataPacket(invocationIQ, DEFAULT_REQUEST_TIMEOUT);
-
+        // If the invocation failed with offline, don't acknowledge it now, but we must still
+        // finish the invocation and remove it from our local queue: it will be handled again at
+        // the next connection.
+        if (errorCode != ErrorCode.TWINLIFE_OFFLINE) {
+            final AcknowledgeInvocationIQ invocationIQ = new AcknowledgeInvocationIQ(IQ_ACKNOWLEDGE_INVOCATION_SERIALIZER, newRequestId(), invocationId, errorCode);
+            sendDataPacket(invocationIQ, DEFAULT_REQUEST_TIMEOUT);
+        }
         finishInvocation(invocationId);
     }
 

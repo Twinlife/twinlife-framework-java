@@ -14,11 +14,11 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.twinlife.twinlife.BackupInfo;
 import org.twinlife.twinlife.BackupService;
 import org.twinlife.twinlife.BackupService.RestoreState;
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.ConfigurationService;
-import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.TwincodeInfo;
@@ -32,7 +32,6 @@ import org.twinlife.twinlife.backup.handlers.ImageHandler;
 import org.twinlife.twinlife.backup.handlers.RepositoryObjectHandler;
 import org.twinlife.twinlife.backup.handlers.TwincodeInboundHandler;
 import org.twinlife.twinlife.backup.handlers.TwincodeOutboundHandler;
-import org.twinlife.twinlife.twincode.outbound.TwincodeOutboundImpl;
 import org.twinlife.twinlife.twincode.outbound.TwincodeOutboundServiceImpl;
 import org.twinlife.twinlife.util.BinaryDecoder;
 import org.twinlife.twinlife.util.Utils;
@@ -233,7 +232,12 @@ class RestoreExecutor {
             return;
         }
 
-        mBackupService.onBackupHeader(mBackupHeaderInfo, derivedServerKeyInfo.lastBackupId, derivedServerKeyInfo.lastBackupTimestamp);
+        // Ignore last backup info: they belong to the currently authenticated account,
+        // so if we're restoring a backup made on another device they can't be used to check whether
+        // we're restoring the latest backup.
+        // We'll get the info from the server once we're authenticated with the account extracted
+        // from the backup.
+        mBackupService.onBackupHeader(mBackupHeaderInfo, null, -1);
 
         setRestoreState(RestoreState.RESTORE_ACCOUNT);
 
@@ -337,7 +341,26 @@ class RestoreExecutor {
             return;
         }
 
-        restoreData();
+        mTwinlifeImpl.getAccountServiceImpl().getAllBackups((status, backupInfos) -> {
+            if (status != BaseService.ErrorCode.SUCCESS || backupInfos == null) {
+                cancel(BackupService.TerminateReason.ERROR);
+                return;
+            }
+
+            if (!backupInfos.isEmpty() && mBackupHeaderInfo != null) {
+                BackupInfo lastBackupInfo = null;
+
+                for (BackupInfo backupInfo : backupInfos) {
+                    if (lastBackupInfo == null || lastBackupInfo.creationDate < backupInfo.creationDate) {
+                        lastBackupInfo = backupInfo;
+                    }
+                }
+
+                mBackupService.onBackupHeader(mBackupHeaderInfo, lastBackupInfo.id, lastBackupInfo.creationDate);
+            }
+
+            restoreData();
+        });
     }
 
     private void restoreData() {
@@ -403,37 +426,34 @@ class RestoreExecutor {
                 }
             }
 
-            checkTwincodeConsistency((status, restoreContent) -> {
-                if (getRestoreState() == RestoreState.CANCEL) {
-                    cancel(BackupService.TerminateReason.CANCEL);
-                    return;
-                }
-
-                if (status != BaseService.ErrorCode.SUCCESS) {
-                    Log.e(LOG_TAG, "Error occurred while checking twincodes");
-                    mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, status);
-                    cancel(BackupService.TerminateReason.ERROR);
-                } else {
-                    setRestoreState(RestoreState.WAIT_CONFIRM);
-                }
-            });
+            checkTwincodeConsistency();
         });
     }
 
-    private void checkTwincodeConsistency(@NonNull Consumer<RestoreContent> complete) {
+    private void checkTwincodeConsistency() {
         if (DEBUG) {
             Log.d(LOG_TAG, "checkTwincodeConsistency");
         }
+
+        setRestoreState(RestoreState.GET_ALL_TWINCODES);
 
         final TwincodeOutboundServiceImpl twincodeService = mTwinlifeImpl.getTwincodeOutboundServiceImpl();
 
         twincodeService.getAllTwincodes((status, serverTwincodes) ->
                 executeIfNotCancelled(() -> {
-                    if (status != BaseService.ErrorCode.SUCCESS || serverTwincodes == null) {
+                    if (status == BaseService.ErrorCode.TWINLIFE_OFFLINE) {
                         if (DEBUG) {
-                            Log.d(LOG_TAG, "Error occurred while getting twincodes: status=" + status);
+                            Log.d(LOG_TAG, "Device is offline, waiting for server connection to try again.");
                         }
-                        complete.onGet(status, null);
+                        return;
+                    }
+
+                    setRestoreState(RestoreState.CHECK_CONSISTENCY);
+
+                    if (status != BaseService.ErrorCode.SUCCESS || serverTwincodes == null) {
+                        Log.e(LOG_TAG, "Error occurred while getting twincodes: status=" + status);
+                        mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, status);
+                        cancel(BackupService.TerminateReason.ERROR);
                         return;
                     }
 
@@ -550,7 +570,7 @@ class RestoreExecutor {
                         Log.d(LOG_TAG, "Twincode consistency check results:"+mRestoreContent);
                     }
 
-                    complete.onGet(status, mRestoreContent);
+                    setRestoreState(RestoreState.WAIT_CONFIRM);
                 }));
     }
 
@@ -609,6 +629,7 @@ class RestoreExecutor {
                     return;
                 }
 
+                mTwinlifeImpl.getAccountServiceImpl().removeRestoreAccountSecuredConfiguration();
                 mTwinlifeImpl.getAccountServiceImpl().restoreAccountSecuredConfiguration(accountConfiguration, restoreCount);
 
                 prepareObjectsForUpdate();
@@ -775,6 +796,8 @@ class RestoreExecutor {
             return;
         }
 
+        mTwinlifeImpl.getAccountServiceImpl().removeRestoreAccountSecuredConfiguration();
+
         mTerminateReason = terminateReason;
 
         if (mInputStream == null) {
@@ -828,7 +851,9 @@ class RestoreExecutor {
         }
 
         executeIfNotCancelled(() -> {
-            if (getRestoreState() == RestoreState.SYNCING_OBJECTS) {
+            if (getRestoreState() == RestoreState.GET_ALL_TWINCODES) {
+                checkTwincodeConsistency();
+            } else if (getRestoreState() == RestoreState.SYNCING_OBJECTS) {
                 updateObjectsAfterRestore();
             }
         });

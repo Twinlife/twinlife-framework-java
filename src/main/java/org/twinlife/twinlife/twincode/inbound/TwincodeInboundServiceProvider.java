@@ -16,6 +16,7 @@ import androidx.annotation.Nullable;
 
 import android.util.Log;
 
+import org.twinlife.twinlife.AssertPoint;
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.DatabaseCursor;
 import org.twinlife.twinlife.DatabaseException;
@@ -23,6 +24,7 @@ import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.DatabaseObject;
 import org.twinlife.twinlife.DatabaseTable;
 import org.twinlife.twinlife.TwincodeInbound;
+import org.twinlife.twinlife.TwincodeInfo;
 import org.twinlife.twinlife.TwincodeOutbound;
 import org.twinlife.twinlife.database.Columns;
 import org.twinlife.twinlife.database.DatabaseServiceImpl;
@@ -30,9 +32,12 @@ import org.twinlife.twinlife.database.DatabaseServiceProvider;
 import org.twinlife.twinlife.database.Tables;
 import org.twinlife.twinlife.database.Transaction;
 import org.twinlife.twinlife.database.TwincodeObjectFactory;
+import org.twinlife.twinlife.twincode.TwincodesAssertPoint;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 class TwincodeInboundServiceProvider extends DatabaseServiceProvider implements TwincodeObjectFactory<TwincodeInbound> {
@@ -213,7 +218,7 @@ class TwincodeInboundServiceProvider extends DatabaseServiceProvider implements 
 
         List<TwincodeInbound> twincodes = new ArrayList<>();
 
-        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT twincodeId FROM twincodeInbound", null)) {
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT twi.twincodeId FROM twincodeInbound AS twi INNER JOIN twincodeOutbound AS two ON twi.twincodeOutbound = two.id", null)) {
             while (cursor.moveToNext()) {
                 UUID twincodeId = cursor.getUUID(0);
                 if (twincodeId != null) {
@@ -230,6 +235,27 @@ class TwincodeInboundServiceProvider extends DatabaseServiceProvider implements 
     }
 
     @Nullable
+    public TwincodeInbound getTwincodeInbound(@NonNull TwincodeOutbound twincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getTwincodeInbound: twincodeOutbound=" + twincodeOutbound);
+        }
+
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT " + DatabaseServiceImpl.TWINCODE_IN_COLUMNS
+                + " FROM twincodeInbound AS ti"
+                + " WHERE ti.twincodeOutbound = ?", new String[]{Long.toString(twincodeOutbound.getDatabaseId().getId())})) {
+            if (cursor.moveToNext()) {
+                return mDatabase.loadTwincodeInbound(cursor, 0);
+            } else {
+                return null;
+            }
+
+        } catch (Exception exception) {
+            mService.onDatabaseException(exception);
+            return null;
+        }
+    }
+
+    @Nullable
     TwincodeInbound loadTwincode(@NonNull UUID twincodeInboundId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "loadTwincode: twincodeInboundId=" + twincodeInboundId);
@@ -237,6 +263,86 @@ class TwincodeInboundServiceProvider extends DatabaseServiceProvider implements 
 
         try {
             return mDatabase.loadTwincodeInbound(twincodeInboundId);
+
+        } catch (Exception exception) {
+            mService.onDatabaseException(exception);
+            return null;
+        }
+    }
+
+    @Nullable
+    List<TwincodeInfo> syncTwincodes(@NonNull Map<UUID, List<TwincodeInfo>> twincodes) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "syncTwincodes: twincodes=" + twincodes);
+        }
+
+        // Step 1: build a map of inbound twincodes
+        final Map<UUID, TwincodeInfo> twincodesIn = new HashMap<>();
+        for (List<TwincodeInfo> list : twincodes.values()) {
+            for (TwincodeInfo twincodeInfo : list) {
+                twincodesIn.put(twincodeInfo.twincodeInboundId, twincodeInfo);
+            }
+        }
+
+        try (Transaction transaction = newTransaction()) {
+            List<TwincodeInbound> toUpdate = null;
+
+            // Step 2: load the twincode inbound and their associated twincode outbound in a single SQL query.
+            // If the twincode inbound factory is not known, update it from what we got from the server.
+            try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT " + DatabaseServiceImpl.TWINCODE_OUT_COLUMNS
+                    + "," + DatabaseServiceImpl.TWINCODE_IN_COLUMNS
+                    + " FROM twincodeInbound AS ti"
+                    + " INNER JOIN twincodeOutbound AS twout ON ti.twincodeOutbound = twout.id", null)) {
+                while (cursor.moveToNext()) {
+                    TwincodeOutbound twincodeOutbound = mDatabase.loadTwincodeOutbound(cursor, 0);
+                    TwincodeInboundImpl twincodeInbound = (TwincodeInboundImpl) mDatabase.loadTwincodeInbound(cursor, DatabaseServiceImpl.TWINCODE_COLUMN_COUNT);
+                    if (twincodeInbound != null) {
+                        final TwincodeInfo twincodeInfo = twincodesIn.remove(twincodeInbound.getId());
+                        if (twincodeInfo != null) {
+                            if (twincodeInbound.getTwincodeFactoryId() == null) {
+                                twincodeInbound.setTwincodeFactoryId(twincodeInfo.twincodeFactoryId);
+                                if (toUpdate == null) {
+                                    toUpdate = new ArrayList<>();
+                                }
+                                toUpdate.add(twincodeInbound);
+                                mService.getTwinlifeImpl().assertion(TwincodesAssertPoint.RECOVER_FACTORY_ID, AssertPoint.create(twincodeInbound));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Step 3: update the twincode inbound whose factory was incorrect.
+            if (toUpdate != null) {
+                for (TwincodeInbound twincodeInbound : toUpdate) {
+                    final ContentValues values = new ContentValues();
+                    if (twincodeInbound.getTwincodeFactoryId() != null) {
+                        values.put(Columns.FACTORY_ID, twincodeInbound.getTwincodeFactoryId().toString());
+                        transaction.updateWithId(Tables.TWINCODE_INBOUND, values, twincodeInbound.getDatabaseId().getId());
+                    }
+                }
+            }
+
+            // Step 4: insert the twincode inbound which are not known only if we have the associated twincode outbound.
+            // If the twincode outbound is not known, there is no associated object and the twincode is not known.
+            // It must be removed from the server.
+            final long now = System.currentTimeMillis();
+            List<TwincodeInfo> result = null;
+            for (TwincodeInfo twincodeInfo : twincodesIn.values()) {
+                TwincodeOutbound twincodeOutbound = mDatabase.loadTwincodeOutbound(twincodeInfo.twincodeOutboundId);
+                if (twincodeOutbound != null) {
+                    TwincodeInbound twincodeInbound = transaction.storeTwincodeInbound(twincodeInfo.twincodeInboundId, twincodeOutbound, twincodeInfo.twincodeFactoryId, null, 0, now);
+                    mService.getTwinlifeImpl().assertion(TwincodesAssertPoint.RECOVER_TWINCODE_IN, AssertPoint.create(twincodeInbound));
+                } else {
+                    if (result == null) {
+                        result = new ArrayList<>();
+                    }
+                    result.add(twincodeInfo);
+                    mService.getTwinlifeImpl().assertion(TwincodesAssertPoint.RECOVER_TWINCODE_IN, AssertPoint.create(twincodeInfo));
+                }
+            }
+            transaction.commit();
+            return result;
 
         } catch (Exception exception) {
             mService.onDatabaseException(exception);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2019-2025 twinlife SA.
+ *  Copyright (c) 2019-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -15,6 +15,8 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import org.twinlife.twinlife.BaseService.ErrorCode;
 
 /**
  * Implementation of ConfigurationService for Android.
@@ -87,7 +89,8 @@ public class AndroidConfigurationServiceImpl implements ConfigurationService {
     }
 
     @Override
-    public void saveSecuredConfiguration(SecuredConfiguration configuration) {
+    @NonNull
+    public ErrorCode saveSecuredConfiguration(SecuredConfiguration configuration) {
         if (DEBUG) {
             Log.d(LOG_TAG, "saveSecuredConfiguration configuration=" + configuration);
         }
@@ -96,11 +99,11 @@ public class AndroidConfigurationServiceImpl implements ConfigurationService {
 
         KeyChain keyChain = getKeyChain();
         if (config.getData() == null) {
-            keyChain.removeKeyChain(config.getName());
+            return keyChain.removeKeyChain(config.getName());
         } else if (config.isCreated()) {
-            keyChain.updateKeyChain(config.getName(), config.getData());
+            return keyChain.updateKeyChain(config.getName(), config.getData());
         } else {
-            keyChain.createKeyChain(config.getName(), config.getData());
+            return keyChain.createKeyChain(config.getName(), config.getData());
         }
     }
 

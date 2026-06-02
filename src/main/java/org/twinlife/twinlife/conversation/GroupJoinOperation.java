@@ -60,6 +60,7 @@ import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BaseService.ErrorCode;
 import org.twinlife.twinlife.BuildConfig;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.PeerConnectionService;
 import org.twinlife.twinlife.SerializerException;
@@ -82,7 +83,7 @@ class GroupJoinOperation extends GroupOperation {
     private InvitationDescriptorImpl mInvitationDescriptorImpl;
     private long mPermissions;
     @Nullable
-    private String mPublicKey;
+    private CryptoService.PublicKeyData mPublicKey;
     @Nullable
     private String mSignature;
     @Nullable
@@ -105,7 +106,7 @@ class GroupJoinOperation extends GroupOperation {
 
         mPermissions = permissions;
         mInvitationDescriptorImpl = null;
-        mPublicKey = publicKey;
+        mPublicKey = CryptoService.PublicKeyData.create(publicKey);
         mSignedOffTwincodeId = signedOffTwincodeId;
         mSignature = signature;
     }
@@ -128,7 +129,7 @@ class GroupJoinOperation extends GroupOperation {
                     mMemberId = decoder.readUUID();
                     mPermissions = decoder.readLong();
                     if (schemaVersion == SCHEMA_VERSION_2) {
-                        mPublicKey = decoder.readString();
+                        mPublicKey = CryptoService.PublicKeyData.create(decoder.readString());
                         mSignedOffTwincodeId = decoder.readOptionalUUID();
                         mSignature = decoder.readOptionalString();
                     }
@@ -166,7 +167,7 @@ class GroupJoinOperation extends GroupOperation {
     }
 
     @Nullable
-    String getPublicKey() {
+    CryptoService.PublicKeyData getPublicKey() {
 
         return mPublicKey;
     }

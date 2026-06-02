@@ -44,6 +44,7 @@ public interface NotificationService extends BaseService<NotificationService.Ser
         NEW_AUDIO_MESSAGE,
         NEW_VIDEO_MESSAGE,
     	NEW_FILE_MESSAGE,
+        NEW_POLL_MESSAGE,
         NEW_GEOLOCATION,
         NEW_GROUP_INVITATION,
         NEW_GROUP_JOINED,
@@ -57,6 +58,7 @@ public interface NotificationService extends BaseService<NotificationService.Ser
                 NotificationType.NEW_IMAGE_MESSAGE,
                 NotificationType.NEW_VIDEO_MESSAGE,
                 NotificationType.NEW_FILE_MESSAGE,
+                NotificationType.NEW_POLL_MESSAGE,
                 NotificationType.NEW_GEOLOCATION,
                 NotificationType.UPDATED_ANNOTATION
         );
@@ -139,16 +141,17 @@ public interface NotificationService extends BaseService<NotificationService.Ser
     /**
      * Create a new notification with the given type for the subject.
      *
-     * @param sysId the system assigned notification id.
-     * @param type the notification type.
-     * @param subject the subject associated with the notification.
+     * @param sysId          the system assigned notification id.
+     * @param type           the notification type.
+     * @param subject        the subject associated with the notification.
      * @param annotatingUser the optional twincode indicating the user who put the annotation.
+     * @param annotation the annotation put by the user if annotatingUser isn't null, null otherwise.
      * @return the new notification.
      */
     @Nullable
     Notification createNotification(int sysId, @NonNull NotificationType type, @NonNull RepositoryObject subject,
                                     @Nullable ConversationService.DescriptorId descriptorId,
-                                    @Nullable TwincodeOutbound annotatingUser);
+                                    @Nullable TwincodeOutbound annotatingUser, @Nullable ConversationService.DescriptorAnnotation annotation);
 
     /**
      * Acknowledge the notification.

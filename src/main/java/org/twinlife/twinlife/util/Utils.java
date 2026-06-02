@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributor:
@@ -77,6 +77,12 @@ public class Utils {
     @Nullable
     public static byte[] decodeBase64URL(@NonNull String data) {
 
+        final int padding = data.length() % 4;
+        if (padding == 2) {
+            data = data + "==";
+        } else if (padding == 3) {
+            data = data + "=";
+        }
         return Base64.decode(data, Base64.URL_SAFE);
     }
 

@@ -37,7 +37,7 @@ public class TwincodeInvocation {
     @Nullable
     public final byte[] secretKey;
     @Nullable
-    public final String publicKey;
+    public final CryptoService.PublicKeyData publicKey;
     public final int keyIndex;
 
     // Whether and how the twincode used to encrypt the invocation was trusted.
@@ -46,8 +46,8 @@ public class TwincodeInvocation {
 
     public TwincodeInvocation(@NonNull UUID invocationId, @NonNull RepositoryObject subject,
                               @NonNull String action, @Nullable List<BaseService.AttributeNameValue> attributes,
-                              @Nullable UUID peerTwincodeId, int keyIndex, @Nullable byte[] secretKey, @Nullable String publicKey,
-                              @NonNull TrustMethod trustMethod) {
+                              @Nullable UUID peerTwincodeId, int keyIndex, @Nullable byte[] secretKey,
+                              @Nullable CryptoService.PublicKeyData publicKey, @NonNull TrustMethod trustMethod) {
         this.invocationId = invocationId;
         this.subject = subject;
         this.action = action;

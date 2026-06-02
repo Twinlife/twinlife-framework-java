@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -44,6 +44,7 @@ public class TwinlifeConfiguration {
     protected PeerCallService.PeerCallServiceConfiguration peerCallServiceConfiguration;
     protected CryptoService.CryptoServiceServiceConfiguration cryptoServiceConfiguration;
     protected BackupService.BackupServiceConfiguration backupServiceConfiguration;
+    protected SecureRosterService.SecureRosterServiceConfiguration secureRosterServiceConfiguration;
 
     protected TwinlifeConfiguration() {
 
@@ -62,6 +63,7 @@ public class TwinlifeConfiguration {
         peerCallServiceConfiguration = new PeerCallService.PeerCallServiceConfiguration();
         cryptoServiceConfiguration = new CryptoService.CryptoServiceServiceConfiguration();
         backupServiceConfiguration = new BackupService.BackupServiceConfiguration();
+        secureRosterServiceConfiguration = new SecureRosterService.SecureRosterServiceConfiguration();
     }
 
     public void read(@NonNull byte[] data) throws SerializerException {

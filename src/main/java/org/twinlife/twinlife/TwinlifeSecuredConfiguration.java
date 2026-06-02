@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2017-2021 twinlife SA.
+ *  Copyright (c) 2017-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -10,13 +10,14 @@
 package org.twinlife.twinlife;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import android.util.Log;
+import android.util.Pair;
 
 import org.twinlife.twinlife.util.BinaryDecoder;
 import org.twinlife.twinlife.util.BinaryEncoder;
 import org.twinlife.twinlife.util.Logger;
+import org.twinlife.twinlife.BaseService.ErrorCode;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -161,8 +162,8 @@ class TwinlifeSecuredConfiguration {
         this.createdKey = createdKey;
     }
 
-    @Nullable
-    public static TwinlifeSecuredConfiguration init(SerializerFactory serializerFactory, ConfigurationService configurationService, TwinlifeConfiguration twinlifeConfiguration) {
+    @NonNull
+    public static Pair<ErrorCode, TwinlifeSecuredConfiguration> init(SerializerFactory serializerFactory, ConfigurationService configurationService, TwinlifeConfiguration twinlifeConfiguration) {
         if (DEBUG) {
             Log.d(LOG_TAG, "init: serializerFactory=" + serializerFactory + " twinlifeConfiguration=" + twinlifeConfiguration);
         }
@@ -178,7 +179,7 @@ class TwinlifeSecuredConfiguration {
 
                 if (TwinlifeSecuredConfiguration.SCHEMA_ID.equals(schemaId)) {
                     if (TwinlifeSecuredConfiguration.SCHEMA_VERSION_2 == schemaVersion) {
-                        return (TwinlifeSecuredConfiguration) TwinlifeSecuredConfiguration.SERIALIZER_2.deserialize(serializerFactory, binaryDecoder);
+                        return new Pair<>(ErrorCode.SUCCESS, (TwinlifeSecuredConfiguration) TwinlifeSecuredConfiguration.SERIALIZER_2.deserialize(serializerFactory, binaryDecoder));
                     }
                     if (TwinlifeSecuredConfiguration.SCHEMA_VERSION_1 == schemaVersion) {
                         TwinlifeSecuredConfiguration twinlifeSecuredConfiguration = (TwinlifeSecuredConfiguration) TwinlifeSecuredConfiguration.SERIALIZER_1.deserialize(serializerFactory, binaryDecoder);
@@ -189,14 +190,15 @@ class TwinlifeSecuredConfiguration {
                             BinaryEncoder binaryEncoder = new BinaryEncoder(outputStream);
                             TwinlifeSecuredConfiguration.SERIALIZER_2.serialize(serializerFactory, binaryEncoder, twinlifeSecuredConfiguration);
                             config.setData(outputStream.toByteArray());
-                            configurationService.saveSecuredConfiguration(config);
+                            ErrorCode errorCode = configurationService.saveSecuredConfiguration(config);
+                            return new Pair<>(errorCode, twinlifeSecuredConfiguration);
 
                         } catch (Exception exception) {
                             if (Logger.ERROR) {
                                 Logger.error(LOG_TAG, "init: serialize", exception);
                             }
+                            return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
                         }
-                        return twinlifeSecuredConfiguration;
                     }
                 }
             } catch (Exception exception) {
@@ -212,17 +214,17 @@ class TwinlifeSecuredConfiguration {
         try {
             TwinlifeSecuredConfiguration.SERIALIZER_2.serialize(serializerFactory, binaryEncoder, twinlifeSecuredConfiguration);
             config.setData(outputStream.toByteArray());
-            configurationService.saveSecuredConfiguration(config);
+            ErrorCode errorCode = configurationService.saveSecuredConfiguration(config);
+
+            // New key created
+            return new Pair<>(errorCode, twinlifeSecuredConfiguration);
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
                 Logger.error(LOG_TAG, "init: serialize", exception);
             }
-            return null;
+            return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
         }
-
-        // New key created
-        return twinlifeSecuredConfiguration;
     }
 
     void erase(ConfigurationService configurationService) {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -17,7 +17,7 @@ import java.util.UUID;
 
 public interface TwincodeInboundService extends BaseService<BaseService.ServiceObserver> {
 
-    String VERSION = "3.3.1";
+    String VERSION = "3.4.1";
 
     class TwincodeInboundServiceConfiguration extends BaseServiceConfiguration {
 
@@ -36,6 +36,15 @@ public interface TwincodeInboundService extends BaseService<BaseService.ServiceO
     void addListener(@NonNull String action, @NonNull InvocationListener observer);
 
     List<TwincodeInbound> getLocalTwincodes();
+
+    /**
+     * Get the twincode inbound associated with the twincode outbound.
+     * The twincode inbound is known only if we are owner of the twincode.
+     * @param twincodeOutbound the twincode outbound.
+     * @return the twincode inbound or null.
+     */
+    @Nullable
+    TwincodeInbound getTwincodeInbound(@NonNull TwincodeOutbound twincodeOutbound);
 
     void getTwincode(@NonNull UUID twincodeInboundId, @NonNull TwincodeOutbound twincodeOutbound,
                      @NonNull Consumer<TwincodeInbound> complete);
@@ -68,4 +77,10 @@ public interface TwincodeInboundService extends BaseService<BaseService.ServiceO
      * @return true if some pending invocations are being processed.
      */
     boolean hasPendingInvocations();
+
+    /**
+     * Synchronize the local database of twincodes with the server's view.
+     * @param complete completion handler executed when the operation is finished with its status.
+     */
+    void syncTwincodes(@NonNull Consumer<Void> complete);
 }

@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2019-2025 twinlife SA.
+ *  Copyright (c) 2019-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 /*
@@ -119,7 +120,7 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
             boolean updated = decoder.readBoolean();
             String localMapPath = decoder.readOptionalString();
 
-            return new GeolocationDescriptorImpl(descriptorImpl, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, updated, localMapPath);
+            return new GeolocationDescriptorImpl(descriptorImpl, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, updated, localMapPath, false);
         }
 
         @NonNull
@@ -137,7 +138,7 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
             boolean updated = decoder.readBoolean();
             String localMapPath = decoder.readOptionalString();
 
-            return new GeolocationDescriptorImpl(twincodeOutboundId, sequenceId, expireTimeout, sendTo, replyTo, createdTimestamp, 0, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, updated, localMapPath);
+            return new GeolocationDescriptorImpl(twincodeOutboundId, sequenceId, expireTimeout, sendTo, replyTo, createdTimestamp, 0, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, updated, localMapPath, false);
         }
     }
 
@@ -181,7 +182,7 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
             boolean updated = decoder.readBoolean();
             String localMapPath = decoder.readOptionalString();
 
-            return new GeolocationDescriptorImpl(descriptorImpl, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, updated, localMapPath);
+            return new GeolocationDescriptorImpl(descriptorImpl, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, updated, localMapPath, false);
         }
     }
 
@@ -194,18 +195,21 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
     private double mMapLatitudeDelta;
     private boolean mUpdated;
     private String mLocalMapPath;
+    private boolean mCopyAllowed;
 
     GeolocationDescriptorImpl(@NonNull UUID twincodeOutboundId, long sequenceId, long expireTimeout, @Nullable UUID sendTo,
                               @Nullable ConversationService.DescriptorId replyTo, long createdTimestamp, long sentTimestamp,
                               double longitude, double latitude, double altitude,
-                              double mapLongitudeDelta, double mapLatitudeDelta, boolean updated, @Nullable String localMapPath) {
+                              double mapLongitudeDelta, double mapLatitudeDelta, boolean updated, @Nullable String localMapPath, boolean copyAllowed) {
 
         super(twincodeOutboundId, sequenceId, expireTimeout, sendTo, replyTo, createdTimestamp, sentTimestamp);
 
         if (DEBUG) {
             Log.d(LOG_TAG, "GeolocationDescriptorImpl: twincodeOutboundId=" + twincodeOutboundId + " sequenceId=" + sequenceId
-                    + " longitude=" + longitude + " latitude=" + latitude + " altitude=" + altitude
-                    + " mapLongitudeDelta=" + mapLatitudeDelta + " mapLatitudeDelta=" + mapLatitudeDelta);
+                    + " expireTimeout=" + expireTimeout + " sendTo=" + sendTo + " replyTo=" + replyTo + " createdTimestamp=" + createdTimestamp
+                    + " sentTimestamp=" + sentTimestamp + " longitude=" + longitude + " latitude=" + latitude + " altitude=" + altitude
+                    + " mapLongitudeDelta=" + mapLongitudeDelta + " mapLatitudeDelta=" + mapLatitudeDelta + " updated=" + updated
+                    + " localMapPath=" + localMapPath + " copyAllowed=" + copyAllowed);
         }
 
         mLongitude = longitude;
@@ -215,18 +219,18 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
         mMapLatitudeDelta = mapLatitudeDelta;
         mLocalMapPath = localMapPath;
         mUpdated = updated;
+        mCopyAllowed = copyAllowed;
     }
 
     GeolocationDescriptorImpl(@NonNull DescriptorId descriptorId, long cid, long expireTimeout, double longitude, double latitude, double altitude,
-                              double mapLongitudeDelta, double mapLatitudeDelta) {
+                              double mapLongitudeDelta, double mapLatitudeDelta, boolean copyAllowed) {
 
         super(descriptorId, cid, expireTimeout, null, null);
 
         if (DEBUG) {
             Log.d(LOG_TAG, "GeolocationDescriptorImpl: descriptorId=" + descriptorId + " cid=" + cid
-                    + " expireTimeout=" + expireTimeout
-                    + " longitude=" + longitude + " latitude=" + latitude + " altitude=" + altitude
-                    + " mapLongitudeDelta=" + mapLatitudeDelta + " mapLatitudeDelta=" + mapLatitudeDelta);
+                    + " expireTimeout=" + expireTimeout + " longitude=" + longitude + " latitude=" + latitude + " altitude=" + altitude
+                    + " mapLongitudeDelta=" + mapLongitudeDelta + " mapLatitudeDelta=" + mapLatitudeDelta + " copyAllowed=" + copyAllowed);
         }
 
         mLongitude = longitude;
@@ -236,6 +240,7 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
         mMapLatitudeDelta = mapLatitudeDelta;
         mLocalMapPath = null;
         mUpdated = false;
+        mCopyAllowed = copyAllowed;
     }
 
     GeolocationDescriptorImpl(@NonNull ConversationService.DescriptorId descriptorId, long cid, @Nullable UUID sendTo,
@@ -258,6 +263,7 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
         mMapLatitudeDelta = extractDouble(args, 4, 0);
         mLocalMapPath = extractString(args, 5, null);
         mUpdated = (flags & FLAG_UPDATED) != 0;
+        mCopyAllowed = (flags & FLAG_COPY_ALLOWED) != 0;
     }
 
     /*
@@ -268,6 +274,12 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
     public Type getType() {
 
         return Type.GEOLOCATION_DESCRIPTOR;
+    }
+
+    @Override
+    int getFlags() {
+
+        return mCopyAllowed ? FLAG_COPY_ALLOWED : 0;
     }
 
     @Override
@@ -312,6 +324,22 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
 
         return mLocalMapPath != null && !mUpdated;
     }
+
+    @Override
+    public boolean isCopyAllowed() {
+        return mCopyAllowed;
+    }
+
+    public boolean setCopyAllowed(@Nullable Boolean copyAllowed) {
+
+        if (copyAllowed == null || copyAllowed == mCopyAllowed) {
+            return false;
+        }
+
+        mCopyAllowed = copyAllowed;
+        return true;
+    }
+
 
     void setLocalMapPath(@Nullable String localMapPath) {
 
@@ -428,6 +456,8 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
             stringBuilder.append(mMapLatitudeDelta);
             stringBuilder.append(" localMapPath=");
             stringBuilder.append(mLocalMapPath);
+            stringBuilder.append(" copyAllowed=");
+            stringBuilder.append(mCopyAllowed);
             stringBuilder.append("\n");
         }
     }
@@ -469,11 +499,12 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
         mMapLatitudeDelta = source.mMapLatitudeDelta;
         mLocalMapPath = null;
         mUpdated = false;
+        mCopyAllowed = copyAllowed;
     }
 
     private GeolocationDescriptorImpl(@NonNull DescriptorImpl descriptorImpl, double longitude, double latitude,
                                       double altitude, double mapLongitudeDelta, double mapLatitudeDelta,
-                                      boolean updated, @Nullable String localMapPath) {
+                                      boolean updated, @Nullable String localMapPath, boolean copyAllowed) {
 
         super(descriptorImpl);
 
@@ -491,5 +522,6 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
         mMapLatitudeDelta = mapLatitudeDelta;
         mLocalMapPath = localMapPath;
         mUpdated = updated;
+        mCopyAllowed = copyAllowed;
     }
 }

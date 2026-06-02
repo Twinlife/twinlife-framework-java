@@ -344,6 +344,7 @@ public class TwincodeOutboundImpl extends DatabaseObjectImpl implements Twincode
      *
      * @return true if we are owner of the twincode.
      */
+    @Override
     public synchronized boolean isOwner() {
 
         return (mFlags & FLAG_OWNER) != 0;

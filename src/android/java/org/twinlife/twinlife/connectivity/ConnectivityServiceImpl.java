@@ -451,22 +451,15 @@ public class ConnectivityServiceImpl extends BaseServiceImpl<ConnectivityService
         if (mConnectivityManager == null) {
             connectedNetwork = true;
         } else {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Network nw = mConnectivityManager.getActiveNetwork();
-                if (nw == null) {
-                    connectedNetwork = false;
-                } else {
-                    NetworkCapabilities actNw = mConnectivityManager.getNetworkCapabilities(nw);
-                    connectedNetwork = actNw != null && (actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-                            || actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
-                            || actNw.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-                            || actNw.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH));
-                }
+            Network nw = mConnectivityManager.getActiveNetwork();
+            if (nw == null) {
+                connectedNetwork = false;
             } else {
-                // Get the network information without holding any lock since this is a long operation.
-                NetworkInfo networkInfo = mConnectivityManager.getActiveNetworkInfo();
-                //noinspection deprecation
-                connectedNetwork = networkInfo != null && networkInfo.isConnected();
+                NetworkCapabilities actNw = mConnectivityManager.getNetworkCapabilities(nw);
+                connectedNetwork = actNw != null && (actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                        || actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                        || actNw.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                        || actNw.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH));
             }
         }
 

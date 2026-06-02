@@ -36,7 +36,8 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
         ACCOUNT_MIGRATION_SERVICE_ID,
         PEER_CALL_SERVICE_ID,
         CRYPTO_SERVICE_ID,
-        BACKUP_SERVICE_ID
+        BACKUP_SERVICE_ID,
+        SECURE_ROSTER_SERVICE_ID
     }
 
     long UNDEFINED_REQUEST_ID = -1L;
@@ -85,8 +86,9 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
         FILE_NOT_SUPPORTED,
         DATABASE_CORRUPTION,
         RESTORE_IN_PROGRESS,  // The account is currently being restored on another device. Retry later to see if the restore failed/was rolled back.
-        ACCOUNT_RESTORED,    // The account was successfully restored on another device. This device can no longer be used to access it.
-        EXISTS;
+        ACCOUNT_RESTORED,     // The account was successfully restored on another device. This device can no longer be used to access it.
+        EXISTS,
+        KEYSTORE_ERROR;       // The Android keystore is not secure enough or has errors during startup.
 
         public static int fromErrorCode(@Nullable ErrorCode errorCode) {
             if (errorCode != null) {
@@ -210,6 +212,9 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
 
                     case EXISTS:
                         return 39;
+
+                    case KEYSTORE_ERROR:
+                        return 40;
                 }
             }
             return 7;
@@ -375,6 +380,10 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
                     errorCode = ErrorCode.EXISTS;
                     break;
 
+                case 40:
+                    errorCode = ErrorCode.KEYSTORE_ERROR;
+                    break;
+
                 case 8:
                 default:
                     errorCode = ErrorCode.LIBRARY_TOO_OLD;
@@ -382,6 +391,18 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
             }
 
             return errorCode;
+        }
+
+        /**
+         * Indicate whether the error is a transient error and can be retried:
+         * - TWINLIFE_OFFLINE and TIMEOUT_ERROR can be retried on a new server connection,
+         * - SERVER_ERROR is transient and in general caused by a database connection issue
+         *   on its side.
+         * @return true if the error is transient.
+         */
+        public boolean isTransient() {
+
+            return this == ErrorCode.TWINLIFE_OFFLINE || this == ErrorCode.TIMEOUT_ERROR || this == ErrorCode.SERVER_ERROR;
         }
     }
 
@@ -550,6 +571,24 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
 
             list.add(new AttributeNameUUIDValue(name, value));
         }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o instanceof AttributeNameUUIDValue) {
+                return super.equals(o);
+            }
+
+            if (o instanceof AttributeNameImageIdValue) {
+                // The avatar ID is stored in a twincode attribute list as its public/exported UUID during a backup,
+                // which may cause false positives when checking twincode modifications during a backup verify or restore.
+                String otherName = ((AttributeNameImageIdValue) o).name;
+                ExportedImageId otherValue = (ExportedImageId) ((AttributeNameImageIdValue) o).value;
+
+                return Objects.equals(name, otherName) && Objects.equals(value, otherValue.getExportedId());
+            }
+
+            return false;
+        }
     }
 
     class AttributeNameImageIdValue extends AttributeNameValue {
@@ -557,6 +596,29 @@ public interface BaseService <Observer extends BaseService.ServiceObserver> {
         public AttributeNameImageIdValue(@NonNull String name, @NonNull ExportedImageId value) {
 
             super(name, value);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o instanceof AttributeNameImageIdValue) {
+                return super.equals(o);
+            }
+
+            if (o instanceof AttributeNameUUIDValue && value instanceof ExportedImageId) {
+                // The avatar ID is stored in a twincode attribute list as its public/exported UUID during a backup,
+                // which may cause false positives when checking twincode modifications during a backup verify or restore.
+                String otherName = ((AttributeNameUUIDValue) o).name;
+                UUID otherValue = (UUID) ((AttributeNameUUIDValue) o).value;
+
+                return Objects.equals(name, otherName) && Objects.equals(((ExportedImageId) value).getExportedId(), otherValue);
+            }
+
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, ((ExportedImageId) value).getExportedId());
         }
     }
 

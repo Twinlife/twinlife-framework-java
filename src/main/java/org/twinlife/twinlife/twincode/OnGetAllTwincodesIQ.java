@@ -38,8 +38,8 @@ import java.util.*;
  *  "fields": [
  *     {"name":"twincodeIds", [
  *         {"name":"schemaId", "type": "uuid", [
- *          "name": "twincodeOutboundId", "type": "uuid",
  *          "name": "twincodeFactoryId", "type": "uuid",
+ *          "name": "twincodeOutboundId", "type": "uuid",
  *          "name": "twincodeInboundId", "type": "uuid"
  *          ]}
  *      ]}

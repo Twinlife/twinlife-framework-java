@@ -16,6 +16,7 @@ import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.GroupMemberConversation;
 import org.twinlife.twinlife.ConversationService.GroupConversation;
 import org.twinlife.twinlife.DatabaseIdentifier;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.Twincode;
 import org.twinlife.twinlife.TwincodeInbound;
@@ -48,6 +49,7 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
     static final int FLAG_JOINED = 0x01;
     static final int FLAG_LEAVING = 0x02;
     static final int FLAG_DELETED = 0x04;
+    static final int FLAG_SECURE_ROSTER = 0x08;
 
     @NonNull
     private final RepositoryObject mGroup;
@@ -197,9 +199,16 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
     }
 
     @Override
-    public boolean hasPermission(ConversationService.Permission p) {
+    public boolean hasPermission(@Nullable Permission p) {
 
-        return (mPermissions & (1L << p.ordinal())) != 0;
+        return p != null && p.hasPermission(mPermissions);
+    }
+
+    @Override
+    @NonNull
+    public Permission getPermission() {
+
+        return new Permission(mPermissions);
     }
 
     @Override
@@ -219,9 +228,9 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
         return mPermissions;
     }
 
-    void setJoinPermissions(long permissions) {
+    void setJoinPermissions(@Nullable List<Permission> permissions) {
 
-        mJoinPermissions = permissions;
+        mJoinPermissions = Permission.toLong(permissions);
     }
 
     /**
@@ -271,7 +280,13 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
     }
 
     @Override
-    public long getJoinPermissions() {
+    @NonNull
+    public Permission getJoinPermissions() {
+
+        return new Permission(mJoinPermissions);
+    }
+
+    long getJoinPermissionsAsLong() {
 
         return mJoinPermissions;
     }

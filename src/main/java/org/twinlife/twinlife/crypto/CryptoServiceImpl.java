@@ -125,6 +125,35 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         }
     }
 
+    @Override
+    @Nullable
+    public byte[] getRawPublicKey(@NonNull TwincodeOutbound twincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getRawPublicKey: twincodeOutbound=" + twincodeOutbound);
+        }
+
+        if (!isServiceOn()) {
+            return null;
+        }
+
+        final KeyInfo keyInfo = mServiceProvider.loadTwincodeKey(twincodeOutbound);
+        if (keyInfo == null) {
+            return null;
+        }
+
+        try {
+            final CryptoKey crypto = keyInfo.getSigningPublicKey();
+            if (crypto == null) {
+                return null;
+            }
+
+            return crypto.getPublicKey(false);
+
+        } finally {
+            keyInfo.dispose();
+        }
+    }
+
     @Nullable
     public RawKeyInfo getRawKeyInfo(@NonNull TwincodeOutbound twincodeOutbound) {
         if (DEBUG) {
@@ -186,7 +215,7 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         }
 
         return new SignatureInfoIQ(SignatureInfoIQ.IQ_SIGNATURE_INFO_SERIALIZER, mTwinlifeImpl.newRequestId(),
-                twincodeOutbound.getId(), publicKey, secretKey, keyInfo.getKeyIndex());
+                twincodeOutbound.getId(), PublicKeyData.create(publicKey), secretKey, keyInfo.getKeyIndex());
 
     }
 
@@ -328,6 +357,61 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         }
 
         try {
+            final byte[] signature = signContent(twincodeOutbound.getId(), keyInfo, content, true);
+            return signature == null ? null : new String(signature);
+
+        } finally {
+            keyInfo.dispose();
+        }
+    }
+
+    /**
+     * Sign the content with the twincode private signing key.
+     *
+     * @param twincodeOutbound the twincode used to sign.
+     * @param content the content to sign.
+     * @return the base64URL signature or null if there is a problem.
+     */
+    @Nullable
+    public byte[] signContentRaw(@NonNull TwincodeOutbound twincodeOutbound, @NonNull byte[] content) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "signContentRaw: twincodeOutbound=" + twincodeOutbound);
+        }
+
+        if (!isServiceOn()) {
+            return null;
+        }
+
+        final KeyInfo keyInfo = mServiceProvider.loadTwincodeKey(twincodeOutbound);
+        if (keyInfo == null) {
+            return null;
+        }
+        try {
+            return signContent(twincodeOutbound.getId(), keyInfo, content, false);
+
+        } finally {
+            keyInfo.dispose();
+        }
+    }
+
+    /**
+     * Sign the content with the twincode private signing key.
+     *
+     * @param keyId the twincode used to sign.
+     * @param content the content to sign.
+     * @return the base64URL signature or null if there is a problem.
+     */
+    @Nullable
+    private byte[] signContent(@NonNull UUID keyId, @NonNull KeyInfo keyInfo, @NonNull byte[] content, boolean useBase64) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "signContent: keyInfo=" + keyInfo);
+        }
+
+        if (!isServiceOn()) {
+            return null;
+        }
+
+        try {
             final CryptoKey signingKey = keyInfo.getSigningPrivateKey();
             if (signingKey == null) {
                 return null;
@@ -350,17 +434,17 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
             }
 
             encoder.writeInt(version);
-            encoder.writeUUID(twincodeOutbound.getId());
+            encoder.writeUUID(keyId);
             encoder.writeData(content);
 
             // Sign what is serialized with the private key.
             final byte[] data = outputStream.toByteArray();
             final byte[] signature = new byte[CryptoKey.MAX_SIG_LENGTH];
-            final int len = signingKey.sign(data, signature, true);
+            final int len = signingKey.sign(data, signature, useBase64);
             if (len <= 0) {
                 return null;
             }
-            return new String(signature, 0, len);
+            return Arrays.copyOf(signature, len);
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
@@ -368,8 +452,6 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
             }
             return null;
 
-        } finally {
-            keyInfo.dispose();
         }
     }
 
@@ -398,6 +480,62 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         }
 
         try {
+            return verifyContent(twincodeOutbound.getId(), keyInfo, content, signature.getBytes(), true);
+
+        } finally {
+            keyInfo.dispose();
+        }
+    }
+
+    /**
+     * Verify the signature of the given content with the twincode public key.
+     *
+     * @param keyId the key identifier that was used to sign.
+     * @param publicKey the public key that was used (Ed25519).
+     * @param content the content to sign.
+     * @param signature the signature to verify.
+     * @return SUCCESS if the signature is valid or an error code.
+     */
+    @NonNull
+    public ErrorCode verifyContent(@NonNull UUID keyId, @NonNull PublicKeyData publicKey, @NonNull byte[] content, @NonNull byte[] signature) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "verifyContent keyId=" + keyId + " publicKey=" + publicKey);
+        }
+
+        if (!isServiceOn()) {
+            return ErrorCode.SERVICE_UNAVAILABLE;
+        }
+
+        final KeyInfo keyInfo = new KeyInfo(0, KeyInfo.KEY_TYPE_25519, publicKey.asBytes(), null, 0, 0, null);
+        try {
+            return verifyContent(keyId, keyInfo, content, signature, false);
+
+        } finally {
+            keyInfo.dispose();
+        }
+    }
+
+    /**
+     * Verify the signature of the given content with the twincode public key.
+     *
+     * @param keyId the key ID used to sign.
+     * @param keyInfo the public key used to sign.
+     * @param content the content to sign.
+     * @param signature the signature to verify.
+     * @return SUCCESS if the signature is valid or an error code.
+     */
+    @NonNull
+    private ErrorCode verifyContent(@NonNull UUID keyId, @NonNull KeyInfo keyInfo, @NonNull byte[] content,
+                                    @NonNull byte[] signature, boolean useBase64) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "verifyContent keyId=" + keyId + " keyInfo=" + keyInfo);
+        }
+
+        if (!isServiceOn()) {
+            return ErrorCode.SERVICE_UNAVAILABLE;
+        }
+
+        try {
             final CryptoKey crypto = keyInfo.getSigningPublicKey();
             if (crypto == null) {
                 return ErrorCode.INVALID_PUBLIC_KEY;
@@ -422,11 +560,11 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
             final BinaryEncoder encoder = new BinaryCompactEncoder(outputStream);
 
             encoder.writeInt(version);
-            encoder.writeUUID(twincodeOutbound.getId());
+            encoder.writeUUID(keyId);
             encoder.writeData(content);
 
             final byte[] data = outputStream.toByteArray();
-            final int len = crypto.verify(data, signature.getBytes(), true);
+            final int len = crypto.verify(data, signature, useBase64);
             if (len != 1) {
                 return ErrorCode.BAD_SIGNATURE;
             }
@@ -437,9 +575,6 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
                 Logger.error(LOG_TAG, "verifyContent", exception);
             }
             return ErrorCode.LIBRARY_ERROR;
-
-        } finally {
-            keyInfo.dispose();
         }
     }
 
@@ -734,7 +869,7 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
             // Extract the attributes from the decrypted content.
             inputStream = new ByteArrayInputStream(data, 0, len);
             decoder = new BinaryCompactDecoder(inputStream);
-            final String pubSigningKey = decoder.readOptionalString();
+            final PublicKeyData pubSigningKey = PublicKeyData.create(decoder.readOptionalString());
             final int keyIndex = decoder.readInt();
             final byte[] secretKey = decoder.readOptionalBytes(null);
             final List<AttributeNameValue> result = decoder.readAttributes();
@@ -808,7 +943,7 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
 
     @Override
     @NonNull
-    public VerifyResult verify(@NonNull String publicKey, @NonNull UUID twincodeId,
+    public VerifyResult verify(@NonNull PublicKeyData publicKey, @NonNull UUID twincodeId,
                                @NonNull List<AttributeNameValue> attributes,
                                @NonNull byte[] signature) {
         if (DEBUG) {
@@ -818,9 +953,17 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         if (!isServiceOn()) {
             return VerifyResult.error(ErrorCode.SERVICE_UNAVAILABLE);
         }
-
-        final CryptoKey.Kind kind = publicKey.length() >= CryptoKey.ECDSA_PUBKEY_LENGTH ? CryptoKey.Kind.ECDSA : CryptoKey.Kind.ED25519;
-        final CryptoKey cryptoPublicKey = CryptoKey.importPublicKey(kind, publicKey.getBytes(), true);
+        final CryptoKey.Kind kind;
+        final CryptoKey cryptoPublicKey;
+        if (publicKey.publicKey instanceof String) {
+            kind = publicKey.asString().length() >= CryptoKey.ECDSA_PUBKEY_LENGTH ? CryptoKey.Kind.ECDSA : CryptoKey.Kind.ED25519;
+            cryptoPublicKey = CryptoKey.importPublicKey(kind, publicKey.asString().getBytes(), true);
+        } else if (publicKey.publicKey instanceof byte[]) {
+            kind = publicKey.asBytes().length != 32 ? CryptoKey.Kind.ECDSA : CryptoKey.Kind.ED25519;
+            cryptoPublicKey = CryptoKey.importPublicKey(kind, publicKey.asBytes(), false);
+        } else {
+            return VerifyResult.error(ErrorCode.BAD_REQUEST);
+        }
         if (cryptoPublicKey == null) {
             return VerifyResult.error(ErrorCode.INVALID_PUBLIC_KEY);
         }

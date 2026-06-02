@@ -110,7 +110,7 @@ class InviteGroupIQ extends BinaryPacketIQ {
             encoder.writeUUID(invitationDescriptor.getDescriptorId().twincodeOutboundId);
             encoder.writeLong(invitationDescriptor.getDescriptorId().sequenceId);
             encoder.writeUUID(invitationDescriptor.getGroupTwincodeId());
-            encoder.writeOptionalString(invitationDescriptor.getPublicKey());
+            encoder.writeOptionalString(invitationDescriptor.getPublicKey() != null ? invitationDescriptor.getPublicKey().asString() : null);
             encoder.writeString(invitationDescriptor.getName());
             encoder.writeLong(invitationDescriptor.getCreatedTimestamp());
             encoder.writeLong(invitationDescriptor.getSentTimestamp());

@@ -58,6 +58,7 @@ import android.util.Log;
 
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
 import org.twinlife.twinlife.SerializerException;
@@ -154,7 +155,7 @@ public class TwincodeDescriptorImpl extends DescriptorImpl implements Conversati
 
     TwincodeDescriptorImpl(@NonNull DescriptorId descriptorId, long cid, long expireTimeout, @Nullable UUID sendTo,
                            @Nullable DescriptorId replyTo, @NonNull UUID twincodeId,
-                           @NonNull UUID schemaId, @Nullable String publicKey, boolean copyAllowed) {
+                           @NonNull UUID schemaId, @Nullable CryptoService.PublicKeyData publicKey, boolean copyAllowed) {
 
         super(descriptorId, cid, expireTimeout, sendTo, replyTo);
 
@@ -165,7 +166,7 @@ public class TwincodeDescriptorImpl extends DescriptorImpl implements Conversati
 
         mTwincodeId = twincodeId;
         mSchemaId = schemaId;
-        mPublicKey = publicKey;
+        mPublicKey = publicKey != null ? publicKey.asString() : null;
         mCopyAllowed = copyAllowed;
     }
 
@@ -243,9 +244,9 @@ public class TwincodeDescriptorImpl extends DescriptorImpl implements Conversati
 
     @Override
     @Nullable
-    public String getPublicKey() {
+    public CryptoService.PublicKeyData getPublicKey() {
 
-        return mPublicKey;
+        return CryptoService.PublicKeyData.create(mPublicKey);
     }
 
     @Override
@@ -271,7 +272,7 @@ public class TwincodeDescriptorImpl extends DescriptorImpl implements Conversati
                                  @Nullable UUID sendTo, boolean copyAllowed) {
 
         return new TwincodeDescriptorImpl(descriptorId, conversationId, expireTimeout,
-                sendTo, null, mTwincodeId, mSchemaId, mPublicKey, copyAllowed);
+                sendTo, null, mTwincodeId, mSchemaId, CryptoService.PublicKeyData.create(mPublicKey), copyAllowed);
     }
 
     protected void appendTo(@NonNull StringBuilder stringBuilder) {

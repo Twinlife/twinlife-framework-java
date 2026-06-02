@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2025 twinlife SA.
+ *  Copyright (c) 2018-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -20,6 +20,7 @@ import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.PeerConnectionService;
 import org.twinlife.twinlife.SerializerException;
+import org.twinlife.twinlife.database.DatabaseObjectImpl;
 import org.twinlife.twinlife.util.BinaryCompactDecoder;
 import org.twinlife.twinlife.util.BinaryDecoder;
 import org.twinlife.twinlife.util.Logger;
@@ -31,7 +32,7 @@ class GroupLeaveOperation extends GroupOperation {
     private static final String LOG_TAG = "GroupLeaveOperation";
     private static final boolean DEBUG = false;
 
-    GroupLeaveOperation(@NonNull ConversationImpl conversationImpl, @NonNull Type type,
+    GroupLeaveOperation(@NonNull DatabaseObjectImpl conversationImpl, @NonNull Type type,
                         @NonNull UUID groupTwincodeId, @NonNull UUID memberTwincodeId) {
 
         super(type, conversationImpl, groupTwincodeId, memberTwincodeId);
@@ -75,7 +76,7 @@ class GroupLeaveOperation extends GroupOperation {
             Log.d(LOG_TAG, "executeInvoke: conversationImpl=" + conversationImpl);
         }
 
-        if (mType == Type.INVOKE_LEAVE_GROUP) {
+        if (mType == Type.INVOKE_LEAVE_GROUP || mType == Type.INVOKE_ROSTER_REMOVE) {
             return conversationService.invokeLeaveOperation(conversationImpl, this);
         }
 

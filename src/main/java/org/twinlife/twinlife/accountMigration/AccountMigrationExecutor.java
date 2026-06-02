@@ -1726,8 +1726,10 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
         }
 
         // For protocol 2.0, we send the account using schema version 3 (peer is an Android which could be running twinme 17.3).
-        // For others, use schema version 4 which is compatible with iOS.
-        final int version = mPeerVersion != null && mPeerVersion.major == 2 && mPeerVersion.minor == 0 ? 3 : 4;
+        // For protocol 2.1, use schema version 4 which is compatible with iOS.
+        // For protocol 2.2 and others, use schema version 5 which adds the incarnation counter.
+        final int version = mPeerVersion == null || mPeerVersion.major > 2
+                || mPeerVersion.major == 2 && mPeerVersion.minor >= 2 ? 5 : mPeerVersion.major == 2 && mPeerVersion.minor == 1 ? 4 : 2;
         final SecuredConfiguration secureConfig = mConfigurationService.getSecuredConfiguration(TWINLIFE_SECURED_CONFIGURATION_KEY);
         final byte[] secureData = secureConfig.getData();
         final byte[] accountData = mTwinlifeImpl.getAccountServiceImpl().exportForMigration(version);

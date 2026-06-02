@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2024 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -57,6 +57,11 @@ import java.util.concurrent.TimeUnit;
 /**
  * P2P connection management for the account migration service between two peers.
  *
+ * Protocol version 2.2.0 - backup support
+ *  Date: 2026/05/28
+ *    AccountSecuredConfiguration has a new schema version 5 that we must use if the peer supports 2.2.0
+ *    but we must send the schema version 4 for others.
+ *
  * Protocol version 2.1.0 - iOS support
  *  Date: 2024/07/09
  *    AccountSecuredConfiguration has a new schema version 4 that we must use if the peer supports 2.1.0
@@ -80,7 +85,7 @@ abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServi
     private static final boolean DEBUG = false;
 
     private static final String VERSION_PREFIX = "AccountMigration.";
-    private static final String VERSION = "2.1.0";
+    private static final String VERSION = "2.2.0";
     private static final int MIN_PROTOCOL_VERSION = 2;
     private static final int CONNECT_TIMEOUT = 20;
     private static final int RECONNECT_TIMEOUT = 10;

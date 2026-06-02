@@ -341,7 +341,8 @@ public class ObjectDescriptorImpl extends DescriptorImpl implements Conversation
     // Private Methods
     //
 
-    private ObjectDescriptorImpl(@NonNull DescriptorImpl descriptorImpl, @NonNull String message, boolean copyAllowed) {
+    // TODO POLL: make private once PollDescriptorImpl is properly handled by the UI.
+    public ObjectDescriptorImpl(@NonNull DescriptorImpl descriptorImpl, @NonNull String message, boolean copyAllowed) {
 
         super(descriptorImpl);
 

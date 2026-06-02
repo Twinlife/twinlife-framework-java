@@ -14,6 +14,8 @@ import android.util.Pair;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.twinlife.twinlife.util.Utils;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -25,6 +27,39 @@ public interface CryptoService extends BaseService<BaseService.ServiceObserver> 
     int USE_SECRET2 = 0x02;
     int NEW_SECRET1 = 0x10;
     int NEW_SECRET2 = 0x20;
+
+    class PublicKeyData {
+        @NonNull
+        public final Object publicKey;
+
+        public byte[] asBytes() {
+            return publicKey instanceof byte[] ? (byte[])publicKey : Utils.decodeBase64URL(publicKey.toString());
+        }
+
+        @Nullable
+        public String asString() {
+            return publicKey instanceof String ? (String) publicKey : Utils.encodeBase64URL((byte[])publicKey);
+        }
+
+        public boolean isEmpty() {
+            return publicKey instanceof byte[] ? ((byte[])publicKey).length == 0 : asString() == null;
+        }
+
+        public static PublicKeyData create(@Nullable String publicKey) {
+            return publicKey == null ? null : new PublicKeyData(publicKey);
+        }
+
+        public static PublicKeyData create(@Nullable byte[] publicKey) {
+            return publicKey == null ? null : new PublicKeyData(publicKey);
+        }
+
+        private PublicKeyData(@NonNull String publicKey) {
+            this.publicKey = publicKey;
+        }
+        private PublicKeyData(@NonNull byte[] publicKey) {
+            this.publicKey = publicKey;
+        }
+    }
 
     class CryptoServiceServiceConfiguration extends BaseServiceConfiguration {
 
@@ -70,6 +105,15 @@ public interface CryptoService extends BaseService<BaseService.ServiceObserver> 
     String getPublicKey(@NonNull TwincodeOutbound twincodeOutbound);
 
     /**
+     * Get the public key as raw content.
+     *
+     * @param twincodeOutbound the twincode.
+     * @return the public key or null if it does not exist.
+     */
+    @Nullable
+    byte[] getRawPublicKey(@NonNull TwincodeOutbound twincodeOutbound);
+
+    /**
      * Sign the twincode attributes by using the twincode private key.
      *
      * @param twincodeOutbound the twincode to use.
@@ -93,13 +137,56 @@ public interface CryptoService extends BaseService<BaseService.ServiceObserver> 
      * the twincode (that SHA is extracted from the signature) and the public encryption key if there is one.
      */
     @NonNull
-    VerifyResult verify(@NonNull String publicKey, @NonNull UUID twincodeId,
+    VerifyResult verify(@NonNull PublicKeyData publicKey, @NonNull UUID twincodeId,
                         @NonNull List<AttributeNameValue> attributes,
                         @NonNull byte[] signature);
     @NonNull
     VerifyResult verify(@NonNull TwincodeOutbound twincodeOutbound,
                         @NonNull List<AttributeNameValue> attributes,
                         @NonNull byte[] signature);
+
+    /**
+     * Sign the content with the twincode private signing key.
+     *
+     * @param twincodeOutbound the twincode used to sign.
+     * @param content the content to sign.
+     * @return the base64URL signature or null if there is a problem.
+     */
+    @Nullable
+    String signContent(@NonNull TwincodeOutbound twincodeOutbound, @NonNull byte[] content);
+
+    /**
+     * Sign the content with the twincode private signing key.
+     *
+     * @param twincodeOutbound the twincode used to sign.
+     * @param content the content to sign.
+     * @return the base64URL signature or null if there is a problem.
+     */
+    @Nullable
+    byte[] signContentRaw(@NonNull TwincodeOutbound twincodeOutbound, @NonNull byte[] content);
+
+    /**
+     * Verify the signature of the given content with the twincode public key.
+     *
+     * @param twincodeOutbound the twincode used to sign.
+     * @param content the content to sign.
+     * @param signature the signature to verify.
+     * @return SUCCESS if the signature is valid or an error code.
+     */
+    @NonNull
+    ErrorCode verifyContent(@NonNull TwincodeOutbound twincodeOutbound, @NonNull byte[] content,
+                            @NonNull String signature);
+    /**
+     * Verify the signature of the given content with the twincode public key.
+     *
+     * @param keyId the key identifier that was used to sign.
+     * @param publicKey the public key that was used (Ed25519).
+     * @param content the content to sign.
+     * @param signature the signature to verify.
+     * @return SUCCESS if the signature is valid or an error code.
+     */
+    @NonNull
+    ErrorCode verifyContent(@NonNull UUID keyId, @NonNull PublicKeyData publicKey, @NonNull byte[] content, @NonNull byte[] signature);
 
     class CipherResult {
         @NonNull
@@ -138,7 +225,7 @@ public interface CryptoService extends BaseService<BaseService.ServiceObserver> 
         @Nullable
         public final byte[] secretKey;
         @Nullable
-        public final String publicKey;
+        public final PublicKeyData publicKey;
         @NonNull
         public final TrustMethod trustMethod;
 
@@ -150,14 +237,14 @@ public interface CryptoService extends BaseService<BaseService.ServiceObserver> 
 
         @NonNull
         public static DecipherResult ok(@Nullable List<AttributeNameValue> attributes, @Nullable UUID peerTwincodeId, int keyIndex,
-                                        @Nullable byte[] secretKey, @Nullable String publicKey, @NonNull TrustMethod trustMethod) {
+                                        @Nullable byte[] secretKey, @Nullable PublicKeyData publicKey, @NonNull TrustMethod trustMethod) {
 
             return new DecipherResult(ErrorCode.SUCCESS, attributes, peerTwincodeId, keyIndex, secretKey, publicKey, trustMethod);
         }
 
         private DecipherResult(@NonNull ErrorCode errorCode, @Nullable List<AttributeNameValue> attributes,
                                @Nullable UUID peerTwincodeId, int keyIndex, @Nullable byte[] secretKey,
-                               @Nullable String publicKey, @NonNull TrustMethod trustMethod) {
+                               @Nullable PublicKeyData publicKey, @NonNull TrustMethod trustMethod) {
             this.errorCode = errorCode;
             this.attributes = attributes;
 

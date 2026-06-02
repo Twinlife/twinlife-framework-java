@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2025 twinlife SA.
+ *  Copyright (c) 2015-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -28,6 +28,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.ConversationService;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.DisplayCallsMode;
 import org.twinlife.twinlife.Filter;
@@ -36,10 +37,12 @@ import org.twinlife.twinlife.PeerConnectionService;
 import org.twinlife.twinlife.PeerConnectionService.SdpEncryptionStatus;
 import org.twinlife.twinlife.PeerConnectionService.StatType;
 import org.twinlife.twinlife.PeerConnectionService.DataChannelConfiguration;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.PushNotificationContent;
 import org.twinlife.twinlife.Offer;
 import org.twinlife.twinlife.OfferToReceive;
 import org.twinlife.twinlife.RepositoryObject;
+import org.twinlife.twinlife.RosterMember;
 import org.twinlife.twinlife.TerminateReason;
 import org.twinlife.twinlife.Serializer;
 import org.twinlife.twinlife.SerializerException;
@@ -78,6 +81,7 @@ import org.twinlife.twinlife.util.SerializerFactoryImpl;
 import org.twinlife.twinlife.util.ServiceErrorIQ;
 import org.twinlife.twinlife.util.ServiceRequestIQ;
 import org.twinlife.twinlife.util.ServiceResultIQ;
+import org.twinlife.twinlife.util.StringUtils;
 import org.twinlife.twinlife.util.Utils;
 import org.webrtc.AudioTrack;
 import org.webrtc.MediaStreamTrack;
@@ -115,6 +119,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     public static final int MAJOR_VERSION_2 = 2;
     public static final int MAJOR_VERSION_1 = 1;
 
+    static final int MINOR_VERSION_21 = 21; // Added PushPollIQ 2026-03
     static final int MINOR_VERSION_20 = 20; // Added UpdateObjectIQ 2025-05
     static final int MINOR_VERSION_19 = 19; // Added PushThumbnailIQ 2025-01
     static final int MINOR_VERSION_18 = 18; // Auth relations 2024-07
@@ -135,7 +140,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     public static final int MAX_MAJOR_VERSION = MAJOR_VERSION_2;
 
     // The maximum minor number that is supported by the major version 2.
-    public static final int MAX_MINOR_VERSION_2 = MINOR_VERSION_20;
+    public static final int MAX_MINOR_VERSION_2 = MINOR_VERSION_21;
     public static final int MAX_MINOR_VERSION_1 = MINOR_VERSION_0;
 
     /*
@@ -482,10 +487,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             // Make sure we have a private key and that our twincode is signed and the server knows our signature.
             // If the server does not know our signature, the peer will ignore any public key and secret from us.
             mTwincodeOutboundService.createPrivateKey(twincodeInbound, (ErrorCode errorCode, TwincodeOutbound twincodeOutbound1) -> {
-                if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
-                    return;
-                }
-
+                // Acknowledge if there is an error (if we are offline, the invocation will be tried again at next invocation).
                 if (errorCode != ErrorCode.SUCCESS) {
                     mTwincodeInboundService.acknowledgeInvocation(invocation.invocationId, errorCode);
                     return;
@@ -494,10 +496,6 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                 mTwincodeOutboundService.secureInvokeTwincode(twincodeOutbound, twincodeOutbound, peerTwincodeOutbound,
                         TwincodeOutboundService.INVOKE_URGENT | TwincodeOutboundService.CREATE_NEW_SECRET,
                         ConversationProtocol.ACTION_REFRESH_SECRET, attributes, (ErrorCode invokeErrorCode, UUID invocationId) -> {
-                            Log.e(LOG_TAG, "Secure invoke result=" + errorCode);
-                            if (invokeErrorCode == ErrorCode.TWINLIFE_OFFLINE) {
-                                return;
-                            }
                             mTwincodeInboundService.acknowledgeInvocation(invocation.invocationId, invokeErrorCode);
                         });
             });
@@ -555,10 +553,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             mTwincodeOutboundService.getSignedTwincodeWithSecret(peerTwincodeOutboundId, invocation.publicKey, invocation.keyIndex, invocation.secretKey, TrustMethod.PEER,
                     (ErrorCode errorCode, TwincodeOutbound peerTwincodeOutbound) -> {
 
-                // If we are offline or timed out don't acknowledge the invocation.
-                if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
-                    return;
-                }
+                // If we are offline or timed out also acknowledge the invocation it will be tried again at next connection.
                 if (peerTwincodeOutbound == null || errorCode != ErrorCode.SUCCESS) {
                     mTwincodeInboundService.acknowledgeInvocation(invocation.invocationId, errorCode);
                     return;
@@ -593,12 +588,9 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
                     mTwincodeOutboundService.secureInvokeTwincode(twincodeOutbound, twincodeOutbound, peerTwincodeOutbound, invokeOptions,
                             nextAction, invocation.attributes,
-                            (ErrorCode lErrorCode, UUID secureInvocationId) -> {
-                                // If we are offline or timed out don't acknowledge the invocation.
-                                if (lErrorCode == ErrorCode.TWINLIFE_OFFLINE) {
-                                    return;
-                                }
-                                mTwincodeInboundService.acknowledgeInvocation(invocation.invocationId, errorCode);
+                            (ErrorCode invokeErrorCode, UUID secureInvocationId) -> {
+                                // If we are offline or timed out also acknowledge the invocation it will be tried again at next connection.
+                                mTwincodeInboundService.acknowledgeInvocation(invocation.invocationId, invokeErrorCode);
                             });
                 }
             });
@@ -685,7 +677,8 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         addPacketListener(OnPushTwincodeIQ.IQ_ON_PUSH_TWINCODE_SERIALIZER, this::processOnPushTwincodeIQ);
 
         // Push geolocation
-        addPacketListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER, this::processPushGeolocationIQ);
+        addPacketListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_2, this::processPushGeolocationIQ);
+        addPacketListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_3, this::processPushGeolocationIQ);
         addPacketListener(OnPushGeolocationIQ.IQ_ON_PUSH_GEOLOCATION_SERIALIZER, this::processOnPushGeolocationIQ);
 
         // Push file
@@ -694,6 +687,10 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         addPacketListener(OnPushFileIQ.IQ_ON_PUSH_FILE_SERIALIZER, this::processOnPushFileIQ);
         addPacketListener(PushFileChunkIQ.IQ_PUSH_FILE_CHUNK_SERIALIZER, this::processPushFileChunkIQ);
         addPacketListener(OnPushFileChunkIQ.IQ_ON_PUSH_FILE_CHUNK_SERIALIZER, this::processOnPushFileChunkIQ);
+
+        // Push poll
+        addPacketListener(PushPollIQ.IQ_PUSH_POLL_SERIALIZER, this::processPushPollIQ);
+        addPacketListener(OnPushPollIQ.IQ_ON_PUSH_POLL_SERIALIZER, this::processOnPushPollIQ);
 
         // Update timestamps
         addPacketListener(UpdateTimestampIQ.IQ_UPDATE_TIMESTAMPS_SERIALIZER, this::processUpdateTimestampIQ);
@@ -1561,7 +1558,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         }
 
         // Create one object descriptor for the conversation.
-        final ObjectDescriptorImpl objectDescriptorImpl = (ObjectDescriptorImpl) mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
+        final ObjectDescriptorImpl objectDescriptorImpl = mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
             final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
             final ObjectDescriptorImpl result = new ObjectDescriptorImpl(descriptorId, cid, expireTimeout, sendTo, replyTo, message, copyAllowed);
 
@@ -1744,7 +1741,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     @Override
     public void pushGeolocation(long requestId, @NonNull Conversation conversation, @Nullable UUID sendTo,
                                 @Nullable DescriptorId replyTo, double longitude, double latitude, double altitude,
-                                double mapLongitudeDelta, double mapLatitudeDelta, @Nullable Uri localMapPath, long expiration) {
+                                double mapLongitudeDelta, double mapLatitudeDelta, @Nullable Uri localMapPath, long expiration, boolean copyAllowed) {
         if (DEBUG) {
             Log.d(LOG_TAG, "pushGeolocation: requestId=" + requestId + " conversation=" + conversation
                     + " sendTo=" + sendTo + " replyTo=" + replyTo
@@ -1777,10 +1774,10 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         final List<ConversationImpl> conversations = getConversations(conversation, sendTo);
 
         // Create one object descriptor for the conversation.
-        final GeolocationDescriptorImpl descriptorImpl = (GeolocationDescriptorImpl) mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
+        final GeolocationDescriptorImpl descriptorImpl = mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
             final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
             final GeolocationDescriptorImpl result = new GeolocationDescriptorImpl(descriptorId, cid, expiration,
-                    longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta);
+                    longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, copyAllowed);
             if (localMapPath != null) {
                 result.setLocalMapPath(sequenceId + ".jpg");
             }
@@ -1923,7 +1920,8 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
     @Override
     public void pushTwincode(long requestId, @NonNull Conversation conversation, @Nullable UUID sendTo, @Nullable DescriptorId replyTo,
-                             @NonNull UUID twincodeId, @NonNull UUID schemaId, @Nullable String publicKey, boolean copyAllowed, long expireTimeout) {
+                             @NonNull UUID twincodeId, @NonNull UUID schemaId, @Nullable CryptoService.PublicKeyData publicKey,
+                             boolean copyAllowed, long expireTimeout) {
         if (DEBUG) {
             Log.d(LOG_TAG, "pushTwincode: requestId=" + requestId + " conversation=" + conversation
                     + " sendTo=" + sendTo + " replyTo=" + replyTo + " twincodeId=" + twincodeId
@@ -1956,7 +1954,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         final List<ConversationImpl> conversations = getConversations(conversation, sendTo);
 
         // Create one twincode descriptor for the conversation.
-        final TwincodeDescriptorImpl descriptorImpl = (TwincodeDescriptorImpl) mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
+        final TwincodeDescriptorImpl descriptorImpl = mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
             final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
             final TwincodeDescriptorImpl result = new TwincodeDescriptorImpl(descriptorId, cid,
                     expireTimeout, sendTo, replyTo, twincodeId, schemaId, publicKey, copyAllowed);
@@ -1987,6 +1985,61 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
         // Notify push operation was queued.
         notifyPushDescriptor(requestId, conversation, descriptorImpl);
+    }
+
+    @Override
+    public void pushPoll(long requestId, @NonNull Conversation conversation, boolean multipleChoicesAllowed, @NonNull String question, @NonNull List<PollDescriptor.Choice> choices, boolean copyAllowed, long expireTimeout) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "pushPoll: requestId=" + requestId + " conversation=" + conversation + " multipleChoicesAllowed=" + multipleChoicesAllowed + " question=" + question + " choices=" + choices + " copyAllowed=" + copyAllowed + " expireTimeout=" + expireTimeout);
+        }
+
+        if (!isServiceOn()) {
+
+            return;
+        }
+
+        if (!conversation.hasPermission(Permission.SEND_MESSAGE)) {
+            onError(requestId, ErrorCode.NO_PERMISSION, null);
+
+            return;
+        }
+
+        final List<ConversationImpl> conversations = getConversations(conversation, null);
+
+        final PollDescriptorImpl pollDescriptor = mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
+
+            String formattedQuestion = StringUtils.formatPollString(question);
+            // Choice labels are automatically formatted.
+
+            final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
+            final PollDescriptorImpl result = new PollDescriptorImpl(descriptorId, cid, expireTimeout, multipleChoicesAllowed, formattedQuestion, choices, copyAllowed);
+
+            // If we try to send on a group with no peer, mark a send failure (ie, we are the only one in the group!).
+            if (conversations.isEmpty()) {
+                result.setSentTimestamp(-1);
+            }
+            return result;
+        });
+
+        if (pollDescriptor == null) {
+            onError(requestId, ErrorCode.NO_STORAGE_SPACE, null);
+            return;
+        }
+
+        if (!conversations.isEmpty()) {
+            final Map<ConversationImpl, Object> pendingOperations = new HashMap<>();
+            for (final ConversationImpl conversationImpl : conversations) {
+                conversationImpl.touch();
+                conversationImpl.setIsActive(true);
+
+                final PushPollOperation pushObjectOperation = new PushPollOperation(conversationImpl, pollDescriptor);
+                pendingOperations.put(conversationImpl, pushObjectOperation);
+            }
+            addOperations(pendingOperations);
+        }
+
+        // Notify push operation was queued.
+        notifyPushDescriptor(requestId, conversation, pollDescriptor);
     }
 
     @Override
@@ -2047,6 +2100,14 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             }
             updateFlags = UpdateDescriptorOperation.buildFlags(null, copyAllowed, expiration);
 
+        } else if (descriptorImpl instanceof GeolocationDescriptorImpl) {
+            final GeolocationDescriptorImpl geolocationDescriptor = (GeolocationDescriptorImpl) descriptorImpl;
+
+            if (!geolocationDescriptor.setCopyAllowed(copyAllowed)) {
+                copyAllowed = null;
+            }
+
+            updateFlags = UpdateDescriptorOperation.buildFlags(null, copyAllowed, expiration);
         } else {
             onError(requestId, ErrorCode.BAD_REQUEST, null);
             return;
@@ -2229,7 +2290,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
         if (callDescriptorImpl == null) {
             // Create the call descriptor for the conversation.
-            callDescriptorImpl = (CallDescriptorImpl) mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
+            callDescriptorImpl = mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
                 final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
                 final CallDescriptorImpl descriptor = new CallDescriptorImpl(descriptorId, cid, true, true, startDate);
                 descriptor.setReadTimestamp(startDate);
@@ -2983,7 +3044,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
     @Override
     @NonNull
-    public ErrorCode setPermissions(@NonNull RepositoryObject group, @Nullable UUID memberTwincodeId, long permissions) {
+    public ErrorCode setPermissions(@NonNull RepositoryObject group, @Nullable UUID memberTwincodeId, @Nullable List<Permission> permissions) {
         if (DEBUG) {
             Log.d(LOG_TAG, "setPermissions: group=" + group + " memberTwincodeId=" + memberTwincodeId);
         }
@@ -2993,6 +3054,20 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         }
 
         return mGroupManager.setPermissions(group, memberTwincodeId, permissions);
+    }
+
+    @NonNull
+    public ErrorCode refreshGroup(@NonNull RepositoryObject group, @NonNull List<RosterMember> members,
+                                  @NonNull Map<UUID, TwincodeOutbound> memberTwincodes) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "refreshGroup: group=" + group + " members=" + members);
+        }
+
+        if (!isServiceOn()) {
+            return ErrorCode.SERVICE_UNAVAILABLE;
+        }
+
+        return mGroupManager.refreshGroup(group, members, memberTwincodes);
     }
 
     @NonNull
@@ -3131,6 +3206,9 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             Log.d(LOG_TAG, "invokeLeaveOperation conversationImpl=" + conversationImpl + " groupOperation=" + groupOperation);
         }
 
+        if (groupOperation.getType() == Operation.Type.INVOKE_ROSTER_REMOVE) {
+            return mGroupManager.invokeDeleteRosterMember(conversationImpl, groupOperation);
+        }
         return mGroupManager.invokeLeaveOperation(conversationImpl, groupOperation);
     }
 
@@ -3153,6 +3231,8 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             descriptorImpl.setReceivedTimestamp(-1);
             descriptorImpl.setReadTimestamp(-1);
             updateDescriptor(descriptorImpl, connection.getConversation());
+
+            mServiceProvider.setAnnotation(descriptorImpl, connection.getConversation().getTwincodeOutbound(), AnnotationType.ERROR, ErrorCode.fromErrorCode(ErrorCode.FEATURE_NOT_SUPPORTED_BY_PEER));
         }
 
         return ErrorCode.FEATURE_NOT_SUPPORTED_BY_PEER;
@@ -3675,8 +3755,9 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
 
             conversationImpl = memberConversationImpl;
         }
+
+        boolean updated = false;
         if (peerResourceId != null && !peerResourceId.equals(Twincode.NOT_DEFINED)) {
-            boolean updated = false;
             boolean hardReset = false;
 
             UUID lResourceId = conversationImpl.getPeerResourceId();
@@ -3729,8 +3810,15 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             // Update after the hard reset to make sure it was made completely (if it was interrupted, we will do it again).
             if (updated) {
                 conversationImpl.setPeerResourceId(peerResourceId);
-                mServiceProvider.updateConversation(conversationImpl, null);
             }
+        }
+
+        // Record whether the peer supports the conversation service 2.21 with the secure roster service.
+        if (connection.isSupported(MAJOR_VERSION_2, MINOR_VERSION_21) && conversationImpl.setVersion21()) {
+            updated = true;
+        }
+        if (updated) {
+            mServiceProvider.updateConversation(conversationImpl, null);
         }
 
         connection.touch();
@@ -4835,6 +4923,12 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     updated = fileDescriptor.setCopyAllowed(updateDescriptorIQ.copyAllowed);
                     updated |= fileDescriptor.setExpireTimeout(updateDescriptorIQ.expiredTimeout);
                     updateType = UpdateType.PROTECTION;
+                }  else if (descriptor instanceof GeolocationDescriptorImpl) {
+                    final GeolocationDescriptorImpl geolocationDescriptor = (GeolocationDescriptorImpl) descriptor;
+
+                    updated = geolocationDescriptor.setCopyAllowed(updateDescriptorIQ.copyAllowed);
+                    updated |= geolocationDescriptor.setExpireTimeout(updateDescriptorIQ.expiredTimeout);
+                    updateType = UpdateType.PROTECTION;
                 } else {
                     updated = false;
                     updateType = UpdateType.PROTECTION;
@@ -5365,6 +5459,29 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         connection.sendMessage(StatType.IQ_RESULT_PUSH_TWINCODE, data);
     }
 
+    private void processPushPollIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processPushPollIQ: connection=" + connection + " iq=" + iq);
+        }
+
+        final PushPollIQ pushPollIQ = (PushPollIQ) iq;
+        final ConversationImpl conversationImpl = connection.getConversation();
+        PollDescriptorImpl pollDescriptorImpl = pushPollIQ.pollDescriptorImpl;
+
+        // Verify that the user can send us messages.
+        if (conversationImpl.hasPermission(Permission.SEND_MESSAGE)) {
+            popDescriptor(pollDescriptorImpl, connection);
+        } else {
+            // Send him back a receive failure.
+            pollDescriptorImpl.setReceivedTimestamp(-1);
+        }
+
+        int deviceState = getDeviceState(connection);
+        OnPushIQ onPushPollIQ = new OnPushIQ(OnPushPollIQ.IQ_ON_PUSH_POLL_SERIALIZER, pushPollIQ.getRequestId(), deviceState, pollDescriptorImpl.getReceivedTimestamp());
+
+        connection.sendPacket(StatType.IQ_RESULT_PUSH_POLL, onPushPollIQ);
+    }
+
     private void processUpdateAnnotationIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
         if (DEBUG) {
             Log.d(LOG_TAG, "processUpdateAnnotationIQ: connection=" + connection + " iq=" + iq);
@@ -5376,35 +5493,22 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         final DescriptorImpl descriptorImpl = mServiceProvider.loadDescriptorImpl(updateAnnotationIQ.descriptorId);
         if (descriptorImpl != null) {
             boolean modified = false;
-            final Set<TwincodeOutbound> annotatingUsers = new HashSet<>();
+            final Map<TwincodeOutbound, Set<DescriptorAnnotation>> updatedAnnotations = new HashMap<>();
             for (final Map.Entry<UUID, List<DescriptorAnnotation>> annotationEntry : updateAnnotationIQ.annotations.entrySet()) {
                 final UUID peerTwincodeOutboundId = annotationEntry.getKey();
-                final List<DescriptorAnnotation> list = new ArrayList<>(annotationEntry.getValue());
-
-                // Make sure setAnnotations() doesn't delete our read/received annotations.
-                Map<TwincodeOutbound, List<DescriptorAnnotation>> existingAnnotations = listAnnotations(descriptorImpl.getDescriptorId());
-                if (existingAnnotations != null) {
-                    List<DescriptorAnnotation> peerExistingAnnotations = existingAnnotations.get(conversationImpl.getPeerTwincodeOutbound());
-                    if (peerExistingAnnotations != null) {
-                        for (DescriptorAnnotation annotation : peerExistingAnnotations) {
-                            if (annotation.getType() == AnnotationType.RECEIVED || annotation.getType() == AnnotationType.READ) {
-                                list.add(annotation);
-                            }
-                        }
-                    }
-                }
+                final List<DescriptorAnnotation> list = annotationEntry.getValue();
 
                 // A twinroom engine can send us back our annotations but we don't want to insert them again.
                 if (!peerTwincodeOutboundId.equals(conversationImpl.getTwincodeOutboundId())) {
-                    modified |= mServiceProvider.setAnnotations(descriptorImpl, peerTwincodeOutboundId, list, annotatingUsers);
+                    modified |= mServiceProvider.setAnnotations(descriptorImpl, peerTwincodeOutboundId, list, updatedAnnotations);
                 }
             }
-            if (modified && !annotatingUsers.isEmpty()) {
+            if (modified && !updatedAnnotations.isEmpty()) {
 
                 for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
                     mTwinlifeExecutor.execute(() -> {
-                        for (TwincodeOutbound twincodeOutbound : annotatingUsers) {
-                            serviceObserver.onUpdateAnnotation(DEFAULT_REQUEST_ID, conversationImpl, descriptorImpl, twincodeOutbound);
+                        for (Map.Entry<TwincodeOutbound, Set<DescriptorAnnotation>> peerAnnotations : updatedAnnotations.entrySet()) {
+                            serviceObserver.onUpdateAnnotation(DEFAULT_REQUEST_ID, conversationImpl, descriptorImpl, peerAnnotations.getKey(), peerAnnotations.getValue());
                         }
                     });
                 }
@@ -5494,29 +5598,36 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     return;
                 }
 
-                final GroupConversationManager.JoinResult joinResult;
+                final Consumer<GroupConversationManager.JoinResult> consumer = (errorCode2, joinResult) -> {
+                    if (errorCode2 == ErrorCode.TWINLIFE_OFFLINE) {
+                        close(connection, false, connection.getPeerConnectionId(), TerminateReason.CONNECTIVITY_ERROR);
+                        return;
+                    }
+
+                    final int deviceState = getDeviceState(connection);
+                    final SignatureInfoIQ signatureInfo = joinResult != null && joinResult.inviterMemberTwincode != null ? mCryptoService.getSignatureInfoIQ(joinResult.inviterMemberTwincode, twincodeOutbound, false) : null;
+                    final OnJoinGroupIQ onJoinGroupIQ;
+                    if (signatureInfo != null) {
+                        mCryptoService.validateSecrets(joinResult.inviterMemberTwincode, twincodeOutbound);
+                        // User joined the group
+                        onJoinGroupIQ = OnJoinGroupIQ.ok(joinGroupIQ.getRequestId(), deviceState,
+                                signatureInfo, joinResult.inviterPermissions, joinResult.memberPermissions,
+                                null, joinResult.signature, joinResult.members);
+                    } else {
+                        // Invitation was withdrawn.
+                        onJoinGroupIQ = OnJoinGroupIQ.fail(joinGroupIQ.getRequestId(), deviceState);
+                    }
+                    connection.sendPacket(StatType.IQ_RESULT_JOIN_GROUP, onJoinGroupIQ);
+                };
+
                 if (twincodeOutbound != null) {
-                    joinResult = mGroupManager.processJoinGroup(conversationImpl, joinGroupIQ.groupTwincodeId,
-                            joinGroupIQ.invitationDescriptorId, twincodeOutbound, joinGroupIQ.publicKey);
+                    mGroupManager.processJoinGroupAsync(conversationImpl, joinGroupIQ.groupTwincodeId,
+                            joinGroupIQ.invitationDescriptorId, twincodeOutbound, joinGroupIQ.publicKey, consumer);
                 } else {
                     mGroupManager.processRejectJoinGroup(conversationImpl, joinGroupIQ.invitationDescriptorId);
-                    joinResult = null;
+                    consumer.onGet(ErrorCode.SUCCESS, null);
                 }
 
-                final int deviceState = getDeviceState(connection);
-                final SignatureInfoIQ signatureInfo = joinResult != null && joinResult.inviterMemberTwincode != null ? mCryptoService.getSignatureInfoIQ(joinResult.inviterMemberTwincode, twincodeOutbound, false) : null;
-                final OnJoinGroupIQ onJoinGroupIQ;
-                if (signatureInfo != null) {
-                    mCryptoService.validateSecrets(joinResult.inviterMemberTwincode, twincodeOutbound);
-                    // User joined the group
-                    onJoinGroupIQ = OnJoinGroupIQ.ok(joinGroupIQ.getRequestId(), deviceState,
-                            signatureInfo, joinResult.inviterPermissions, joinResult.memberPermissions,
-                            null, joinResult.signature, joinResult.members);
-                } else {
-                    // Invitation was withdrawn.
-                    onJoinGroupIQ = OnJoinGroupIQ.fail(joinGroupIQ.getRequestId(), deviceState);
-                }
-                connection.sendPacket(StatType.IQ_RESULT_JOIN_GROUP, onJoinGroupIQ);
             });
         } else {
             // Invitation was refused.
@@ -5569,7 +5680,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     result = null;
                 } else if (descriptorId != null) {
                     // Accept the invitation.
-                    result = mGroupManager.processJoinGroup(conversationImpl, groupTwincodeId, descriptorId, twincodeOutbound, null);
+                    result = mGroupManager.processJoinGroupLegacy(conversationImpl, groupTwincodeId, descriptorId, twincodeOutbound);
 
                     // We must add the inviter twincode in the result list for the Legacy OnJoinIQ.
                     if (result != null && result.inviterMemberTwincode != null) {
@@ -5577,7 +5688,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     }
                 } else {
                     // A new member has joined the group (invited by someone else).
-                    result = mGroupManager.processJoinGroup(groupTwincodeId, twincodeOutbound, joinGroupIQ.permissions);
+                    result = mGroupManager.processJoinGroupLegacy(groupTwincodeId, twincodeOutbound, joinGroupIQ.permissions);
                 }
                 try {
                     final OnResultJoinIQ onJoinGroupIQ;
@@ -6350,6 +6461,33 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                 }
 
                 setTimestampAnnotation(twincodeDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushTwincodeIQ.receivedTimestamp));
+            }
+        }
+
+        mScheduler.finishOperation(operation, connection);
+    }
+
+    private void processOnPushPollIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processOnPushPollIQ: connection=" + connection + " iq=" + iq);
+        }
+
+        final OnPushIQ onPushPollIQ = (OnPushIQ) iq;
+        final ConversationImpl conversationImpl = connection.getConversation();
+        connection.setPeerDeviceState(onPushPollIQ.deviceState);
+
+        final Operation operation = mScheduler.getOperation(conversationImpl.getDatabaseId(), onPushPollIQ.getRequestId());
+        if (operation instanceof PushPollOperation) {
+            PushPollOperation pushPollOperation = (PushPollOperation) operation;
+            PollDescriptorImpl pollDescriptorImpl = pushPollOperation.getPollDescriptorImpl();
+
+            // Update the received timestamp only the first time.
+            if (pollDescriptorImpl != null) {
+                if (pollDescriptorImpl.getReceivedTimestamp() <= 0) {
+                    pollDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushPollIQ.receivedTimestamp));
+                    updateDescriptor(pollDescriptorImpl, conversationImpl);
+                }
+                setTimestampAnnotation(pollDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushPollIQ.receivedTimestamp));
             }
         }
 
@@ -7439,9 +7577,9 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             }
         }
 
-        peerAnnotations.add(new DescriptorAnnotation(annotationType, timestamp, 1));
+        peerAnnotations.add(new DescriptorAnnotation(annotationType, timestamp));
 
-        mServiceProvider.setAnnotations(descriptor, peerTwincodeOutbound.getId(), peerAnnotations, new HashSet<>());
+        mServiceProvider.setAnnotations(descriptor, peerTwincodeOutbound.getId(), peerAnnotations, new HashMap<>());
     }
 
     /**

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -85,7 +85,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
 
     private static final int CONNECT_REPORT_VERSION = 2;
     private static final int STATS_REPORT_VERSION = 2;
-    private static final int IQ_REPORT_VERSION = 5;
+    private static final int IQ_REPORT_VERSION = 6;
     private static final int AUDIO_REPORT_VERSION = 2;
     private static final int VIDEO_REPORT_VERSION = 2;
 
@@ -106,6 +106,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             StatType.IQ_SET_PUSH_TWINCODE,
             StatType.IQ_SET_SYNCHRONIZE,
             StatType.IQ_SET_SIGNATURE_INFO,
+            StatType.IQ_SET_PUSH_POLL,
             StatType.IQ_ERROR
     };
 
@@ -125,7 +126,8 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             StatType.IQ_RESULT_PUSH_GEOLOCATION,
             StatType.IQ_RESULT_PUSH_TWINCODE,
             StatType.IQ_RESULT_SYNCHRONIZE,
-            StatType.IQ_RESULT_SIGNATURE_INFO
+            StatType.IQ_RESULT_SIGNATURE_INFO,
+            StatType.IQ_RESULT_PUSH_POLL
     };
 
     // Defines the content of the 'recv_report' and order in which these counters are reported.
@@ -156,6 +158,14 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
 
     /*
      * <pre>
+     * Date: 2026/05/13
+     *  changes: added IQ stat push-poll
+     *  iqReport: version 6
+     *  iq_report = version:set:set_report:result:result_report:recv:recv_report:sdp:sdp_report:padding_flag:error_report
+     *  sdp_report = sdp-receive-clear:sdp-send-clear:sdp-receive-encrypted:sdp-send-encrypted
+     *  padding_flag = ':P' if leading padding
+     *  error_report = err:serialize-error-count:send-error-count:audio-track-error:video-track-error
+     *
      * Date: 2024/12/16
      *  changes: added error report and padding flag
      *  iqReport: version 5
@@ -414,6 +424,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
     private PeerConnectionFactory mPeerConnectionFactory = null;
     private boolean mInitialized = false;
     private boolean mTerminated = false;
+    private boolean mServerNotified = false;
     private final AtomicInteger mRenegotiationNeeded = new AtomicInteger(1);
     private final AtomicInteger mRenegotiationPending = new AtomicInteger(0);
     @Nullable
@@ -1490,7 +1501,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
 
         if (mInitiator) {
 
-            return true;
+            return mServerNotified;
         }
 
         return mPeerId.indexOf('/') > 0;
@@ -1736,6 +1747,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
                     return;
                 }
 
+                mServerNotified = true;
                 onSendServer(status, requestId);
             });
         }

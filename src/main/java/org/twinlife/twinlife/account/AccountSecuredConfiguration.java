@@ -36,6 +36,31 @@ import java.util.UUID;
 
 /**
  * <pre>
+ * Schema version 5: added incarnation number for backup
+ *  Date: 2026/01/01
+ *
+ * {
+ *  "type":"enum",
+ *  "name":"AccountServiceAuthenticationAuthority",
+ *  "namespace":"org.twinlife.schemas",
+ *  "symbols" : ["Device", "Twinlife", "Unregistered", "Disabled"]
+ * }
+ * {
+ *  "type":"record",
+ *  "name":"AccountServiceSecuredConfiguration",
+ *  "namespace":"org.twinlife.schemas.services",
+ *  "fields":
+ *  [
+ *   {"name":"schemaId", "type":"uuid"},
+ *   {"name":"schemaVersion", "type":"int"}
+ *   {"name":"authenticationAuthority", "type":"org.twinlife.schemas.AccountServiceAuthenticationAuthority"}
+ *   {"name":"isSignOut", "type":"boolean"}
+ *   {"name":"deviceUsername", [null, "type":"string"]}
+ *   {"name":"devicePassword", [null, "type":"string"]}
+ *   {"name":"subscribedFeatures", [null, "type":"string"]}
+ *   {"name":"environmentId", [null, "type":"uuid"]}
+ *   {"name":"incarnationCount", "type":"int"}
+ * }
  *
  * Schema version 4: same as version 3 (required for iOS compatibility)
  *  Date: 2024/07/09
@@ -717,7 +742,9 @@ class AccountSecuredConfiguration {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream(SERIALIZER_BUFFER_DEFAULT_SIZE);
         BinaryEncoder binaryEncoder = new BinaryEncoder(outputStream);
         try {
-            if (version == 4) {
+            if (version == 5) {
+                AccountSecuredConfiguration.SERIALIZER_5.serialize(serializerFactory, binaryEncoder, this);
+            } else if (version == 4) {
                 AccountSecuredConfiguration.SERIALIZER_4.serialize(serializerFactory, binaryEncoder, this);
             } else {
                 AccountSecuredConfiguration.SERIALIZER_3.serialize(serializerFactory, binaryEncoder, this);

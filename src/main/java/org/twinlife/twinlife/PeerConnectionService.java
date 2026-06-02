@@ -80,6 +80,7 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
         IQ_SET_WITHDRAW_INVITE_GROUP,
         IQ_SET_PUSH_GEOLOCATION,
         IQ_SET_PUSH_TWINCODE,
+        IQ_SET_PUSH_POLL,
         IQ_SET_SYNCHRONIZE,
         IQ_SET_SIGNATURE_INFO,
         IQ_ERROR,
@@ -97,6 +98,7 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
         IQ_RESULT_WITHDRAW_INVITE_GROUP,
         IQ_RESULT_PUSH_GEOLOCATION,
         IQ_RESULT_PUSH_TWINCODE,
+        IQ_RESULT_PUSH_POLL,
         IQ_RESULT_SYNCHRONIZE,
         IQ_RESULT_SIGNATURE_INFO,
 

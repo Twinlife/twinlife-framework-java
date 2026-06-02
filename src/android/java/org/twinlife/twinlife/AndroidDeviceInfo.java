@@ -56,12 +56,10 @@ public class AndroidDeviceInfo {
 
     public boolean isIgnoringBatteryOptimizations() {
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
+        PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
 
-            if (powerManager != null) {
-                return powerManager.isIgnoringBatteryOptimizations(mContext.getPackageName());
-            }
+        if (powerManager != null) {
+            return powerManager.isIgnoringBatteryOptimizations(mContext.getPackageName());
         }
 
         return true;

@@ -11,6 +11,7 @@ package org.twinlife.twinlife.crypto;
 import androidx.annotation.NonNull;
 
 import org.twinlife.twinlife.BuildConfig;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
 import org.twinlife.twinlife.SerializerException;
@@ -54,13 +55,13 @@ public class SignatureInfoIQ extends BinaryPacketIQ {
     @NonNull
     public final UUID twincodeOutboundId;
     @NonNull
-    public final String publicKey;
+    public final CryptoService.PublicKeyData publicKey;
     @NonNull
     public final byte[] secret;
     public final int keyIndex;
 
     SignatureInfoIQ(@NonNull BinaryPacketIQSerializer serializer, long requestId,
-                    @NonNull UUID twincodeOutboundId, @NonNull String publicKey, @NonNull byte[] secret, int keyIndex) {
+                    @NonNull UUID twincodeOutboundId, @NonNull CryptoService.PublicKeyData publicKey, @NonNull byte[] secret, int keyIndex) {
 
         super(serializer, requestId);
 
@@ -122,7 +123,7 @@ public class SignatureInfoIQ extends BinaryPacketIQ {
 
             SignatureInfoIQ signatureInfoIQ = (SignatureInfoIQ) object;
             encoder.writeUUID(signatureInfoIQ.twincodeOutboundId);
-            encoder.writeString(signatureInfoIQ.publicKey);
+            encoder.writeString(signatureInfoIQ.publicKey.asString());
             encoder.writeInt(signatureInfoIQ.keyIndex);
             encoder.writeBytes(signatureInfoIQ.secret, 0, signatureInfoIQ.secret.length);
         }
@@ -134,7 +135,7 @@ public class SignatureInfoIQ extends BinaryPacketIQ {
 
             final long requestId = decoder.readLong();
             final UUID twincodeOutboundId = decoder.readUUID();
-            final String publicKey = decoder.readString();
+            final CryptoService.PublicKeyData publicKey = CryptoService.PublicKeyData.create(decoder.readString());
             final int keyIndex = decoder.readInt();
             final byte[] secret = decoder.readBytes(null).array();
 

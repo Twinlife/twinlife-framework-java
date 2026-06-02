@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2025 twinlife SA.
+ *  Copyright (c) 2015-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -18,17 +18,22 @@ import android.util.Pair;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.twinlife.twinlife.util.StringUtils;
+
 import java.io.File;
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
 public interface ConversationService extends BaseService<ConversationService.ServiceObserver> {
 
-    String VERSION = "2.20.1";
+    String VERSION = "2.21.1";
 
     class ConversationServiceConfiguration extends BaseServiceConfiguration {
 
@@ -36,27 +41,6 @@ public interface ConversationService extends BaseService<ConversationService.Ser
 
             super(BaseServiceId.CONVERSATION_SERVICE_ID, VERSION, false);
         }
-    }
-
-    enum Permission {
-        INVITE_MEMBER,
-        UPDATE_MEMBER,
-        REMOVE_MEMBER,
-        SEND_MESSAGE,
-        SEND_IMAGE,
-        SEND_AUDIO,
-        SEND_VIDEO,
-        SEND_FILE,
-        DELETE_MESSAGE,
-        DELETE_IMAGE,
-        DELETE_AUDIO,
-        DELETE_VIDEO,
-        DELETE_FILE,
-        RESET_CONVERSATION,
-        SEND_GEOLOCATION,
-        SEND_TWINCODE,
-        RECEIVE_MESSAGE,
-        SEND_COMMAND
     }
 
     interface Conversation extends DatabaseObject {
@@ -98,6 +82,9 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         boolean hasPermission(Permission p);
 
         boolean hasPeer();
+
+        @NonNull
+        Permission getPermission();
     }
 
     interface GroupMemberConversation extends Conversation {
@@ -172,7 +159,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
          * Get the group members to which we are connected.
          *
          * @param filter a simple filter allowing to retrieve specific members.
-         * @return a set of twincode outbound ids for the members we are connected.
+         * @return a list of twincode outbound ids for the members we are connected.
          */
         List<GroupMemberConversation> getGroupMembers(MemberFilter filter);
 
@@ -181,7 +168,8 @@ public interface ConversationService extends BaseService<ConversationService.Ser
          *
          * @return the permission bitmap for users that will join the group.
          */
-        long getJoinPermissions();
+        @NonNull
+        Permission getJoinPermissions();
     }
 
     class DescriptorId implements Serializable {
@@ -272,19 +260,39 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         RECEIVED,
 
         // The descriptor was read by the peer: the getValue() gives the timestamp.
-        READ
+        READ,
+
+        /**
+         * The descriptor could not be sent: the getValues() gives the reason for the failure
+         * (encoded with {@link org.twinlife.twinlife.BaseService.ErrorCode#fromErrorCode(ErrorCode)}).
+         * Possible values are:
+         * <dl>
+         *     <dt>{@link org.twinlife.twinlife.BaseService.ErrorCode#FEATURE_NOT_SUPPORTED_BY_PEER FEATURE_NOT_SUPPORTED_BY_PEER}:</dt>
+         *     <dd>Peer's app version doesn't support the descriptor.</dd>
+         *
+         *     <dt>{@link org.twinlife.twinlife.BaseService.ErrorCode#EXPIRED EXPIRED}:</dt>
+         *     <dd>Couldn't reach the peer's device for a long period of time, so the push operation was dropped (see {@link org.twinlife.twinlife.conversation.ConversationServiceScheduler#EXPIRATION_DELAY EXPIRATION_DELAY})</dd>
+         * </ul>
+         *
+         */
+        ERROR;
+
+        /**
+         * @return true for annotation types which are set by the peer through an UpdateAnnotationIQ.
+         */
+        public boolean isFromPeer() {
+            return this == LIKE || this == POLL;
+        }
     }
 
     class DescriptorAnnotation {
         @NonNull
         private final AnnotationType mType;
-        private final int mCount;
         private final long mValue;
 
-        public DescriptorAnnotation(@NonNull AnnotationType type, long value, int count) {
+        public DescriptorAnnotation(@NonNull AnnotationType type, long value) {
             mType = type;
             mValue = value;
-            mCount = count;
         }
 
         @NonNull
@@ -293,14 +301,21 @@ public interface ConversationService extends BaseService<ConversationService.Ser
             return mType;
         }
 
-        public int getCount() {
-
-            return mCount;
-        }
-
         public long getValue() {
 
             return mValue;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || getClass() != o.getClass()) return false;
+            DescriptorAnnotation that = (DescriptorAnnotation) o;
+            return mValue == that.mValue && mType == that.mType;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(mType, mValue);
         }
     }
 
@@ -319,7 +334,8 @@ public interface ConversationService extends BaseService<ConversationService.Ser
             GEOLOCATION_DESCRIPTOR,
             TWINCODE_DESCRIPTOR,
             CALL_DESCRIPTOR,
-            CLEAR_DESCRIPTOR
+            CLEAR_DESCRIPTOR,
+            POLL_DESCRIPTOR
         }
 
         Type getType();
@@ -373,7 +389,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         DescriptorAnnotation getAnnotation(@NonNull AnnotationType type);
 
         // Get the list of annotations on this descriptor.
-        @Nullable
+        @NonNull
         List<DescriptorAnnotation> getAnnotations(@NonNull AnnotationType type);
     }
 
@@ -477,7 +493,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         String getName();
 
         @Nullable
-        String getPublicKey();
+        CryptoService.PublicKeyData getPublicKey();
 
         @NonNull
         Status getStatus();
@@ -491,9 +507,80 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         UUID getSchemaId();
 
         @Nullable
-        String getPublicKey();
+        CryptoService.PublicKeyData getPublicKey();
 
         boolean isCopyAllowed();
+    }
+
+    interface PollDescriptor extends Descriptor {
+        class Choice implements Serializable, Comparable<Choice> {
+            public final int position;
+            @NonNull
+            public final String label;
+
+            public Choice(int position, @NonNull String label) {
+                this.position = Math.max(0, position);
+                this.label = StringUtils.formatPollString(label);
+            }
+
+            public static long toAnnotationValue(@NonNull List<Choice> choices) {
+                long result = 0;
+                for (Choice choice : choices) {
+                    result |= 1L << choice.position;
+                }
+
+                return result;
+            }
+
+            @NonNull
+            public static List<Choice> fromAnnotationValue(long value, @NonNull List<Choice> choices) {
+                List<Choice> result = new ArrayList<>();
+
+                for (Choice choice : choices) {
+                    if ((value & (1L << choice.position)) != 0) {
+                        result.add(choice);
+                    }
+                }
+
+                Collections.sort(result);
+
+                return result;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                if (o == null || getClass() != o.getClass()) return false;
+                Choice choice = (Choice) o;
+                return position == choice.position && Objects.equals(label, choice.label);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(position, label);
+            }
+
+            @Override
+            public int compareTo(Choice o) {
+                return Integer.compare(this.position, o.position);
+            }
+
+            @NonNull
+            @Override
+            public String toString() {
+                return "Choice{" + position + ":" + label + "}";
+            }
+        }
+
+        @NonNull
+        String getQuestion();
+
+        @NonNull
+        List<Choice> getChoices();
+
+        boolean isMultipleChoicesAllowed();
+
+        @NonNull
+        Map<UUID, List<Choice>> getVotes();
     }
 
     enum UpdateType {
@@ -519,6 +606,8 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         String getLocalMapPath();
 
         boolean isValidLocalMap();
+
+        boolean isCopyAllowed();
     }
 
     // Audio and Video call descriptor.
@@ -557,7 +646,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
         void onUpdateDescriptor(long requestId, @NonNull Conversation conversation, @NonNull Descriptor descriptor, UpdateType updateType);
 
         void onUpdateAnnotation(long requestId, @NonNull Conversation conversation, @NonNull Descriptor descriptor,
-                                @NonNull TwincodeOutbound annotatingUser);
+                                @NonNull TwincodeOutbound annotatingUser, @NonNull Set<DescriptorAnnotation> updatedAnnotations);
 
         void onMarkDescriptorRead(long requestId, @NonNull Conversation conversation, @NonNull Descriptor descriptor);
 
@@ -615,7 +704,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
 
         @Override
         public void onUpdateAnnotation(long requestId, @NonNull Conversation conversation, @NonNull Descriptor descriptor,
-                                       @NonNull TwincodeOutbound annotatingUser) {
+                                       @NonNull TwincodeOutbound annotatingUser, @NonNull Set<DescriptorAnnotation> updatedAnnotations) {
         }
 
         @Override
@@ -766,7 +855,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
 
     void pushGeolocation(long requestId, @NonNull Conversation conversation, @Nullable UUID sendTo,
                          @Nullable DescriptorId replyTo, double longitude, double latitude, double altitude,
-                         double mapLongitudeDelta, double mapLatitudeDelta, @Nullable Uri localMapPath, long expiration);
+                         double mapLongitudeDelta, double mapLatitudeDelta, @Nullable Uri localMapPath, long expiration, boolean copyAllowed);
 
     void updateGeolocation(long requestId, @NonNull Conversation conversation, @NonNull DescriptorId descriptorId,
                            double longitude, double latitude, double altitude,
@@ -776,7 +865,9 @@ public interface ConversationService extends BaseService<ConversationService.Ser
                             @Nullable Uri localMapPath);
 
     void pushTwincode(long requestId, @NonNull Conversation conversation, @Nullable UUID sendTo, @Nullable DescriptorId replyTo,
-                      @NonNull UUID twincodeId, @NonNull UUID schemaId, @Nullable String publicKey, boolean copyAllowed, long expiration);
+                      @NonNull UUID twincodeId, @NonNull UUID schemaId, @Nullable CryptoService.PublicKeyData publicKey, boolean copyAllowed, long expiration);
+
+    void pushPoll(long requestId, @NonNull Conversation conversation, boolean multipleChoicesAllowed, @NonNull String question, @NonNull List<PollDescriptor.Choice> choices, boolean copyAllowed, long expiration);
 
     void updateDescriptor(long requestId, @NonNull DescriptorId descriptorId, @Nullable String message,
                           @Nullable Boolean copyAllowed, @Nullable Long expiration);
@@ -812,7 +903,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
      * Get the geolocation that was sent with the given descriptor Id.
      *
      * @param descriptorId the geolocation descriptor id.
-     * @return the geolocation descriptor or null if it is not valid or does not exist.
+     * @param consumer will be fed the geolocation descriptor or null if it is not valid or does not exist.
      */
     void getGeolocation(@NonNull DescriptorId descriptorId, @NonNull Consumer<GeolocationDescriptor> consumer);
 
@@ -926,7 +1017,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
      * @param conversation the conversation to look.
      * @param type the optional type to filter descriptors.
      * @param beforeTimestamp the date before which we consider the descriptors.
-     * @return a list of twincodes identifying users that sent a content (message, file, ...).
+     * @return a set of twincodes identifying users that sent a content (message, file, ...).
      */
     @Nullable
     Set<UUID> getConversationTwincodes(@NonNull Conversation conversation, @Nullable Descriptor.Type type, long beforeTimestamp);
@@ -1017,6 +1108,21 @@ public interface ConversationService extends BaseService<ConversationService.Ser
     ErrorCode leaveGroup(long requestId, @NonNull RepositoryObject group, @NonNull UUID memberTwincodeId);
 
     /**
+     * Update the group according to a new list of members provided by the secure roster service.
+     * From this list we have to:
+     * - identify and record new members,
+     * - update existing members (mostly permissions since twincodes and public key don't change)
+     * - remove members that are not in the new list.
+     * @param group the group to refresh.
+     * @param members the list of roster members as known and reported by the server.
+     * @param memberTwincodes the map of twincodes for these members.
+     * @return SUCCESS if the refresh operation succeeded.
+     */
+    @NonNull
+    ErrorCode refreshGroup(@NonNull RepositoryObject group, @NonNull List<RosterMember> members,
+                           @NonNull Map<UUID, TwincodeOutbound> memberTwincodes);
+
+    /**
      * Get the invitation that was sent with the given descriptor Id.
      *
      * @param descriptorId the invitation descriptor id.
@@ -1033,7 +1139,7 @@ public interface ConversationService extends BaseService<ConversationService.Ser
      * @return SUCCESS if the permissions are updated.
      */
     @NonNull
-    ErrorCode setPermissions(@NonNull RepositoryObject group, @Nullable UUID memberTwincodeId, long permissions);
+    ErrorCode setPermissions(@NonNull RepositoryObject group, @Nullable UUID memberTwincodeId, List<Permission> permissions);
 
     /**
      * Get the thumbnail associated with the image or video descriptor.

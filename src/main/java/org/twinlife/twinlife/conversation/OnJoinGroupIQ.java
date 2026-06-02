@@ -12,6 +12,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BuildConfig;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
 import org.twinlife.twinlife.SerializerException;
@@ -81,7 +82,7 @@ class OnJoinGroupIQ extends BinaryPacketIQ {
     public final UUID inviterTwincodeId;
     public final long inviterPermissions;
     @Nullable
-    public final String inviterPublicKey;
+    public final CryptoService.PublicKeyData inviterPublicKey;
     @Nullable
     public final byte[] inviterSecretKey;
     public final long permissions;
@@ -110,10 +111,10 @@ class OnJoinGroupIQ extends BinaryPacketIQ {
     }
 
     private OnJoinGroupIQ(@NonNull BinaryPacketIQSerializer serializer, long requestId,
-                         int deviceState, @Nullable UUID inviterTwincodeId, long inviterPermissions,
-                         @Nullable String inviterPublicKey, @Nullable byte[] inviterSecretKey, long permissions,
-                         @Nullable String inviterSalt, @Nullable String inviterSignature,
-                         @Nullable List<MemberInfo> members) {
+                          int deviceState, @Nullable UUID inviterTwincodeId, long inviterPermissions,
+                          @Nullable CryptoService.PublicKeyData inviterPublicKey, @Nullable byte[] inviterSecretKey, long permissions,
+                          @Nullable String inviterSalt, @Nullable String inviterSignature,
+                          @Nullable List<MemberInfo> members) {
 
         super(serializer, requestId);
 
@@ -184,7 +185,7 @@ class OnJoinGroupIQ extends BinaryPacketIQ {
                 encoder.writeLong(onJoinGroupIQ.permissions);
                 encoder.writeUUID(onJoinGroupIQ.inviterTwincodeId);
                 encoder.writeLong(onJoinGroupIQ.inviterPermissions);
-                encoder.writeOptionalString(onJoinGroupIQ.inviterPublicKey);
+                encoder.writeOptionalString(onJoinGroupIQ.inviterPublicKey != null ? onJoinGroupIQ.inviterPublicKey.asString() : null);
                 encoder.writeOptionalBytes(onJoinGroupIQ.inviterSecretKey);
                 encoder.writeOptionalString(onJoinGroupIQ.inviterSalt);
                 encoder.writeOptionalString(onJoinGroupIQ.inviterSignature);
@@ -210,7 +211,7 @@ class OnJoinGroupIQ extends BinaryPacketIQ {
             final int deviceState = decoder.readInt();
             final UUID inviterTwincodeId;
             final long inviterPermissions;
-            final String publicKey;
+            final CryptoService.PublicKeyData publicKey;
             final byte[] secret;
             final String inviterSalt;
             final String inviterSignature;
@@ -220,7 +221,7 @@ class OnJoinGroupIQ extends BinaryPacketIQ {
                 permissions = decoder.readLong();
                 inviterTwincodeId = decoder.readUUID();
                 inviterPermissions = decoder.readLong();
-                publicKey = decoder.readOptionalString();
+                publicKey = CryptoService.PublicKeyData.create(decoder.readOptionalString());
                 secret = decoder.readOptionalBytes(null);
                 inviterSalt = decoder.readOptionalString();
                 inviterSignature = decoder.readOptionalString();

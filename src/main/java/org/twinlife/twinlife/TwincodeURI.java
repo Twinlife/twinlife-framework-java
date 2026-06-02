@@ -24,7 +24,8 @@ public class TwincodeURI {
     // https://invite.twin.me/?twincodeId=...
     public static final String INVITE_ACTION = "invite." + Twinlife.DOMAIN;
     public static final String AUTHENTICATE_ACTION = "authenticate." + Twinlife.DOMAIN;
-    public static final String ACCOUNT_MIGRATION_ACTION = "account.migration." + Twinlife.DOMAIN;
+    public static final String ACCOUNT_MIGRATION_LEGACY_ACTION = "account.migration." + Twinlife.DOMAIN;
+    public static final String ACCOUNT_MIGRATION_ACTION = "migration." + Twinlife.DOMAIN;
     public static final String PROXY_ACTION = "proxy." + Twinlife.DOMAIN;
     public static final String CALL_PATH = "/call/";
     public static final String SPACE_PATH = "/space/";
@@ -51,10 +52,10 @@ public class TwincodeURI {
     @NonNull
     public final String label;
     @Nullable
-    public final String pubKey;
+    public final CryptoService.PublicKeyData pubKey;
 
     public TwincodeURI(@NonNull Kind kind, @Nullable UUID twincodeId,
-                       @Nullable String twincodeOptions, @Nullable String pubKey,
+                       @Nullable String twincodeOptions, @Nullable CryptoService.PublicKeyData pubKey,
                        @NonNull String uri, @NonNull String label) {
 
         this.kind = kind;

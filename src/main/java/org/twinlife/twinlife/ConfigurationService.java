@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2019-2025 twinlife SA.
+ *  Copyright (c) 2019-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -10,6 +10,8 @@
 package org.twinlife.twinlife;
 
 import androidx.annotation.NonNull;
+
+import org.twinlife.twinlife.BaseService.ErrorCode;
 
 /**
  * Configuration service to load and store various configuration parameters.
@@ -83,7 +85,8 @@ public interface ConfigurationService {
     @NonNull
     SecuredConfiguration getSecuredConfiguration(String name);
 
-    void saveSecuredConfiguration(SecuredConfiguration configuration);
+    @NonNull
+    ErrorCode saveSecuredConfiguration(SecuredConfiguration configuration);
 
     void eraseAllSecuredConfiguration();
 }

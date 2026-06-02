@@ -1,18 +1,21 @@
 /*
- *  Copyright (c) 2019-2025 twinlife SA.
+ *  Copyright (c) 2019-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Houssem Temanni (Houssem.Temanni@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.conversation;
 
 import android.util.Log;
 
+import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BuildConfig;
+import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.JobService;
 import org.twinlife.twinlife.PushNotificationContent;
@@ -351,12 +354,13 @@ public class ConversationServiceScheduler implements JobService.Observer {
         }
     }
 
-    private void expireOperation(long descriptorId) {
+    private void expireOperation(@NonNull Operation operation) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "expireOperation: descriptorId=" + descriptorId);
+            Log.d(LOG_TAG, "expireOperation: operation=" + operation);
         }
 
-        DescriptorImpl descriptorImpl = mServiceProvider.loadDescriptorWithId(descriptorId);
+        DescriptorImpl descriptorImpl = mServiceProvider.loadDescriptorWithId(operation.getDescriptorId());
+        Conversation conversation = mConversationService.getConversationWithId(operation.getConversationId());
         if (descriptorImpl != null && descriptorImpl.getSentTimestamp() == 0) {
             // Mark the descriptor to show that the send operation failed.
 
@@ -364,6 +368,10 @@ public class ConversationServiceScheduler implements JobService.Observer {
             descriptorImpl.setReadTimestamp(-1);
             descriptorImpl.setReceivedTimestamp(-1);
             mServiceProvider.updateDescriptorImplTimestamps(descriptorImpl);
+
+            if (conversation != null) {
+                mServiceProvider.setAnnotation(descriptorImpl, conversation.getPeerTwincodeOutbound(), ConversationService.AnnotationType.ERROR, BaseService.ErrorCode.fromErrorCode(BaseService.ErrorCode.EXPIRED));
+            }
         }
     }
 
@@ -374,40 +382,19 @@ public class ConversationServiceScheduler implements JobService.Observer {
 
         for (Operation operation : operations) {
             switch (operation.getType()) {
-                case PUSH_FILE: {
-                    PushFileOperation pushFileOperation = (PushFileOperation)operation;
-
-                    expireOperation(pushFileOperation.getDescriptorId());
-                    break;
-                }
-
-                case PUSH_OBJECT: {
-                    PushObjectOperation pushObjectOperation = (PushObjectOperation)operation;
-
-                    expireOperation(pushObjectOperation.getDescriptorId());
-                    break;
-                }
-
-                case PUSH_TWINCODE: {
-                    PushTwincodeOperation pushTwincodeOperation = (PushTwincodeOperation)operation;
-
-                    expireOperation(pushTwincodeOperation.getDescriptorId());
-                    break;
-                }
-
-                case PUSH_GEOLOCATION: {
-                    PushGeolocationOperation pushGeolocationOperation = (PushGeolocationOperation)operation;
-
-                    expireOperation(pushGeolocationOperation.getDescriptorId());
+                case PUSH_FILE:
+                case PUSH_OBJECT:
+                case PUSH_TWINCODE:
+                case PUSH_GEOLOCATION:
+                case PUSH_POLL: {
+                    expireOperation(operation);
                     break;
                 }
 
                 case INVITE_GROUP:
                 case WITHDRAW_INVITE_GROUP: {
-                    GroupInviteOperation groupOperation = (GroupInviteOperation)operation;
-
-                    if (groupOperation.getDescriptorId() != 0) {
-                        expireOperation(groupOperation.getDescriptorId());
+                    if (operation.getDescriptorId() != 0) {
+                        expireOperation(operation);
                     }
                     break;
                 }
@@ -424,6 +411,7 @@ public class ConversationServiceScheduler implements JobService.Observer {
                 case INVOKE_JOIN_GROUP:
                 case INVOKE_LEAVE_GROUP:
                 case INVOKE_ADD_MEMBER:
+                case INVOKE_ROSTER_REMOVE:
                     break;
             }
 

@@ -57,7 +57,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BuildConfig;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.DatabaseIdentifier;
+import org.twinlife.twinlife.database.DatabaseObjectImpl;
 import org.twinlife.twinlife.util.BinaryCompactEncoder;
 import org.twinlife.twinlife.util.BinaryEncoder;
 import org.twinlife.twinlife.util.Logger;
@@ -86,7 +88,7 @@ abstract class GroupOperation extends Operation {
         mMemberId = null;
     }
 
-    GroupOperation(@NonNull Type type, @NonNull ConversationImpl conversationImpl,
+    GroupOperation(@NonNull Type type, @NonNull DatabaseObjectImpl conversationImpl,
                    @NonNull UUID groupTwincodeId, @NonNull UUID memberTwincodeId) {
         super(type, conversationImpl);
 
@@ -116,7 +118,7 @@ abstract class GroupOperation extends Operation {
 
     @Nullable
     static byte[] serializeOperation(@Nullable UUID groupId, @Nullable UUID memberId, long permissions,
-                                     @Nullable String publicKey, @Nullable UUID signedOffTwincodeId, @Nullable String signature) {
+                                     @Nullable CryptoService.PublicKeyData publicKey, @Nullable UUID signedOffTwincodeId, @Nullable String signature) {
 
         if (groupId == null || memberId == null) {
             return null;
@@ -131,7 +133,7 @@ abstract class GroupOperation extends Operation {
             encoder.writeUUID(memberId);
             encoder.writeLong(permissions);
             if (publicKey != null) {
-                encoder.writeString(publicKey);
+                encoder.writeString(publicKey.asString());
                 encoder.writeOptionalUUID(signedOffTwincodeId);
                 encoder.writeOptionalString(signature);
             }

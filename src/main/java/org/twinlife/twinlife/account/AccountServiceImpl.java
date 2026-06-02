@@ -242,13 +242,13 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
 
     private static class RestoreChallengePendingRequest extends ConsumerPendingRequest<Void> {
         @NonNull
-        final String accountPassword;
+        final AccountSecuredConfiguration accountSecuredConfiguration;
         @NonNull
         final RestoreChallengeIQ restoreChallengeIQ;
 
-        RestoreChallengePendingRequest(@NonNull String accountPassword, @NonNull RestoreChallengeIQ restoreChallengeIQ, @NonNull Consumer<Void> consumer) {
+        RestoreChallengePendingRequest(@NonNull AccountSecuredConfiguration accountSecuredConfiguration, @NonNull RestoreChallengeIQ restoreChallengeIQ, @NonNull Consumer<Void> consumer) {
             super(RequestKind.RESTORE_CHALLENGE_REQUEST, consumer);
-            this.accountPassword = accountPassword;
+            this.accountSecuredConfiguration = accountSecuredConfiguration;
             this.restoreChallengeIQ = restoreChallengeIQ;
         }
     }
@@ -260,6 +260,8 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
         final OnAuthChallengeIQ onRestoreChallengeIQ;
         @NonNull
         final byte[] serverKey;
+        @NonNull
+        final AccountSecuredConfiguration accountSecuredConfiguration;
 
         RestoreRequestPendingRequest(@NonNull RestoreChallengePendingRequest restoreChallengePendingRequest, @NonNull OnAuthChallengeIQ onRestoreChallengeIQ, @NonNull byte[] serverKey) {
             super(RequestKind.RESTORE_REQUEST_REQUEST, restoreChallengePendingRequest.consumer);
@@ -267,11 +269,13 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             this.restoreChallengeIQ = restoreChallengePendingRequest.restoreChallengeIQ;
             this.onRestoreChallengeIQ = onRestoreChallengeIQ;
             this.serverKey = serverKey;
+            this.accountSecuredConfiguration = restoreChallengePendingRequest.accountSecuredConfiguration;
         }
     }
 
 
     private AccountSecuredConfiguration mAccountSecuredConfiguration;
+    private AccountSecuredConfiguration mRestoreAccountSecuredConfiguration;
 
     private final Set<String> mAllowedFeatures;
     private final UUID mApplicationId;
@@ -480,19 +484,24 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
 
         super.onUpdateConfiguration(configuration);
 
-        final String subscribedFeatures = mAccountSecuredConfiguration.getSubscribedFeatures();
-        final UUID environmentId = mAccountSecuredConfiguration.getEnvironmentId();
-        if (Utils.equals(subscribedFeatures, configuration.features) && Utils.equals(environmentId, configuration.environmentId)) {
+        AccountSecuredConfiguration accountSecuredConfiguration;
+        synchronized (this) {
+            accountSecuredConfiguration = getActiveAccountSecuredConfiguration();
 
-            return;
+            final String subscribedFeatures = accountSecuredConfiguration.getSubscribedFeatures();
+            final UUID environmentId = accountSecuredConfiguration.getEnvironmentId();
+            if (Utils.equals(subscribedFeatures, configuration.features) && Utils.equals(environmentId, configuration.environmentId)) {
+
+                return;
+            }
         }
 
         // When the allowed features or the environment is defined, update the list.
         synchronized (this) {
             if (configuration.environmentId != null) {
-                mAccountSecuredConfiguration.setEnvironmentId(configuration.environmentId);
+                accountSecuredConfiguration.setEnvironmentId(configuration.environmentId);
             }
-            mAccountSecuredConfiguration.setSubscribedFeatures(configuration.features);
+            accountSecuredConfiguration.setSubscribedFeatures(configuration.features);
             mAllowedFeatures.clear();
 
             if (configuration.features != null) {
@@ -500,8 +509,12 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
                 mAllowedFeatures.addAll(Arrays.asList(featureList));
             }
 
-            // Save so that we can restore a default subscribedFeatures list when we don't have the network.
-            mAccountSecuredConfiguration.save(mTwinlifeImpl.getConfigurationService(), mSerializerFactory);
+            if (!mTwinlifeImpl.getBackupService().isRestoreInProgress()) {
+                // Save so that we can restore a default subscribedFeatures list when we don't have the network,
+                // but only if we're not restoring a backup: we don't want to modify the config until
+                // restore is successful and confirmed by the user.
+                accountSecuredConfiguration.save(mTwinlifeImpl.getConfigurationService(), mSerializerFactory);
+            }
         }
     }
 
@@ -522,7 +535,7 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
 
         synchronized (this) {
 
-            return mAccountSecuredConfiguration.getAuthenticationAuthority();
+            return getActiveAccountSecuredConfiguration().getAuthenticationAuthority();
         }
     }
 
@@ -548,7 +561,7 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
 
         synchronized (this) {
 
-            return mAccountSecuredConfiguration.isReconnectable();
+            return getActiveAccountSecuredConfiguration().isReconnectable();
         }
     }
 
@@ -578,11 +591,12 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
         final String username;
         final String password;
         synchronized (this) {
+            AccountSecuredConfiguration accountSecuredConfiguration = getActiveAccountSecuredConfiguration();
 
-            username = mAccountSecuredConfiguration.getUsername();
-            password = mAccountSecuredConfiguration.getPassword();
+            username = accountSecuredConfiguration.getUsername();
+            password = accountSecuredConfiguration.getPassword();
 
-            if (mAccountSecuredConfiguration.getAuthenticationAuthority() != AuthenticationAuthority.UNREGISTERED
+            if (accountSecuredConfiguration.getAuthenticationAuthority() != AuthenticationAuthority.UNREGISTERED
                     || username == null || password == null) {
 
                 onError(requestId, ErrorCode.NOT_AUTHORIZED_OPERATION, null);
@@ -625,9 +639,11 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             return;
         }
 
-        synchronized (this) {
-            mAccountSecuredConfiguration.signOut();
-            mAccountSecuredConfiguration.save(mTwinlifeImpl.getConfigurationService(), mSerializerFactory);
+        if (!mTwinlifeImpl.getBackupService().isRestoreInProgress()) {
+            synchronized (this) {
+                mAccountSecuredConfiguration.signOut();
+                mAccountSecuredConfiguration.save(mTwinlifeImpl.getConfigurationService(), mSerializerFactory);
+            }
         }
 
         mTwinlifeImpl.onSignOut();
@@ -641,6 +657,13 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
 
         if (!isServiceOn()) {
 
+            return;
+        }
+
+        if (mTwinlifeImpl.getBackupService().isRestoreInProgress()) {
+            if (DEBUG) {
+                Log.d(LOG_TAG, "Restore in progress, ignoring delete account request");
+            }
             return;
         }
 
@@ -747,7 +770,7 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
         }
 
         synchronized (mPendingRequests) {
-            mPendingRequests.put(requestId, new RestoreChallengePendingRequest(password, restoreChallengeIQ, restoreAuthConsumer));
+            mPendingRequests.put(requestId, new RestoreChallengePendingRequest(accountSecuredConfiguration, restoreChallengeIQ, restoreAuthConsumer));
         }
     }
 
@@ -784,7 +807,8 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             authMessage.append(resource);
 
             // Compute everything according to RFC 5802 section 3. SCRAM Algorithm Overview
-            byte[] saltedPassword = createSaltedPassword(onRestoreChallengeIQ.salt, restoreChallenge.accountPassword, onRestoreChallengeIQ.iteration);
+            //noinspection DataFlowIssue At this point we know the account secured configuration has a password (see restoreChallenge())
+            byte[] saltedPassword = createSaltedPassword(onRestoreChallengeIQ.salt, restoreChallenge.accountSecuredConfiguration.getPassword(), onRestoreChallengeIQ.iteration);
             byte[] clientKey = computeHmac(saltedPassword, "Client Key");
             byte[] storedKey = MessageDigest.getInstance("SHA-1").digest(clientKey);
             byte[] clientSignature = computeHmac(storedKey, authMessage.toString());
@@ -885,6 +909,10 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
                 return;
             }
 
+            synchronized (this) {
+                mRestoreAccountSecuredConfiguration = restoreRequest.accountSecuredConfiguration;
+            }
+
             mAuthUser = restoreChallengeIQ.accountIdentifier + '/' + resource;
             mTwinlifeImpl.onSignIn();
 
@@ -926,6 +954,19 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
         }
 
         pendingRequest.consumer.onGet(errorPacketIQ.getErrorCode(), null);
+    }
+
+    public synchronized void removeRestoreAccountSecuredConfiguration() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "removeRestoreAccountSecuredConfiguration");
+        }
+
+        mRestoreAccountSecuredConfiguration = null;
+    }
+
+    @Nullable
+    private AccountSecuredConfiguration getActiveAccountSecuredConfiguration() {
+        return mRestoreAccountSecuredConfiguration != null ? mRestoreAccountSecuredConfiguration : mAccountSecuredConfiguration;
     }
 
     /**
@@ -1166,7 +1207,9 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             Log.d(LOG_TAG, "getEnvironmentId");
         }
 
-        return mAccountSecuredConfiguration.getEnvironmentId();
+        synchronized (this) {
+            return getActiveAccountSecuredConfiguration().getEnvironmentId();
+        }
     }
 
     @Nullable
@@ -1184,7 +1227,9 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             Log.d(LOG_TAG, "exportForMigration: version=" + version);
         }
 
-        return mAccountSecuredConfiguration.serialize(version, mSerializerFactory);
+        synchronized (this) {
+            return mAccountSecuredConfiguration.serialize(version, mSerializerFactory);
+        }
     }
 
     @Override
@@ -1262,8 +1307,14 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
         }
 
         // Check that the account information we have is valid, if not proceed with the deletion.
-        final String accountIdentifier = mTwinlifeImpl.toBareJid(mAccountSecuredConfiguration.getUsername());
-        final String accountPassword = mAccountSecuredConfiguration.getPassword();
+        final String accountIdentifier;
+        final String accountPassword;
+
+        synchronized (this) {
+            accountIdentifier = mTwinlifeImpl.toBareJid(mAccountSecuredConfiguration.getUsername());
+            accountPassword = mAccountSecuredConfiguration.getPassword();
+        }
+
         if (accountIdentifier == null || accountPassword == null || !isReconnectable()) {
 
             return;
@@ -1299,7 +1350,10 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             return;
         }
 
-        final String username = mAccountSecuredConfiguration.getUsername();
+        final String username;
+        synchronized (this) {
+            username = getActiveAccountSecuredConfiguration().getUsername();
+        }
 
         // Generate nonce for the authentication challenge.
         SecureRandom random = new SecureRandom();
@@ -1357,7 +1411,12 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
         }
 
         // Make sure we have the password, if not abort this authentication.
-        String password = mAccountSecuredConfiguration.getPassword();
+        String password;
+        int incarnationCount;
+        synchronized (this) {
+            password = mAccountSecuredConfiguration.getPassword();
+            incarnationCount = mAccountSecuredConfiguration.getIncarnationCount();
+        }
         if (password == null) {
 
             mTwinlifeImpl.disconnect();
@@ -1415,7 +1474,7 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             int deviceState = 0;// mTwinlifeImpl.getJobService().getState();
 
             AuthRequestIQ authRequestIQ = new AuthRequestIQ(IQ_AUTH_REQUEST_SERIALIZER, requestId,
-                    pendingRequest.authChallengeIQ.accountIdentifier, resource, pendingRequest.authChallengeIQ.nonce, clientProof, deviceState, deviceLatency, deviceTimestamp, onAuthChallenge.serverTimestamp, mAccountSecuredConfiguration.getIncarnationCount());
+                    pendingRequest.authChallengeIQ.accountIdentifier, resource, pendingRequest.authChallengeIQ.nonce, clientProof, deviceState, deviceLatency, deviceTimestamp, onAuthChallenge.serverTimestamp, incarnationCount);
 
             synchronized (mPendingRequests) {
                 mPendingRequests.put(requestId, new AuthRequestPendingRequest(pendingRequest.authChallengeIQ, onAuthChallenge, serverKey, sendTime));
@@ -1654,11 +1713,11 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
         final ErrorCode errorCode = onSubscribeFeatureIQ.getErrorCode();
         final String features = onSubscribeFeatureIQ.featureList;
 
-        final String subscribedFeatures = mAccountSecuredConfiguration.getSubscribedFeatures();
-        if (!Utils.equals(subscribedFeatures, features)) {
+        synchronized (this) {
+            final String subscribedFeatures = mAccountSecuredConfiguration.getSubscribedFeatures();
+            if (!Utils.equals(subscribedFeatures, features)) {
 
-            // When the allowed features is changed, update the list.
-            synchronized (this) {
+                // When the allowed features is changed, update the list.
                 mAccountSecuredConfiguration.setSubscribedFeatures(features);
                 mAllowedFeatures.clear();
 

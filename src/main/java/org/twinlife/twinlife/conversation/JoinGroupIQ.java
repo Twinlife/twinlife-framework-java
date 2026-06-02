@@ -13,6 +13,7 @@ import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
 import org.twinlife.twinlife.SerializerException;
@@ -62,13 +63,13 @@ class JoinGroupIQ extends BinaryPacketIQ {
     @Nullable
     public final UUID memberTwincodeId;
     @Nullable
-    public final String publicKey;
+    public final CryptoService.PublicKeyData publicKey;
     @Nullable
     public final byte[] secretKey;
 
     public JoinGroupIQ(@NonNull BinaryPacketIQSerializer serializer, long requestId,
                        @NonNull DescriptorId invitationDescriptorId, @NonNull UUID groupTwincodeId,
-                       @Nullable UUID memberTwincodeId, @Nullable String publicKey, @Nullable byte[] secretKey) {
+                       @Nullable UUID memberTwincodeId, @Nullable CryptoService.PublicKeyData publicKey, @Nullable byte[] secretKey) {
 
         super(serializer, requestId);
 
@@ -133,7 +134,7 @@ class JoinGroupIQ extends BinaryPacketIQ {
             } else {
                 encoder.writeEnum(1);
                 encoder.writeUUID(joinGroupIQ.memberTwincodeId);
-                encoder.writeOptionalString(joinGroupIQ.publicKey);
+                encoder.writeOptionalString(joinGroupIQ.publicKey != null ? joinGroupIQ.publicKey.asString() : null);
                 encoder.writeOptionalBytes(joinGroupIQ.secretKey);
             }
         }
@@ -150,11 +151,11 @@ class JoinGroupIQ extends BinaryPacketIQ {
             final DescriptorId descriptorId = new DescriptorId(0, twincodeOutboundId, sequenceId);
             final int mode = decoder.readEnum();
             final UUID memberTwincodeId;
-            final String publicKey;
+            final CryptoService.PublicKeyData publicKey;
             final byte[] secret;
             if (mode != 0) {
                 memberTwincodeId = decoder.readUUID();
-                publicKey = decoder.readOptionalString();
+                publicKey = CryptoService.PublicKeyData.create(decoder.readOptionalString());
                 secret = decoder.readOptionalBytes(null);
             } else {
                 memberTwincodeId = null;

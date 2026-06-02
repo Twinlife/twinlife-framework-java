@@ -35,6 +35,8 @@ public interface BackupService extends BaseService<BackupService.ServiceObserver
         RESTORE_ACCOUNT,
         PREPARE_DATABASE,
         RESTORE_DATA,
+        GET_ALL_TWINCODES,
+        CHECK_CONSISTENCY,
         WAIT_CONFIRM,
         SYNCING_OBJECTS,
         COMMIT,

@@ -16,11 +16,17 @@ import androidx.annotation.Nullable;
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BaseService.ErrorCode;
 import org.twinlife.twinlife.BaseService.AttributeNameValue;
+import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
 import org.twinlife.twinlife.ConversationService.InvitationDescriptor;
 import org.twinlife.twinlife.ConversationService.GroupConversation;
+import org.twinlife.twinlife.CryptoService;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.RepositoryObject;
+import org.twinlife.twinlife.RosterId;
+import org.twinlife.twinlife.RosterMember;
+import org.twinlife.twinlife.SecureRosterService;
 import org.twinlife.twinlife.TrustMethod;
 import org.twinlife.twinlife.TwincodeInbound;
 import org.twinlife.twinlife.TwincodeInboundService;
@@ -65,6 +71,7 @@ class GroupConversationManager {
     private final CryptoServiceImpl mCryptoService;
     private final TwincodeOutboundServiceImpl mTwincodeOutboundService;
     private final TwincodeInboundService mTwincodeInboundService;
+    private final SecureRosterService mSecureRosterService;
     private final TwinlifeImpl mTwinlifeImpl;
     private final Executor mTwinlifeExecutor;
     private final TwincodeInboundService.InvocationListener mJoinHandler;
@@ -125,7 +132,7 @@ class GroupConversationManager {
                 return ErrorCode.NO_PUBLIC_KEY;
             }
 
-            final long permissions = AttributeNameValue.getLongAttribute(invocation.attributes, ConversationProtocol.PARAM_PERMISSIONS, groupConversation.getJoinPermissions());
+            final long permissions = AttributeNameValue.getLongAttribute(invocation.attributes, ConversationProtocol.PARAM_PERMISSIONS, groupConversation.getJoinPermissionsAsLong());
             final ErrorCode verifyResult = verifySignature(signedOffTwincode, groupTwincodeId, memberTwincodeId,
                     invocation.publicKey, permissions, signature);
             if (verifyResult != ErrorCode.SUCCESS) {
@@ -136,17 +143,14 @@ class GroupConversationManager {
             // Now, we trust this member because it was signed by an existing member.
             mTwincodeOutboundService.getSignedTwincodeWithSecret(memberTwincodeId, invocation.publicKey, invocation.keyIndex, invocation.secretKey, TrustMethod.PEER, (ErrorCode errorCode, TwincodeOutbound twincodeOutbound) -> {
 
-                // If we are offline or timed out don't acknowledge the invocation.
-                if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
-                    return;
-                }
+                // If we are offline or timed out, acknowledge the invocation it will be retried.
                 if (twincodeOutbound == null || errorCode != ErrorCode.SUCCESS) {
                     mTwincodeInboundService.acknowledgeInvocation(invocation.invocationId, errorCode);
                     return;
                 }
 
                 final List<OnJoinGroupIQ.MemberInfo> members = new ArrayList<>();
-                addMember(groupConversation, twincodeOutbound, permissions, null, members, false, null, null);
+                addMember(groupConversation, twincodeOutbound, permissions, null, members, false, false, null, null);
                 invokeOnJoin(groupConversation, twincodeOutbound, invocation.publicKey, members, invocation.invocationId);
             });
             return ErrorCode.QUEUED;
@@ -285,6 +289,7 @@ class GroupConversationManager {
         mCryptoService = mTwinlifeImpl.getCryptoService();
         mTwincodeOutboundService = mTwinlifeImpl.getTwincodeOutboundServiceImpl();
         mTwincodeInboundService = mTwinlifeImpl.getTwincodeInboundService();
+        mSecureRosterService = mTwinlifeImpl.getSecureRosterService();
         mScheduler = scheduler;
         mJoinHandler = new JoinGroupInvocation();
         mOnJoinHandler = new OnJoinGroupInvocation();
@@ -362,7 +367,7 @@ class GroupConversationManager {
             return ErrorCode.ITEM_NOT_FOUND;
         }
         final GroupConversationImpl groupConversationImpl = (GroupConversationImpl) targetConversation;
-        if (!groupConversationImpl.hasPermission(ConversationService.Permission.INVITE_MEMBER)) {
+        if (!groupConversationImpl.hasPermission(Permission.INVITE_MEMBER)) {
 
             return ErrorCode.NO_PERMISSION;
         }
@@ -537,16 +542,29 @@ class GroupConversationManager {
             mConversationService.resetConversation(groupConversation, resetList, ConversationService.ClearMode.CLEAR_BOTH);
         }
 
+        // If there is a secure roster associated with the group, remove the member from the secure roster
+        // by setting up the INVOKE_ROSTER_REMOVE operation.
+        final TwincodeOutbound groupTwincode = groupConversation.getPeerTwincodeOutbound();
+        final RosterId rosterId = GroupProtocol.getSecureRosterId(groupTwincode);
+        if (rosterId != null) {
+            final GroupOperation groupOperation = new GroupLeaveOperation(member, Operation.Type.INVOKE_ROSTER_REMOVE, rosterId.id, memberTwincodeId);
+            mServiceProvider.storeOperation(groupOperation);
+            mScheduler.addOperation(member, groupOperation, 0);
+        }
+
         // Send the leave operation to each peer, including the member being removed:
         // - if the peer twincode is signed, we can do a secure invocation to notify about the leave,
         // - otherwise, we must queue a LEAVE_GROUP operation.
-        final TwincodeOutbound groupTwincode = groupConversation.getPeerTwincodeOutbound();
         if (!conversations.isEmpty() && groupTwincode != null) {
             final Map<ConversationImpl, Object> pendingOperations = new HashMap<>();
             for (final ConversationImpl conversationImpl : conversations) {
                 TwincodeOutbound peerTwincode = conversationImpl.getPeerTwincodeOutbound();
                 final GroupOperation groupOperation;
                 if (peerTwincode != null && peerTwincode.isSigned()) {
+                    // If the peer knows the secure roster, no need to send the invoke leave invocation.
+                    if (rosterId != null && conversationImpl.hasVersion21()) {
+                        continue;
+                    }
                     groupOperation = new GroupLeaveOperation(conversationImpl, Operation.Type.INVOKE_LEAVE_GROUP,
                             groupTwincode.getId(), memberTwincodeId);
                 } else {
@@ -624,7 +642,7 @@ class GroupConversationManager {
         }
 
         final GroupConversationImpl groupConversation = (GroupConversationImpl) conversation;
-        final AddStatus status = addMember(groupConversation, memberTwincode, permissions, null, null, false, null, null);
+        final AddStatus status = addMember(groupConversation, memberTwincode, permissions, null, null, false, false, null, null);
 
         if (status == AddStatus.NEW_MEMBER) {
             for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
@@ -660,7 +678,7 @@ class GroupConversationManager {
         mServiceProvider.updateGroupConversation(groupConversation);
 
         // Add the admin member.
-        AddStatus status = addMember(groupConversation, adminTwincode, adminPermissions, null, null, false, null, null);
+        AddStatus status = addMember(groupConversation, adminTwincode, adminPermissions, null, null, false, false, null, null);
 
         if (status == AddStatus.NEW_MEMBER) {
             for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
@@ -677,7 +695,7 @@ class GroupConversationManager {
     }
 
     @NonNull
-    ErrorCode setPermissions(@NonNull RepositoryObject group, @Nullable UUID memberTwincodeId, long permissions) {
+    ErrorCode setPermissions(@NonNull RepositoryObject group, @Nullable UUID memberTwincodeId, @Nullable List<Permission> permissions) {
         if (DEBUG) {
             Log.d(LOG_TAG, "setPermissions: group=" + group + " memberTwincodeId=" + memberTwincodeId);
         }
@@ -701,23 +719,27 @@ class GroupConversationManager {
 
         // User must have the update permission.
         final GroupConversationImpl groupConversation = (GroupConversationImpl) conversation;
-        if (!groupConversation.hasPermission(ConversationService.Permission.UPDATE_MEMBER)) {
+        if (!groupConversation.hasPermission(Permission.UPDATE_MEMBER)) {
 
             return ErrorCode.NO_PERMISSION;
         }
 
+        final long permissionBitmap = Permission.toLong(permissions);
         if (memberTwincodeId == null) {
             groupConversation.setJoinPermissions(permissions);
-
             mServiceProvider.updateGroupConversation(groupConversation);
         } else {
-            ConversationImpl member = groupConversation.getMember(memberTwincodeId);
-            if (member == null) {
-
-                return ErrorCode.ITEM_NOT_FOUND;
+            if (memberTwincodeId.equals(groupConversation.getTwincodeOutboundId())) {
+                groupConversation.setPermissions(permissionBitmap);
+                mServiceProvider.updateGroupConversation(groupConversation);
+            } else {
+                final ConversationImpl member = groupConversation.getMember(memberTwincodeId);
+                if (member == null) {
+                    return ErrorCode.ITEM_NOT_FOUND;
+                }
+                member.setPermissions(permissionBitmap);
+                mServiceProvider.updateConversation(member, null);
             }
-            member.setPermissions(permissions);
-            mServiceProvider.updateConversation(member, null);
         }
 
         final List<ConversationImpl> conversations = ConversationServiceImpl.getConversations(groupConversation, null);
@@ -728,18 +750,18 @@ class GroupConversationManager {
 
             if (memberTwincodeId != null) {
                 final GroupUpdateOperation groupOperation = new GroupUpdateOperation(conversationImpl,
-                        groupTwincode.getId(), memberTwincodeId, permissions);
+                        groupTwincode.getId(), memberTwincodeId, permissionBitmap);
                 mServiceProvider.storeOperation(groupOperation);
                 mScheduler.addOperation(conversationImpl, groupOperation, 0);
             } else {
                 // Change this member's permissions and save it.
-                conversationImpl.setPermissions(permissions);
+                conversationImpl.setPermissions(permissionBitmap);
                 mServiceProvider.updateConversation(conversationImpl, null);
 
                 // Propagate this member's permission to every members.
                 for (final ConversationImpl peer : conversations) {
                     final GroupUpdateOperation groupOperation = new GroupUpdateOperation(conversationImpl,
-                            groupTwincode.getId(), peer.getPeerTwincodeOutboundId(), permissions);
+                            groupTwincode.getId(), peer.getPeerTwincodeOutboundId(), Permission.toLong(permissions));
                     mServiceProvider.storeOperation(groupOperation);
                     mScheduler.addOperation(conversationImpl, groupOperation, 0);
                 }
@@ -747,6 +769,59 @@ class GroupConversationManager {
         }
 
         return ErrorCode.SUCCESS;
+    }
+
+    /**
+     * Update the group according to a new list of members provided by the secure roster service.
+     * From this list we have to:
+     * - identify and record new members,
+     * - update existing members (mostly permissions since twincodes and public key don't change)
+     * - remove members that are not in the new list.
+     * @param group the group to refresh.
+     * @param members the list of roster members as known and reported by the server.
+     * @param memberTwincodes the map of twincodes for these members.
+     * @return SUCCESS if the refresh operation succeeded.
+     */
+    @NonNull
+    ErrorCode refreshGroup(@NonNull RepositoryObject group, @NonNull List<RosterMember> members,
+                           @NonNull Map<UUID, TwincodeOutbound> memberTwincodes) {
+
+        // Verify that the group exists.
+        final ConversationService.Conversation conversation = mServiceProvider.loadConversationWithSubject(group);
+        if (!(conversation instanceof GroupConversationImpl)) {
+            return ErrorCode.ITEM_NOT_FOUND;
+        }
+
+        final GroupConversationImpl groupConversation = (GroupConversationImpl) conversation;
+        final Map<UUID, GroupMemberConversationImpl> groupMembers = groupConversation.getMembers();
+        for (RosterMember activeMember : members) {
+            GroupMemberConversationImpl memberConversation = groupMembers.remove(activeMember.memberTwincodeId);
+            if (memberConversation == null) {
+                if (activeMember.memberTwincodeId.equals(groupConversation.getTwincodeOutboundId())) {
+                    if (groupConversation.getPermissions() != activeMember.permissions) {
+                        groupConversation.join(activeMember.permissions);
+                        mServiceProvider.updateGroupConversation(groupConversation);
+                    }
+                } else {
+                    TwincodeOutbound memberTwincode = memberTwincodes.get(activeMember.memberTwincodeId);
+                    if (memberTwincode != null) {
+                        addMember(groupConversation, memberTwincode, activeMember.permissions, null, null, false, true, null, null);
+                    }
+                }
+            } else if (memberConversation.getPermissions() != activeMember.permissions) {
+                memberConversation.setPermissions(activeMember.permissions);
+                mServiceProvider.updateConversation(memberConversation, null);
+            }
+        }
+
+        // Delete the conversations associated with the member that is removed.
+        for (Map.Entry<UUID, GroupMemberConversationImpl> toDelete : groupMembers.entrySet()) {
+            groupConversation.delMember(toDelete.getKey());
+
+            mConversationService.deleteConversation(toDelete.getValue());
+        }
+
+        return ErrorCode.SERVICE_UNAVAILABLE;
     }
 
     static class JoinResult {
@@ -826,6 +901,32 @@ class GroupConversationManager {
     }
 
     @NonNull
+    ErrorCode invokeDeleteRosterMember(@NonNull ConversationImpl conversationImpl, @NonNull GroupLeaveOperation groupOperation) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "invokeDeleteRosterMember: conversationImpl=" + conversationImpl + " groupOperation=" + groupOperation);
+        }
+
+        final UUID rosterId = groupOperation.getGroupId();
+        final UUID memberTwincodeId = groupOperation.getMemberId();
+        if (rosterId == null || memberTwincodeId == null) {
+            return ErrorCode.EXPIRED;
+        }
+
+        groupOperation.updateRequestId(mTwinlifeImpl.newRequestId());
+        mSecureRosterService.deleteMember(rosterId, memberTwincodeId, (ErrorCode errorCode, Void unused) -> {
+            // If we are offline or timed out don't acknowledge the operation but clear the
+            // request id so that we can retry it as soon as we are online.
+            if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
+                groupOperation.updateRequestId(Operation.NO_REQUEST_ID);
+                return;
+            }
+
+            mScheduler.finishInvokeOperation(groupOperation, conversationImpl);
+        });
+        return ErrorCode.QUEUED;
+    }
+
+    @NonNull
     ErrorCode invokeLeaveOperation(@NonNull ConversationImpl conversationImpl, @NonNull GroupLeaveOperation groupOperation) {
         if (DEBUG) {
             Log.d(LOG_TAG, "invokeLeaveOperation: conversationImpl=" + conversationImpl + " groupOperation=" + groupOperation);
@@ -869,7 +970,7 @@ class GroupConversationManager {
 
         final UUID groupTwincodeId = groupOperation.getGroupId();
         final UUID memberTwincodeId = groupOperation.getMemberId();
-        final String publicKey = groupOperation.getPublicKey();
+        final CryptoService.PublicKeyData publicKey = groupOperation.getPublicKey();
         if (groupTwincodeId == null || memberTwincodeId == null) {
             return ErrorCode.EXPIRED;
         }
@@ -894,7 +995,7 @@ class GroupConversationManager {
 
                 if (twincodeOutbound != null) {
                     addMember(groupConversation, twincodeOutbound, groupOperation.getPermissions(),
-                            null, null, true, groupOperation.getSignedOffTwincodeId(),
+                            null, null, true, false, groupOperation.getSignedOffTwincodeId(),
                             groupOperation.getSignature());
                 }
                 mScheduler.finishInvokeOperation(groupOperation, conversationImpl);
@@ -910,7 +1011,7 @@ class GroupConversationManager {
                 }
 
                 if (twincodeOutbound != null) {
-                    addMember(groupConversation, twincodeOutbound, groupOperation.getPermissions(), null, null, true,
+                    addMember(groupConversation, twincodeOutbound, groupOperation.getPermissions(), null, null, true, false,
                             groupOperation.getSignedOffTwincodeId(), groupOperation.getSignature());
                 }
                 mScheduler.finishInvokeOperation(groupOperation, conversationImpl);
@@ -920,7 +1021,7 @@ class GroupConversationManager {
     }
 
     private void invokeOnJoin(@NonNull GroupConversationImpl groupConversation, @NonNull TwincodeOutbound memberTwincode,
-                              @NonNull String publicKey, @NonNull List<OnJoinGroupIQ.MemberInfo> members,
+                              @NonNull CryptoService.PublicKeyData publicKey, @NonNull List<OnJoinGroupIQ.MemberInfo> members,
                               @NonNull UUID invocationId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "invokeOnJoin: groupConversation=" + groupConversation + " memberTwincode=" + memberTwincode
@@ -935,7 +1036,7 @@ class GroupConversationManager {
 
         final UUID groupTwincodeId = groupConversation.getPeerTwincodeOutboundId();
         final UUID memberTwincodeId = memberTwincode.getId();
-        final long permissions = groupConversation.getJoinPermissions();
+        final long permissions = groupConversation.getJoinPermissionsAsLong();
         final String signature = signMember(twincodeOutbound, groupTwincodeId, memberTwincodeId, publicKey, permissions);
         if (signature == null) {
             mTwincodeInboundService.acknowledgeInvocation(invocationId, ErrorCode.BAD_REQUEST);
@@ -964,8 +1065,9 @@ class GroupConversationManager {
                 TwincodeOutboundService.INVOKE_URGENT | TwincodeOutboundService.CREATE_SECRET,
                 ConversationProtocol.ACTION_CONVERSATION_ON_JOIN, attributes, (ErrorCode errorCode, UUID joinInvocationId) -> {
 
-            // If we are offline or timed out don't acknowledge the invocation: it will be retried.
+            // If we are offline or timed out, acknowledge the invocation: it will be retried.
             if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
+                mTwincodeInboundService.acknowledgeInvocation(invocationId, errorCode);
                 return;
             }
 
@@ -1062,12 +1164,92 @@ class GroupConversationManager {
      * @param memberPublicKey the member public key used to sign the twincode attributes (verified and trusted).
      * @return the join result to return to the peer.
      */
-    @Nullable
-    JoinResult processJoinGroup(@NonNull ConversationImpl conversationImpl, @NonNull UUID groupTwincodeId,
-                                @NonNull DescriptorId descriptorId, @NonNull TwincodeOutbound memberTwincode,
-                                @Nullable String memberPublicKey) {
+    void processJoinGroupAsync(@NonNull ConversationImpl conversationImpl, @NonNull UUID groupTwincodeId,
+                               @NonNull DescriptorId descriptorId, @NonNull TwincodeOutbound memberTwincode,
+                               @Nullable CryptoService.PublicKeyData memberPublicKey,
+                               @NonNull Consumer<JoinResult> consumer) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "processJoinGroup: groupTwincodeId=" + groupTwincodeId + " memberTwincode=" + memberTwincode);
+            Log.d(LOG_TAG, "processJoinGroupAsync: groupTwincodeId=" + groupTwincodeId + " memberTwincode=" + memberTwincode);
+        }
+
+        // Find the group.
+        final GroupConversationImpl groupConversation = mServiceProvider.findGroupConversation(groupTwincodeId);
+        if (groupConversation == null) {
+            consumer.onGet(ErrorCode.ITEM_NOT_FOUND, null);
+            return;
+        }
+
+        // Verify that the invitation is still available.
+        final ConversationService.Descriptor descriptor = mServiceProvider.loadDescriptorImpl(descriptorId);
+        if (!(descriptor instanceof InvitationDescriptorImpl)) {
+            consumer.onGet(ErrorCode.ITEM_NOT_FOUND, null);
+            return;
+        }
+
+        // Verify the invitation is still pending, or, it has the same member and is joined.
+        final InvitationDescriptorImpl invitation = (InvitationDescriptorImpl) descriptor;
+        final long receivedTimestamp = System.currentTimeMillis();
+        final boolean invitationChanged;
+        InvitationDescriptor.Status newStatus;
+        if (invitation.getStatus() == InvitationDescriptor.Status.PENDING) {
+            newStatus = InvitationDescriptor.Status.ACCEPTED;
+            invitation.setMemberTwincodeId(memberTwincode.getId());
+            invitation.setReadTimestamp(receivedTimestamp);
+            invitationChanged = true;
+
+            // We can receive the same join-group IQ several times and we must accept it if this is the same member.
+        } else if (invitation.getStatus() == InvitationDescriptor.Status.JOINED
+                && memberTwincode.getId().equals(invitation.getMemberTwincodeId())) {
+            newStatus = InvitationDescriptor.Status.ACCEPTED;
+            invitationChanged = false;
+        } else {
+            newStatus = InvitationDescriptor.Status.WITHDRAWN;
+            invitationChanged = false;
+        }
+
+        // If the invitation is accepted, add the member in the group.
+        long memberPermissions = groupConversation.getJoinPermissionsAsLong();
+        if (newStatus == InvitationDescriptor.Status.ACCEPTED) {
+            final TwincodeOutbound groupTwincode = groupConversation.getPeerTwincodeOutbound();
+            final RosterId rosterId = GroupProtocol.getSecureRosterId(groupTwincode);
+            final TwincodeOutbound signingTwincode = groupTwincode != null && groupTwincode.isOwner() ? groupTwincode : groupConversation.getTwincodeOutbound();
+
+            if (rosterId != null && signingTwincode != null && memberPublicKey != null) {
+                final Permission permission = new Permission(memberPermissions);
+
+                mSecureRosterService.addMember(rosterId, signingTwincode, memberTwincode.getId(), List.of(permission), memberPublicKey, (ErrorCode errorCode, Void unused) -> {
+                    if (errorCode != ErrorCode.SUCCESS) {
+                        consumer.onGet(errorCode, null);
+                        return;
+                    }
+                    JoinResult joinResult = processFinishJoinGroup(conversationImpl, groupTwincodeId, groupConversation, invitation, newStatus,
+                            invitationChanged, memberTwincode, memberPublicKey);
+                    consumer.onGet(ErrorCode.SUCCESS, joinResult);
+                });
+                return;
+            }
+        }
+
+        JoinResult joinResult = processFinishJoinGroup(conversationImpl, groupTwincodeId, groupConversation, invitation, newStatus,
+                invitationChanged, memberTwincode, memberPublicKey);
+        consumer.onGet(ErrorCode.SUCCESS, joinResult);
+    }
+
+    /**
+     * Process joining the group with an invitation and a valid member twincode.
+     * Used by the secure join invocation as well as the legacy join IQ.
+     *
+     * @param conversationImpl the conversation onto which the invitation was sent.
+     * @param groupTwincodeId the group twincode to join
+     * @param descriptorId the invitation descriptor id.
+     * @param memberTwincode the member twincode that joined the group.
+     * @return the join result to return to the peer.
+     */
+    @Nullable
+    JoinResult processJoinGroupLegacy(@NonNull ConversationImpl conversationImpl, @NonNull UUID groupTwincodeId,
+                                      @NonNull DescriptorId descriptorId, @NonNull TwincodeOutbound memberTwincode) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processJoinGroupAsync: groupTwincodeId=" + groupTwincodeId + " memberTwincode=" + memberTwincode);
         }
 
         // Find the group.
@@ -1101,17 +1283,44 @@ class GroupConversationManager {
             newStatus = InvitationDescriptor.Status.WITHDRAWN;
         }
 
+        return processFinishJoinGroup(conversationImpl, groupTwincodeId, groupConversation, invitation, newStatus,
+                invitationChanged, memberTwincode, null);
+    }
+
+    /**
+     * Process joining the group with an invitation and a valid member twincode.
+     * Used by the secure join invocation as well as the legacy join IQ.
+     *
+     * @param conversationImpl the conversation onto which the invitation was sent.
+     * @param groupTwincodeId the group twincode to join
+     * @param memberTwincode the member twincode that joined the group.
+     * @param memberPublicKey the member public key used to sign the twincode attributes (verified and trusted).
+     * @return the join result to return to the peer.
+     */
+    @NonNull
+    private JoinResult processFinishJoinGroup(@NonNull ConversationImpl conversationImpl, @NonNull UUID groupTwincodeId,
+                                              @NonNull GroupConversationImpl groupConversation,
+                                              @NonNull InvitationDescriptorImpl invitation,
+                                              @NonNull InvitationDescriptor.Status newStatus,
+                                              boolean invitationChanged,
+                                              @NonNull TwincodeOutbound memberTwincode,
+                                              @Nullable CryptoService.PublicKeyData memberPublicKey) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processJoinGroup: groupTwincodeId=" + groupTwincodeId + " memberTwincode=" + memberTwincode);
+        }
+
         final List<OnJoinGroupIQ.MemberInfo> members;
         final AddStatus result;
 
         // If the invitation is accepted, add the member in the group.
-        long memberPermissions = groupConversation.getJoinPermissions();
+        long memberPermissions = groupConversation.getJoinPermissionsAsLong();
         if (newStatus == InvitationDescriptor.Status.ACCEPTED) {
 
             // If we have an invitation, keep the contactId of the conversation to which the invitation was sent.
             UUID invitedContactId = conversationImpl.getContactId();
             members = new ArrayList<>();
-            result = addMember(groupConversation, memberTwincode, memberPermissions, invitedContactId, members, false, null, null);
+            result = addMember(groupConversation, memberTwincode, memberPermissions, invitedContactId, members,
+                    false, conversationImpl.hasVersion21(), null, null);
             if (result != AddStatus.ERROR) {
                 newStatus = InvitationDescriptor.Status.JOINED;
             } else {
@@ -1161,9 +1370,9 @@ class GroupConversationManager {
      * @return the join result to return to the new member.
      */
     @Nullable
-    JoinResult processJoinGroup(@NonNull UUID groupTwincodeId, @NonNull TwincodeOutbound memberTwincode, long memberPermissions) {
+    JoinResult processJoinGroupLegacy(@NonNull UUID groupTwincodeId, @NonNull TwincodeOutbound memberTwincode, long memberPermissions) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "processJoinGroup: groupTwincodeId=" + groupTwincodeId + " memberTwincode=" + memberTwincode);
+            Log.d(LOG_TAG, "processJoinGroupLegacy: groupTwincodeId=" + groupTwincodeId + " memberTwincode=" + memberTwincode);
         }
 
         // Find the group.
@@ -1173,7 +1382,7 @@ class GroupConversationManager {
         }
 
         final List<OnJoinGroupIQ.MemberInfo> members = new ArrayList<>();
-        final AddStatus result = addMember(groupConversation, memberTwincode, memberPermissions, null, members, false, null, null);
+        final AddStatus result = addMember(groupConversation, memberTwincode, memberPermissions, null, members, false, false, null, null);
         if (result == AddStatus.ERROR) {
             return null;
         }
@@ -1276,7 +1485,7 @@ class GroupConversationManager {
         if (inviterTwincode != null) {
             // If we have an invitation, keep the contactId of the conversation to which the invitation was sent.
             UUID invitedContactId = conversationImpl.getContactId();
-            addMember(groupConversation, inviterTwincode, inviterPermissions, invitedContactId, null, false, null, null);
+            addMember(groupConversation, inviterTwincode, inviterPermissions, invitedContactId, null, false, false, null, null);
 
             final TwincodeOutbound previousPeerTwincode = conversationImpl.getPeerTwincodeOutbound();
             if (inviterTwincode.isSigned() && previousPeerTwincode != null) {
@@ -1397,7 +1606,7 @@ class GroupConversationManager {
         }
 
         final GroupConversationImpl groupConversation = mServiceProvider.findGroupConversation(groupTwincodeId);
-        if (groupConversation != null && conversationImpl.isGroup() && conversationImpl.hasPermission(ConversationService.Permission.UPDATE_MEMBER)) {
+        if (groupConversation != null && conversationImpl.isGroup() && conversationImpl.hasPermission(Permission.UPDATE_MEMBER)) {
             if (memberTwincodeId.equals(groupConversation.getTwincodeOutboundId())) {
                 groupConversation.setPermissions(permissions);
                 mServiceProvider.updateGroupConversation(groupConversation);
@@ -1453,8 +1662,8 @@ class GroupConversationManager {
      */
     @NonNull
     private ErrorCode verifySignature(@NonNull TwincodeOutbound signerTwincode, @NonNull UUID groupTwincodeId,
-                                      @NonNull UUID memberTwincodeId, @NonNull String publicKey, long memberPermissions,
-                                      @NonNull String signature) {
+                                      @NonNull UUID memberTwincodeId, @NonNull CryptoService.PublicKeyData publicKey,
+                                      long memberPermissions, @NonNull String signature) {
         if (DEBUG) {
             Log.d(LOG_TAG, "verifySignature: signerTwincode=" + signerTwincode + " groupTwincodeId=" + groupTwincodeId
                     + " memberTwincodeId=" + memberTwincodeId + " publicKey=" + publicKey + " memberPermissions=" + memberPermissions);
@@ -1466,7 +1675,7 @@ class GroupConversationManager {
 
             encoder.writeUUID(groupTwincodeId);
             encoder.writeUUID(memberTwincodeId);
-            encoder.writeString(publicKey);
+            encoder.writeString(publicKey.asString());
             encoder.writeLong(memberPermissions);
 
             return mCryptoService.verifyContent(signerTwincode, outputStream.toByteArray(), signature);
@@ -1491,7 +1700,7 @@ class GroupConversationManager {
      */
     @Nullable
     private String signMember(@Nullable TwincodeOutbound twincodeOutbound, @NonNull UUID groupTwincodeId,
-                              @NonNull UUID memberTwincodeId, @Nullable String publicKey, long memberPermissions) {
+                              @NonNull UUID memberTwincodeId, @Nullable CryptoService.PublicKeyData publicKey, long memberPermissions) {
         if (DEBUG) {
             Log.d(LOG_TAG, "signMember: twincodeOutbound=" + twincodeOutbound + " memberTwincodeId=" + memberTwincodeId
                     + " publicKey=" + publicKey + " memberPermission=" + memberPermissions);
@@ -1507,7 +1716,7 @@ class GroupConversationManager {
 
             encoder.writeUUID(groupTwincodeId);
             encoder.writeUUID(memberTwincodeId);
-            encoder.writeString(publicKey);
+            encoder.writeString(publicKey.asString());
             encoder.writeLong(memberPermissions);
 
             return mCryptoService.signContent(twincodeOutbound, outputStream.toByteArray());
@@ -1522,7 +1731,7 @@ class GroupConversationManager {
     @NonNull
     private AddStatus addMember(@NonNull GroupConversationImpl groupConversation, @NonNull TwincodeOutbound memberTwincode,
                                 long permissions, @Nullable UUID invitedContactId,
-                                @Nullable List<OnJoinGroupIQ.MemberInfo> returnMembers, boolean propagate,
+                                @Nullable List<OnJoinGroupIQ.MemberInfo> returnMembers, boolean propagate, boolean useSecureRoster,
                                 @Nullable UUID signedOffTwincodeId, @Nullable String signature) {
         if (DEBUG) {
             Log.d(LOG_TAG, "addMember: groupConversation=" + groupConversation + " memberTwincode=" + memberTwincode);
@@ -1569,7 +1778,13 @@ class GroupConversationManager {
                     final UUID peerMemberId = peerTwincode.getId();
                     final long peerPermissions = member.getPermissions();
 
-                    returnMembers.add(new OnJoinGroupIQ.MemberInfo(peerMemberId, publicKey, peerPermissions));
+                    // - If this member has no public key, it is not part of the secure roster and we must report
+                    //   it to the new member.
+                    // - If the new member does not use the secure roster, we must tell it every member.
+                    // - If a member does not know about secure roster, we must also propagate them manually.
+                    if (publicKey == null || !useSecureRoster || !member.hasVersion21()) {
+                        returnMembers.add(new OnJoinGroupIQ.MemberInfo(peerMemberId, publicKey, peerPermissions));
+                    }
                 }
             }
         }

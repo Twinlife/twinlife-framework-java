@@ -1,32 +1,30 @@
 /*
  *  Copyright (c) 2024 twinlife SAS.
  *  SPDX-License-Identifier: AGPL-3.0-only
+ *
+ *  Contributors:
+ *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.crypto;
-
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.TrustMethod;
-import org.twinlife.twinlife.TwincodeOutbound;
 
 class KeyInfo {
-    private static final String LOG_TAG = "KeyInfo";
-    private static final boolean DEBUG = false;
 
     static final int KEY_TYPE_MASK = 0x0FF;
     static final int KEY_TYPE_25519 = 1;
     static final int KEY_TYPE_ECDSA = 2;
     static final int KEY_PRIVATE_FLAG = 0x0100;
 
-    private final TwincodeOutbound mTwincodeOutbound;
     private final CryptoKey.Kind mSignKind;
     private final CryptoKey.Kind mEncryptKind;
     private final long mModificationDate;
-    private final int mFlags;
+    protected final int mFlags;
     private final int mKeyIndex;
     @Nullable
     private final CryptoKey mEncryptionKey;
@@ -48,14 +46,10 @@ class KeyInfo {
         }
     }
 
-    KeyInfo(@NonNull TwincodeOutbound twincodeOutbound, long modificationDate, int flags,
+    KeyInfo(long modificationDate, int flags,
             @Nullable byte[] signingKey, @Nullable byte[] encryptionKey,
             long nonceSequence, int keyIndex, byte[] secret) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "KeyInfo: twincodeOutbound=" + twincodeOutbound + " flags=" + flags);
-        }
 
-        mTwincodeOutbound = twincodeOutbound;
         mSignKind = toCryptoKind(flags, false);
         mEncryptKind = toCryptoKind(flags, true);
         mFlags = flags;
@@ -79,7 +73,7 @@ class KeyInfo {
     @NonNull
     TrustMethod getTrustMethod() {
 
-        return mTwincodeOutbound.getTrustMethod();
+        return TrustMethod.NONE;
     }
 
     @NonNull
@@ -177,7 +171,6 @@ class KeyInfo {
 
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder.append("KeyInfo[");
-        stringBuilder.append(mTwincodeOutbound);
         stringBuilder.append(" flags=");
         stringBuilder.append(mFlags);
         stringBuilder.append(" modificationDate=");

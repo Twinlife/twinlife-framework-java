@@ -1,9 +1,10 @@
 /*
- *  Copyright (c) 2025 twinlife SA.
+ *  Copyright (c) 2025-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.conversation;
@@ -144,6 +145,12 @@ public class UpdateDescriptorOperation extends Operation {
                 message = null;
                 copyAllowed = (mUpdateFlags & UPDATE_COPY_ALLOWED) != 0 ? fileDescriptor.isCopyAllowed() : null;
                 expireTimeout = (mUpdateFlags & UPDATE_EXPIRATION) != 0 ? fileDescriptor.getExpireTimeout() : null;
+            } else if (descriptorImpl instanceof GeolocationDescriptorImpl) {
+                final GeolocationDescriptorImpl geolocationDescriptor = (GeolocationDescriptorImpl) descriptorImpl;
+
+                message = null;
+                copyAllowed = (mUpdateFlags & UPDATE_COPY_ALLOWED) != 0 ? geolocationDescriptor.isCopyAllowed() : null;
+                expireTimeout = (mUpdateFlags & UPDATE_EXPIRATION) != 0 ? geolocationDescriptor.getExpireTimeout() : null;
             } else {
                 return ErrorCode.BAD_REQUEST;
             }

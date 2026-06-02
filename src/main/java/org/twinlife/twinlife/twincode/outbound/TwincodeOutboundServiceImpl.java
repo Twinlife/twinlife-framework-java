@@ -108,7 +108,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
         @NonNull
         final Consumer<TwincodeOutbound> complete;
         @Nullable
-        final String pubKey;
+        final CryptoService.PublicKeyData pubKey;
         @Nullable
         final byte[] secretKey;
         @NonNull
@@ -126,8 +126,8 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
             this.keyIndex = 0;
         }
 
-        GetTwincodePendingRequest(@NonNull UUID twincodeId, @NonNull String pubKey, int keyIndex, @Nullable byte[] secretKey,
-                                  @NonNull TrustMethod trusted,
+        GetTwincodePendingRequest(@NonNull UUID twincodeId, @NonNull CryptoService.PublicKeyData pubKey, int keyIndex,
+                                  @Nullable byte[] secretKey, @NonNull TrustMethod trusted,
                                   @NonNull Consumer<TwincodeOutbound> complete) {
             this.twincodeId = twincodeId;
             this.refreshPeriod = TwincodeOutboundService.REFRESH_PERIOD;
@@ -212,10 +212,10 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
         @NonNull
         final String code;
         @NonNull
-        final Consumer<Pair<TwincodeOutbound, String>> complete;
+        final Consumer<Pair<TwincodeOutbound, CryptoService.PublicKeyData>> complete;
 
         GetInvitationCodePendingRequest(@NonNull String code,
-                                        @NonNull Consumer<Pair<TwincodeOutbound, String>> complete) {
+                                        @NonNull Consumer<Pair<TwincodeOutbound, CryptoService.PublicKeyData>> complete) {
             this.code = code;
             this.complete = complete;
         }
@@ -381,7 +381,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
     }
 
     @Override
-    public void getSignedTwincode(@NonNull UUID twincodeOutboundId, @NonNull String publicKey,
+    public void getSignedTwincode(@NonNull UUID twincodeOutboundId, @NonNull CryptoService.PublicKeyData publicKey,
                                   @NonNull TrustMethod trust, @NonNull Consumer<TwincodeOutbound> complete) {
         if (DEBUG) {
             Log.d(LOG_TAG, "getSignedTwincode: twincodeOutboundId=" + twincodeOutboundId + " publicKey=" + publicKey);
@@ -402,7 +402,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
     }
 
     @Override
-    public void getSignedTwincodeWithSecret(@NonNull UUID twincodeOutboundId, @NonNull String publicKey, int keyIndex, @Nullable byte[] secretKey,
+    public void getSignedTwincodeWithSecret(@NonNull UUID twincodeOutboundId, @NonNull CryptoService.PublicKeyData publicKey, int keyIndex, @Nullable byte[] secretKey,
                                             @NonNull TrustMethod trust, @NonNull Consumer<TwincodeOutbound> complete) {
         if (DEBUG) {
             Log.d(LOG_TAG, "getSignedTwincodeWithSecret: twincodeOutboundId=" + twincodeOutboundId + " publicKey=" + publicKey);
@@ -700,7 +700,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
     }
 
     @Override
-    public void getInvitationCode(@NonNull String code, @NonNull Consumer<Pair<TwincodeOutbound, String>> complete) {
+    public void getInvitationCode(@NonNull String code, @NonNull Consumer<Pair<TwincodeOutbound, CryptoService.PublicKeyData>> complete) {
         if (DEBUG) {
             Log.d(LOG_TAG, "getInvitationCode: code=" + code);
         }
@@ -727,14 +727,15 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
         }
 
         final int pos = signature.second.indexOf('.');
-        final byte[] hash = Utils.decodeBase64URL(signature.second.substring(0, pos) + "=");
+        final byte[] hash = Utils.decodeBase64URL(signature.second.substring(0, pos));
         if (hash == null || hash.length != 32) {
             complete.onGet(ErrorCode.LIBRARY_ERROR, null);
             return;
         }
         final String label = Utils.bytesToHex(hash);
         complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(TwincodeURI.Kind.Authenticate, Twincode.NOT_DEFINED,
-                null, signature.second, "https://" + TwincodeURI.AUTHENTICATE_ACTION + "/" + signature.second, label));
+                null, CryptoService.PublicKeyData.create(signature.second),
+                "https://" + TwincodeURI.AUTHENTICATE_ACTION + "/" + signature.second, label));
     }
 
     @Override
@@ -793,7 +794,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
                 break;
 
             case AccountMigration:
-                uri = TwincodeURI.ACCOUNT_MIGRATION_ACTION + "/?id=" + twincodeId;
+                uri = TwincodeURI.ACCOUNT_MIGRATION_LEGACY_ACTION + "/?id=" + twincodeId;
                 label = Utils.toString(twincodeId);
                 if (pubKey != null) {
                     uri = uri + "&pubKey=" + pubKey;
@@ -810,7 +811,8 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
                 return;
         }
 
-        complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(kind, twincodeId, null, pubKey, "https://" + uri, label));
+        complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(kind, twincodeId, null, CryptoService.PublicKeyData.create(pubKey),
+                "https://" + uri, label));
     }
 
     @Override
@@ -863,7 +865,8 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
                 return;
             }
             label = path;
-            complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(TwincodeURI.Kind.Invitation, twincodeId, options, pubKey, uri.toString(), label));
+            complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(TwincodeURI.Kind.Invitation, twincodeId, options,
+                    CryptoService.PublicKeyData.create(pubKey), uri.toString(), label));
             return;
         }
 
@@ -885,6 +888,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
                 kind = TwincodeURI.Kind.Transfer;
                 break;
 
+            case TwincodeURI.ACCOUNT_MIGRATION_LEGACY_ACTION:
             case TwincodeURI.ACCOUNT_MIGRATION_ACTION:
                 kind = TwincodeURI.Kind.AccountMigration;
                 break;
@@ -1029,7 +1033,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
             complete.onGet(ErrorCode.BAD_REQUEST, null);
             return;
         }
-        complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(kind, twincodeId, options, pubKey, uri.toString(), label));
+        complete.onGet(ErrorCode.SUCCESS, new TwincodeURI(kind, twincodeId, options, CryptoService.PublicKeyData.create(pubKey), uri.toString(), label));
     }
 
     @Nullable
@@ -1329,7 +1333,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
             return;
         }
 
-        String publicKey = icIQ.getPublicKey();
+        CryptoService.PublicKeyData publicKey = CryptoService.PublicKeyData.create(icIQ.getPublicKey());
         byte[] signature = icIQ.getSignature();
 
         TrustMethod trustMethod = TrustMethod.NONE;
@@ -1443,7 +1447,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
             mRefreshJob = null;
         }
 
-        if (!isTwinlifeOnline()) {
+        if (!isTwinlifeOnline() || mTwinlifeImpl.getBackupService().isRestoreInProgress()) {
             return;
         }
 

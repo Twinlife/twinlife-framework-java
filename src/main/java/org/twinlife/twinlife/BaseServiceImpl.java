@@ -67,7 +67,8 @@ public abstract class BaseServiceImpl <Observer extends BaseService.ServiceObser
             "account-migration.twinlife",
             "callservice.twinlife",
             "cryptoservice.twinlife",
-            "backupservice.twinlife"
+            "backupservice.twinlife",
+            "securerosterservice.twinlife"
     };
 
     public static final int DATABASE_ERROR_DELAY_GUARD = 2 * 120 * 1000; // 2 minutes

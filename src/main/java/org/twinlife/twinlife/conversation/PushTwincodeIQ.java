@@ -163,7 +163,7 @@ class PushTwincodeIQ extends BinaryPacketIQ {
             encoder.writeUUID(twincodeDescriptor.getTwincodeId());
             encoder.writeUUID(twincodeDescriptor.getSchemaId());
             encoder.writeBoolean(twincodeDescriptor.isCopyAllowed());
-            encoder.writeOptionalString(twincodeDescriptor.getPublicKey());
+            encoder.writeOptionalString(twincodeDescriptor.getPublicKey() != null ? twincodeDescriptor.getPublicKey().asString() : null);
         }
 
         @Override

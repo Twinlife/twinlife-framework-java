@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2015-2023 twinlife SA.
+ *  Copyright (c) 2015-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 /*
@@ -28,10 +29,9 @@
  *   {"name":"replyTo", "type":["null", {
  *       {"name":"twincodeOutboundId", "type":"uuid"},
  *       {"name":"sequenceId", "type":"long"}
- *     }
+ *     }]
  *   }
  *  ]
- * }
  *
  * Schema version 3
  *  Date: 2017/07/29
@@ -88,6 +88,7 @@ import org.twinlife.twinlife.ConversationService.DescriptorAnnotation;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.Serializer;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.SerializerFactory;
@@ -98,7 +99,9 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class DescriptorImpl implements ConversationService.Descriptor {
@@ -113,6 +116,9 @@ public class DescriptorImpl implements ConversationService.Descriptor {
     static final int FLAG_VIDEO = 0x10;
     static final int FLAG_INCOMING_CALL = 0x20;
     static final int FLAG_ACCEPTED_CALL = 0x40;
+
+    // PollDescriptor
+    static final int FLAG_MULTIPLE_CHOICES = 0x80;
 
     static final String FIELD_SEPARATOR = "\n";
 
@@ -222,7 +228,8 @@ public class DescriptorImpl implements ConversationService.Descriptor {
     private volatile long mReadTimestamp;
     private volatile long mDeletedTimestamp;
     private volatile long mPeerDeletedTimestamp;
-    private List<DescriptorAnnotation> mAnnotations;
+    @NonNull
+    private final Map<UUID, List<DescriptorAnnotation>> mAnnotations = new HashMap<>();
 
     private DescriptorImpl(@NonNull UUID twincodeOutboundId, long sequenceId, long createdTimestamp, long updatedTimestamp, long sentTimestamp,
                            long receivedTimestamp, long readTimestamp, long deletedTimestamp, long peerDeletedTimestamp) {
@@ -328,7 +335,7 @@ public class DescriptorImpl implements ConversationService.Descriptor {
         mDeletedTimestamp = descriptorImpl.mDeletedTimestamp;
         mPeerDeletedTimestamp = descriptorImpl.mPeerDeletedTimestamp;
         mExpireTimeout = descriptorImpl.mExpireTimeout;
-        mAnnotations = descriptorImpl.mAnnotations;
+        mAnnotations.putAll(descriptorImpl.mAnnotations);
     }
 
     public long getDatabaseId() {
@@ -342,9 +349,9 @@ public class DescriptorImpl implements ConversationService.Descriptor {
     }
 
     @NonNull
-    ConversationService.Permission getPermission() {
+    Permission getPermission() {
 
-        return ConversationService.Permission.SEND_MESSAGE;
+        return Permission.SEND_MESSAGE;
     }
 
     @Nullable
@@ -473,10 +480,9 @@ public class DescriptorImpl implements ConversationService.Descriptor {
     @Nullable
     public DescriptorAnnotation getAnnotation(@NonNull ConversationService.AnnotationType type) {
 
-        if (mAnnotations != null) {
-            for (DescriptorAnnotation annotation : mAnnotations) {
+        for (List<DescriptorAnnotation> annotations : mAnnotations.values()) {
+            for (DescriptorAnnotation annotation : annotations) {
                 if (annotation.getType() == type) {
-
                     return annotation;
                 }
             }
@@ -485,16 +491,13 @@ public class DescriptorImpl implements ConversationService.Descriptor {
     }
 
     @Override
+    @NonNull
     public List<DescriptorAnnotation> getAnnotations(@NonNull ConversationService.AnnotationType type) {
 
-        List<DescriptorAnnotation> result = null;
-        if (mAnnotations != null) {
-            for (DescriptorAnnotation annotation : mAnnotations) {
+        List<DescriptorAnnotation> result = new ArrayList<>();
+        for (List<DescriptorAnnotation> annotations : mAnnotations.values()) {
+            for (DescriptorAnnotation annotation : annotations) {
                 if (annotation.getType() == type) {
-
-                    if (result == null) {
-                        result = new ArrayList<>();
-                    }
                     result.add(annotation);
                 }
             }
@@ -502,8 +505,8 @@ public class DescriptorImpl implements ConversationService.Descriptor {
         return result;
     }
 
-    @Nullable
-    public List<DescriptorAnnotation> getAnnotations() {
+    @NonNull
+    public Map<UUID, List<DescriptorAnnotation>> getAnnotations() {
 
         return mAnnotations;
     }
@@ -513,7 +516,7 @@ public class DescriptorImpl implements ConversationService.Descriptor {
     //
 
     /**
-     * Set the conversationId and database descriptor Id for a descriptor that was received from a peer.
+     * Set the conversationId and database descriptor ID for a descriptor that was received from a peer.
      *
      * @param cid the conversation database id.
      * @param did the descriptor database id.
@@ -559,7 +562,7 @@ public class DescriptorImpl implements ConversationService.Descriptor {
         mCreatedTimestamp += offset;
         mSentTimestamp += offset;
 
-        // Insure that createdTimestamp is not in the future
+        // Ensure that createdTimestamp is not in the future
         long now = System.currentTimeMillis();
         if (mCreatedTimestamp > now) {
             mCreatedTimestamp = now;
@@ -605,18 +608,10 @@ public class DescriptorImpl implements ConversationService.Descriptor {
         }
     }
 
-    void addAnnotation(@NonNull DescriptorAnnotation annotation) {
+    void setAnnotations(@NonNull Map<UUID, List<DescriptorAnnotation>> annotations) {
 
-        if (mAnnotations == null) {
-            mAnnotations = new ArrayList<>();
-        }
-
-        mAnnotations.add(annotation);
-    }
-
-    void setAnnotations(@Nullable List<DescriptorAnnotation> annotations) {
-
-        mAnnotations = annotations;
+        mAnnotations.clear();
+        mAnnotations.putAll(annotations);
     }
 
     void deserializeTimestamps(@NonNull byte[] bytes) throws SerializerException {

@@ -10,6 +10,8 @@
 
 package org.twinlife.twinlife.util;
 
+import androidx.annotation.NonNull;
+
 import java.io.UnsupportedEncodingException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -181,6 +183,10 @@ public class StringUtils {
      */
     public static byte[] decodeBase64(String data) {
         return Base64.decode(data);
+    }
+
+    public static String formatPollString(@NonNull String string) {
+        return string.replaceAll("\\s+", " ").strip();
     }
 
     private StringUtils() {

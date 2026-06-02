@@ -174,8 +174,16 @@ public interface AssertPoint {
         return new Values().put(value);
     }
 
+    static Values create(TwincodeInbound value) {
+        return new Values().put(value);
+    }
+
     static Values create(TwincodeInvocation value) {
         return new Values().put(value);
+    }
+
+    static Values create(TwincodeInfo value) {
+        return new Values().putTwincodeId(value.twincodeOutboundId).putTwincodeId(value.twincodeInboundId).putTwincodeId(value.twincodeFactoryId);
     }
 
     int getIdentifier();

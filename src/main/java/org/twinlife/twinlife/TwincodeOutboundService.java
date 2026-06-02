@@ -75,7 +75,8 @@ public interface TwincodeOutboundService extends BaseService<TwincodeOutboundSer
      * @param trust whether the public key is trusted and how (ie, received or validated through an external channel).
      * @param complete completion handler called.
      */
-    void getSignedTwincode(@NonNull UUID twincodeOutboundId, @NonNull String publicKey, @NonNull TrustMethod trust, @NonNull Consumer<TwincodeOutbound> complete);
+    void getSignedTwincode(@NonNull UUID twincodeOutboundId, @NonNull CryptoService.PublicKeyData publicKey,
+                           @NonNull TrustMethod trust, @NonNull Consumer<TwincodeOutbound> complete);
 
     /**
      * Get the twincode signed by the public key, verify the attribute signatures when we get it from the server,
@@ -89,8 +90,8 @@ public interface TwincodeOutboundService extends BaseService<TwincodeOutboundSer
      * @param trust whether the public key is trusted and how (ie, received or validated through an external channel).
      * @param complete completion handler called.
      */
-    void getSignedTwincodeWithSecret(@NonNull UUID twincodeOutboundId, @NonNull String publicKey, int keyIndex, @Nullable byte[] secretKey,
-                                     @NonNull TrustMethod trust, @NonNull Consumer<TwincodeOutbound> complete);
+    void getSignedTwincodeWithSecret(@NonNull UUID twincodeOutboundId, @NonNull CryptoService.PublicKeyData publicKey, int keyIndex,
+                                     @Nullable byte[] secretKey, @NonNull TrustMethod trust, @NonNull Consumer<TwincodeOutbound> complete);
 
     void getAllTwincodes(@NonNull Consumer<Map<UUID, List<TwincodeInfo>>> complete);
 
@@ -109,7 +110,7 @@ public interface TwincodeOutboundService extends BaseService<TwincodeOutboundSer
 
     void createInvitationCode(@NonNull TwincodeOutbound twincodeOutbound, int validityPeriod, @NonNull Consumer<InvitationCode> complete);
 
-    void getInvitationCode(@NonNull String code, @NonNull Consumer<Pair<TwincodeOutbound, String>> complete);
+    void getInvitationCode(@NonNull String code, @NonNull Consumer<Pair<TwincodeOutbound, CryptoService.PublicKeyData>> complete);
 
     /**
      * Create a URI for the twincode by using the given URI prefix.

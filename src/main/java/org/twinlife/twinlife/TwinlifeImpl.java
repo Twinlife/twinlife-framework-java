@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012-2025 twinlife SA.
+ *  Copyright (c) 2012-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -16,6 +16,7 @@ package org.twinlife.twinlife;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.util.Log;
+import android.util.Pair;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -44,6 +45,7 @@ import org.twinlife.twinlife.image.ImageServiceImpl;
 import org.twinlife.twinlife.management.ManagementServiceImpl;
 import org.twinlife.twinlife.notification.NotificationServiceImpl;
 import org.twinlife.twinlife.repository.RepositoryServiceImpl;
+import org.twinlife.twinlife.secureroster.SecureRosterServiceImpl;
 import org.twinlife.twinlife.twincode.factory.TwincodeFactoryServiceImpl;
 import org.twinlife.twinlife.twincode.inbound.TwincodeInboundServiceImpl;
 import org.twinlife.twinlife.twincode.outbound.TwincodeOutboundServiceImpl;
@@ -53,6 +55,8 @@ import org.twinlife.twinlife.util.Logger;
 import org.twinlife.twinlife.util.SerializerFactoryImpl;
 import org.twinlife.twinlife.util.Utils;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -77,6 +81,10 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
 
     /*
      * <pre>
+     * Database Version 26
+     *  Date: 2026/04/20
+     *   No database schema change but convert groups to use secure roster.
+     *
      * Database Version 25
      *  Date: 2024/10/14
      *   Fix twincodeOutbound flags after introduction of beta support for SDPs encryption keys (internal version).
@@ -266,7 +274,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
      * </pre>
      */
 
-    protected static final int DATABASE_VERSION = 25;
+    protected static final int DATABASE_VERSION = 26;
 
     //
     // Singleton instance
@@ -324,6 +332,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
     private volatile PeerCallServiceImpl mPeerCallServiceImpl;
     private volatile CryptoServiceImpl mCryptoServiceImpl;
     private volatile BackupServiceImpl mBackupServiceImpl;
+    private volatile SecureRosterServiceImpl mSecureRosterServiceImpl;
     protected TwinlifeSecuredConfiguration mTwinlifeSecuredConfiguration;
     protected final List<BaseServiceImpl<?>> mBaseServiceImpls = new ArrayList<>();
     private final DatabaseServiceImpl mDatabaseService;
@@ -501,6 +510,13 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
             return ErrorCode.LIBRARY_ERROR;
         }
 
+        // Save configuration before creating the services.
+        mTwinlifeConfiguration.serviceId = twinlifeConfiguration.serviceId;
+        mTwinlifeConfiguration.applicationId = twinlifeConfiguration.applicationId;
+        mTwinlifeConfiguration.applicationName = twinlifeConfiguration.applicationName;
+        mTwinlifeConfiguration.applicationVersion = twinlifeConfiguration.applicationVersion;
+        mTwinlifeConfiguration.certificateSerialNumber = twinlifeConfiguration.certificateSerialNumber;
+
         mSerializerFactoryImpl.addSerializers(twinlifeConfiguration.serializers);
 
         mWebSocketConnection = connection;
@@ -515,6 +531,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         mTwincodeInboundServiceImpl = new TwincodeInboundServiceImpl(this, mWebSocketConnection);
         mTwincodeOutboundServiceImpl = new TwincodeOutboundServiceImpl(this, mWebSocketConnection);
         mTwincodeFactoryServiceImpl = new TwincodeFactoryServiceImpl(this, mWebSocketConnection);
+        mSecureRosterServiceImpl = new SecureRosterServiceImpl(this, mWebSocketConnection);
         mRepositoryServiceImpl = new RepositoryServiceImpl(this, mWebSocketConnection, twinlifeConfiguration.factories);
         mNotificationServiceImpl = new NotificationServiceImpl(this, mWebSocketConnection);
         mConversationServiceImpl = new ConversationServiceImpl(this, mWebSocketConnection, getImageTools());
@@ -534,18 +551,15 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         mAccountMigrationServiceImpl.finishMigration(mContext);
 
         synchronized (mConfigurationLock) {
-            mTwinlifeConfiguration.serviceId = twinlifeConfiguration.serviceId;
-            mTwinlifeConfiguration.applicationId = twinlifeConfiguration.applicationId;
-            mTwinlifeConfiguration.applicationName = twinlifeConfiguration.applicationName;
-            mTwinlifeConfiguration.applicationVersion = twinlifeConfiguration.applicationVersion;
-            mTwinlifeConfiguration.certificateSerialNumber = twinlifeConfiguration.certificateSerialNumber;
-
-            mTwinlifeSecuredConfiguration = TwinlifeSecuredConfiguration.init(mSerializerFactoryImpl, getConfigurationService(), mTwinlifeConfiguration);
-            if (mTwinlifeSecuredConfiguration == null) {
-
+            final Pair<ErrorCode, TwinlifeSecuredConfiguration> result = TwinlifeSecuredConfiguration.init(mSerializerFactoryImpl, getConfigurationService(), mTwinlifeConfiguration);
+            if (result.first != ErrorCode.SUCCESS) {
                 if (Logger.ERROR) {
                     Logger.error(LOG_TAG, "invalid secure configuration");
                 }
+                return result.first;
+            }
+            mTwinlifeSecuredConfiguration = result.second;
+            if (mTwinlifeSecuredConfiguration == null) {
                 return ErrorCode.LIBRARY_ERROR;
             }
         }
@@ -575,6 +589,10 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         mBaseServiceImpls.add(mTwincodeOutboundServiceImpl);
         mTwincodeOutboundServiceImpl.configure(twinlifeConfiguration.twincodeOutboundServiceConfiguration);
         mTwinlifeConfiguration.twincodeOutboundServiceConfiguration = (TwincodeOutboundServiceConfiguration) mTwincodeOutboundServiceImpl.getServiceConfiguration();
+
+        mBaseServiceImpls.add(mSecureRosterServiceImpl);
+        mSecureRosterServiceImpl.configure(twinlifeConfiguration.secureRosterServiceConfiguration);
+        mTwinlifeConfiguration.secureRosterServiceConfiguration = (SecureRosterService.SecureRosterServiceConfiguration) mSecureRosterServiceImpl.getServiceConfiguration();
 
         mBaseServiceImpls.add(mRepositoryServiceImpl);
         mRepositoryServiceImpl.configure(twinlifeConfiguration.repositoryServiceConfiguration);
@@ -818,6 +836,12 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         return mBackupServiceImpl;
     }
 
+    @NonNull
+    public SecureRosterService getSecureRosterService() {
+
+        return mSecureRosterServiceImpl;
+    }
+
     public String getApplicationName() {
 
         return mTwinlifeConfiguration.applicationName;
@@ -937,6 +961,16 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
             Log.d(LOG_TAG, "onUpgrade database=" + database + " oldVersion=" + oldVersion + " newVersion=" + newVersion);
         }
 
+        if (oldVersion <= 25) {
+            File groupMigration = new File(getFilesDir(), GROUP_SECURE_ROSTER_MIGRATION);
+            try {
+                groupMigration.createNewFile();
+            } catch (IOException exception) {
+                if (Logger.ERROR) {
+                    Logger.error(LOG_TAG, "Cannot create " + GROUP_SECURE_ROSTER_MIGRATION + " marker file");
+                }
+            }
+        }
         mDatabaseUpgraded = true;
         mDatabaseService.onUpgrade(database, oldVersion, newVersion);
     }
@@ -1026,6 +1060,34 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         }
 
         mWebSocketConnection.onNetworkDisconnect();
+    }
+
+    /**
+     * Check if some migration is needed for the service.
+     * @param name the migration name.
+     * @return true if a migration is needed.
+     */
+    public boolean needMigration(@NonNull String name) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "needMigration " + name);
+        }
+
+        final File f = new File(getFilesDir(), name);
+        return f.exists();
+    }
+
+    /**
+     * When the migration work is finished, remove the marker file that
+     * indicates a migration is necessary.
+     * @param name the migration name.
+     */
+    public void finishMigration(@NonNull String name) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "finishMigration " + name);
+        }
+
+        final File f = new File(getFilesDir(), name);
+        Utils.deleteFile(LOG_TAG, f);
     }
 
     /**

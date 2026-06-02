@@ -90,12 +90,10 @@ public class DeviceInfoImpl extends AndroidDeviceInfo implements DeviceInfo {
     @Override
     public boolean isCharging() {
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            BatteryManager batteryManager = (BatteryManager) mContext.getSystemService(Context.BATTERY_SERVICE);
+        BatteryManager batteryManager = (BatteryManager) mContext.getSystemService(Context.BATTERY_SERVICE);
 
-            if (batteryManager != null) {
-                return batteryManager.isCharging();
-            }
+        if (batteryManager != null) {
+            return batteryManager.isCharging();
         }
 
         return mIsCharging;

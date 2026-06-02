@@ -54,6 +54,7 @@ import java.util.UUID;
  *         {"name":"annotationValue", "type":"int"}
  *       ]}
  *     ]}
+ *  ]
  * }
  *
  * </pre>
@@ -228,23 +229,23 @@ class UpdateAnnotationIQ extends BinaryPacketIQ {
                     final long value = decoder.readLong();
                     switch (updateType) {
                         case 1:
-                            list.add (new DescriptorAnnotation(AnnotationType.FORWARD, value, 0));
+                            list.add (new DescriptorAnnotation(AnnotationType.FORWARD, value));
                             break;
 
                         case 2:
-                            list.add (new DescriptorAnnotation(AnnotationType.FORWARDED, value, 0));
+                            list.add (new DescriptorAnnotation(AnnotationType.FORWARDED, value));
                             break;
 
                         case 3:
-                            list.add (new DescriptorAnnotation(AnnotationType.SAVE, value, 0));
+                            list.add (new DescriptorAnnotation(AnnotationType.SAVE, value));
                             break;
 
                         case 4:
-                            list.add (new DescriptorAnnotation(AnnotationType.LIKE, value, 0));
+                            list.add (new DescriptorAnnotation(AnnotationType.LIKE, value));
                             break;
 
                         case 5:
-                            list.add (new DescriptorAnnotation(AnnotationType.POLL, value, 0));
+                            list.add (new DescriptorAnnotation(AnnotationType.POLL, value));
                             break;
 
                         default:

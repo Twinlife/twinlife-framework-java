@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2017-2024 twinlife SA.
+ *  Copyright (c) 2017-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Chedi Baccari (Christian.Jacquemot@twinlife-systems.com)
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.notification;
@@ -115,10 +116,10 @@ public class NotificationServiceImpl extends BaseServiceImpl<NotificationService
     @Nullable
     public Notification createNotification(int sysId, @NonNull NotificationType type, @NonNull RepositoryObject subject,
                                            @Nullable ConversationService.DescriptorId descriptorId,
-                                           @Nullable TwincodeOutbound annotatingUser) {
+                                           @Nullable TwincodeOutbound annotatingUser, @Nullable ConversationService.DescriptorAnnotation annotation) {
         if (DEBUG) {
             Log.d(LOG_TAG, "createNotification: sysId=" + sysId + " type=" + type + " subject=" + subject
-                    + " descriptorId=" + descriptorId + " annotatingUser=" + annotatingUser);
+                    + " descriptorId=" + descriptorId + " annotatingUser=" + annotatingUser + " annotation=" + annotation);
         }
 
         if (!isServiceOn()) {
@@ -126,7 +127,7 @@ public class NotificationServiceImpl extends BaseServiceImpl<NotificationService
             return null;
         }
 
-        return mServiceProvider.createNotification(sysId, type, subject, descriptorId, annotatingUser);
+        return mServiceProvider.createNotification(sysId, type, subject, descriptorId, annotatingUser, annotation);
     }
 
     @Override

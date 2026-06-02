@@ -16,6 +16,7 @@ import androidx.annotation.Nullable;
 import org.twinlife.twinlife.ConversationService.Descriptor;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
 import org.twinlife.twinlife.ConversationService.GeolocationDescriptor;
+import org.twinlife.twinlife.CryptoService;
 
 import java.util.UUID;
 
@@ -57,15 +58,16 @@ public abstract class DescriptorFactory {
      * @return the geolocation descriptor.
      */
     public GeolocationDescriptor createGeolocation(double longitude, double latitude, double altitude,
-                                                   double mapLongitudeDelta, double mapLatitudeDelta) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "createGeolocation longitude=" + longitude + " latitude=" + latitude
-                    + " altitude=" + altitude + " mapLongitudeDelta=" + mapLongitudeDelta + " mapLatitudeDelta=" + mapLatitudeDelta);
-        }
+                                                   double mapLongitudeDelta, double mapLatitudeDelta, boolean copyAllowed) {
+       if (DEBUG) {
+           Log.d(LOG_TAG, "createGeolocation: longitude=" + longitude + " latitude=" + latitude
+                   + " altitude=" + altitude + " mapLongitudeDelta=" + mapLongitudeDelta + " mapLatitudeDelta=" + mapLatitudeDelta + " copyAllowed=" + copyAllowed);
+       }
+
 
         final DescriptorId descriptorId = newDescriptorId();
         return new GeolocationDescriptorImpl(descriptorId, 0, 0, longitude, latitude, altitude,
-                mapLongitudeDelta, mapLatitudeDelta);
+                mapLongitudeDelta, mapLatitudeDelta, copyAllowed);
     }
 
     /**
@@ -78,7 +80,7 @@ public abstract class DescriptorFactory {
      * @param copyAllowed whether the copy is allowed.
      * @return the invitation descriptor.
      */
-    public Descriptor createTwincodeDescriptor(@NonNull UUID twincodeId, @NonNull UUID schemaId, @Nullable String publicKey,
+    public Descriptor createTwincodeDescriptor(@NonNull UUID twincodeId, @NonNull UUID schemaId, @Nullable CryptoService.PublicKeyData publicKey,
                                                @Nullable DescriptorId replyTo, boolean copyAllowed) {
         if (DEBUG) {
             Log.d(LOG_TAG, "createInvitation twincodeId=" + twincodeId + " schemaId=" + schemaId

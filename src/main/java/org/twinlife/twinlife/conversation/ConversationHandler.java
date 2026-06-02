@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2022-2025 twinlife SA.
+ *  Copyright (c) 2022-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -69,8 +69,11 @@ public abstract class ConversationHandler implements PeerConnectionService.DataC
         addListener(PushTwincodeIQ.IQ_PUSH_TWINCODE_SERIALIZER_3, this::onPushTwincodeIQ);
         addListener(PushTwincodeIQ.IQ_PUSH_TWINCODE_SERIALIZER_2, this::onPushTwincodeIQ);
         addListener(OnPushTwincodeIQ.IQ_ON_PUSH_TWINCODE_SERIALIZER, this::onOnPushObjectIQ);
-        addListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER, this::onPushGeolocationIQ);
+        addListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_2, this::onPushGeolocationIQ);
+        addListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_3, this::onPushGeolocationIQ);
         addListener(OnPushGeolocationIQ.IQ_ON_PUSH_GEOLOCATION_SERIALIZER, this::onOnPushObjectIQ);
+        addListener(PushPollIQ.IQ_PUSH_POLL_SERIALIZER, this::onPushPollIQ);
+        addListener(OnPushPollIQ.IQ_ON_PUSH_POLL_SERIALIZER, this::onOnPushObjectIQ);
         addListener(UpdateGeolocationIQ.IQ_UPDATE_GEOLOCATION_SERIALIZER, this::onUpdateGeolocationIQ);
         addListener(OnUpdateGeolocationIQ.IQ_ON_UPDATE_GEOLOCATION_SERIALIZER, this::onOnPushObjectIQ);
         addListener(UpdateTimestampIQ.IQ_UPDATE_TIMESTAMPS_SERIALIZER, this::onUpdateTimestampIQ);
@@ -241,10 +244,16 @@ public abstract class ConversationHandler implements PeerConnectionService.DataC
             sent = sendMessage(pushTwincodeIQ, StatType.IQ_SET_PUSH_TWINCODE);
 
         } else if (descriptor instanceof GeolocationDescriptorImpl) {
-            PushGeolocationIQ pushGeolocationIQ = new PushGeolocationIQ(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER,
+            PushGeolocationIQ pushGeolocationIQ = new PushGeolocationIQ(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_2,
                     requestId, (GeolocationDescriptorImpl) descriptor);
 
             sent = sendMessage(pushGeolocationIQ, StatType.IQ_SET_PUSH_GEOLOCATION);
+
+        } else if (descriptor instanceof PollDescriptorImpl) {
+            PushPollIQ pushPollIQ = new PushPollIQ(PushPollIQ.IQ_PUSH_POLL_SERIALIZER,
+                    requestId, (PollDescriptorImpl) descriptor);
+
+            sent = sendMessage(pushPollIQ, StatType.IQ_SET_PUSH_POLL);
 
         } else {
 
@@ -324,11 +333,6 @@ public abstract class ConversationHandler implements PeerConnectionService.DataC
         }
     }
 
-    /**
-     * Handle the ParticipantInfoIQ packet.
-     *
-     * @param iq the participant info iq.
-     */
     private void onPushObjectIQ(@NonNull BinaryPacketIQ iq) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onPushObjectIQ: iq=" + iq);
@@ -387,6 +391,27 @@ public abstract class ConversationHandler implements PeerConnectionService.DataC
         OnPushIQ onPushTwincodeIQ = new OnPushIQ(OnPushGeolocationIQ.IQ_ON_PUSH_GEOLOCATION_SERIALIZER, pushGeolocationIQ.getRequestId(), deviceState, geolocationDescriptorImpl.getReceivedTimestamp());
         sendMessage(onPushTwincodeIQ, StatType.IQ_RESULT_PUSH_GEOLOCATION);
     }
+
+    private void onPushPollIQ(@NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onPushPollIQ: iq=" + iq);
+        }
+
+        if (!(iq instanceof PushPollIQ)) {
+            return;
+        }
+        final PushPollIQ pushPollIQ = (PushPollIQ) iq;
+
+        PollDescriptorImpl pollDescriptorImpl = pushPollIQ.pollDescriptorImpl;
+        pollDescriptorImpl.setReceivedTimestamp(System.currentTimeMillis());
+        onPopDescriptor(pollDescriptorImpl);
+
+        int deviceState = getDeviceState();
+        OnPushIQ onPushObjectIQ = new OnPushIQ(OnPushPollIQ.IQ_ON_PUSH_POLL_SERIALIZER, pushPollIQ.getRequestId(), deviceState, pollDescriptorImpl.getReceivedTimestamp());
+
+        sendMessage(onPushObjectIQ, StatType.IQ_RESULT_PUSH_POLL);
+    }
+
 
     private void onUpdateGeolocationIQ(@NonNull BinaryPacketIQ iq) {
         if (DEBUG) {

@@ -1,9 +1,10 @@
 /*
- *  Copyright (c) 2014-2023 twinlife SA.
+ *  Copyright (c) 2014-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
+ *   Stephane Carrez (Stephane.Carrez@twin.life)
  */
 
 package org.twinlife.twinlife;
@@ -25,6 +26,7 @@ public interface Twincode {
     String DESCRIPTION = "description";
     String AVATAR_ID = "avatarId";
     String CAPABILITIES = "capabilities";
+    String ROSTER_ID = "rosterId";
 
     enum TwincodeFacet {
         FACTORY, INBOUND, OUTBOUND, SWITCH

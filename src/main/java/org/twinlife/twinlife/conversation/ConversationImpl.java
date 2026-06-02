@@ -16,6 +16,7 @@ import android.util.Log;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.Conversation;
 import org.twinlife.twinlife.DatabaseIdentifier;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.TerminateReason;
 import org.twinlife.twinlife.Twincode;
@@ -36,6 +37,17 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
     private static final int FAST_RETRY1_DELAY = 20 * 1000; // 20 sec (must be > 8 sec to get a Firebase wakeup)
     private static final int FAST_RETRY2_DELAY = 30 * 1000; // 30 sec (must be > 8 sec to get a Firebase wakeup)
     private static final int LONG_RETRY_DELAY = 60 * 1000; // 1 min
+
+    /**
+     * Conversation flags (must be synchronized between Android and iOS):
+     * - FLAG_JOINED: the conversation is joined = 0x01
+     * - FLAG_LEAVING: the conversation is leaving = 0x02
+     * - FLAG_DELETED: the conversation is deleted = 0x04
+     * - FLAG_SECURE_ROSTER: the conversation is using the secure roster = 0x08
+     * - FLAG_V21: the conversation is using at least the protocol version V2.21 = 0x10
+     *   (used to know whether the secure roster is available or not)
+     */
+    static final int FLAG_V21 = 0x10;
 
     /**
      * Backoff table to retry connection to a peer.
@@ -223,9 +235,9 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
     }
 
     @Override
-    public boolean hasPermission(ConversationService.Permission p) {
+    public boolean hasPermission(@Nullable Permission p) {
 
-        return (p != null) && (mPermissions & (1L << p.ordinal())) != 0;
+        return (p != null) && p.hasPermission(mPermissions);
     }
 
     //
@@ -254,6 +266,25 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
         return mFlags;
     }
 
+    /**
+     * Set the V21 flag if it is not set.
+     * @return true if the V21 flag was set.
+     */
+    public synchronized boolean setVersion21() {
+
+        if ((mFlags & FLAG_V21) == 0) {
+            mFlags |= FLAG_V21;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public boolean hasVersion21() {
+
+        return (mFlags & FLAG_V21) != 0;
+    }
+
     @Nullable
     public UUID getPeerResourceId() {
 
@@ -279,6 +310,13 @@ public class ConversationImpl extends DatabaseObjectImpl implements Conversation
     public long getPermissions() {
 
         return mPermissions;
+    }
+
+    @Override
+    @NonNull
+    public Permission getPermission() {
+
+        return new Permission(mPermissions);
     }
 
     void touch() {

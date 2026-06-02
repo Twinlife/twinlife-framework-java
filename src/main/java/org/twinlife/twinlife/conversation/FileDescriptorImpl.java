@@ -90,6 +90,7 @@ import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.SerializerFactory;
 import org.twinlife.twinlife.Twinlife;
@@ -477,9 +478,9 @@ public class FileDescriptorImpl extends DescriptorImpl implements ConversationSe
 
     @Override
     @NonNull
-    ConversationService.Permission getPermission() {
+    Permission getPermission() {
 
-        return ConversationService.Permission.SEND_FILE;
+        return Permission.SEND_FILE;
     }
 
     @Override

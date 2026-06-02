@@ -43,6 +43,7 @@ import android.util.Log;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
+import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
 import org.twinlife.twinlife.SerializerException;
@@ -253,9 +254,9 @@ public class InvitationDescriptorImpl extends DescriptorImpl implements Conversa
 
     @Override
     @Nullable
-    public String getPublicKey() {
+    public CryptoService.PublicKeyData getPublicKey() {
 
-        return mPublicKey;
+        return CryptoService.PublicKeyData.create(mPublicKey);
     }
 
     @Override

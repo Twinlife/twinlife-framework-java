@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2019-2024 twinlife SA.
+ *  Copyright (c) 2019-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -10,18 +10,31 @@
 package org.twinlife.twinlife.conversation;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BaseService;
+import org.twinlife.twinlife.RosterId;
+import org.twinlife.twinlife.TwincodeOutbound;
+import org.twinlife.twinlife.util.Utils;
 
 import java.util.List;
 import java.util.UUID;
 
 public class GroupProtocol {
 
+    // The LEGACY_SCHEMA_ID was used by groups that were created without a secure roster.  This group
+    // allows to have members in the secure roster that have an empty public key.
+    // The ROSTER_SCHEMA_ID is the new schema ID used for groups after 2026-04-16.  Every member
+    // in the secure roster must have a public key.
+    public static final UUID LEGACY_SCHEMA_ID = UUID.fromString("e3eab04a-263f-4e5d-95b8-e18252f49f7b");
+    public static final UUID ROSTER_SCHEMA_ID = UUID.fromString("a70f964c-7147-4825-afe2-d14da222f181");
+
     //
     // Invoke Actions & Attributes
     //
 
+    public static final String ACTION_ROSTER_UPDATE = "roster::update";
+    public static final String ACTION_ROSTER_LEAVE = "roster::leave";
     public static final String ACTION_GROUP_SUBSCRIBE = "twinlife::conversation::subscribe";
     public static final String ACTION_GROUP_REGISTERED = "twinlife::conversation::registered";
     private static final String INVOKE_TWINCODE_ACTION_MEMBER_TWINCODE_ID = "memberTwincodeId";
@@ -69,5 +82,29 @@ public class GroupProtocol {
     public static String getInvokeTwincodeMemberPermissions() {
 
         return INVOKE_TWINCODE_ACTION_MEMBER_PERMISSIONS;
+    }
+
+    /**
+     * Get the secure roster ID associated with the group. For a legacy group, there is no secure roster ID.
+     * @return null or the secure roster ID.
+     */
+    @Nullable
+    public static RosterId getSecureRosterId(@Nullable TwincodeOutbound twincodeOutbound) {
+
+        if (twincodeOutbound == null) {
+            return null;
+        }
+        final String rosterId = (String)twincodeOutbound.getAttribute(TwincodeOutbound.ROSTER_ID);
+        if (rosterId == null) {
+            return null;
+        }
+        final String[] parts = rosterId.split(":");
+        if (parts.length != 2) {
+            return null;
+        }
+        final UUID id = UUID.fromString(parts[0]);
+        final UUID schemaId = UUID.fromString(parts[1]);
+
+        return id != null && schemaId != null ? new RosterId(id, schemaId) : null;
     }
 }

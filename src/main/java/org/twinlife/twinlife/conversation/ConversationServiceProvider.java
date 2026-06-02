@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2015-2025 twinlife SA.
+ *  Copyright (c) 2015-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Houssem Temanni (Houssem.Temanni@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.conversation;
@@ -46,6 +47,7 @@ import org.twinlife.twinlife.util.EventMonitor;
 import org.twinlife.twinlife.util.Logger;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,8 +56,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
-
-import static org.twinlife.twinlife.ConversationService.MAX_GROUP_MEMBERS;
 
 public class ConversationServiceProvider extends DatabaseServiceProvider implements ConversationsCleaner {
     private static final String LOG_TAG = "ConversationServiceP...";
@@ -371,7 +371,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         // Notes:
         // - the COUNT(d.id) and the left join on the descriptor is quite efficient due to
         //   the idx_descriptor_cid and this is better than a sub query.
-        // - use use a LEFT JOIN on repository to find dead conversations.
+        // - use a LEFT JOIN on repository to find dead conversations.
         QueryBuilder query = new QueryBuilder("c.id, c.groupId, c.uuid, c.creationDate,"
                 + " c.subject, r.schemaId, c.peerTwincodeOutbound, c.resourceId, c.peerResourceId,"
                 + " c.permissions, c.joinPermissions, c.lastConnectDate, c.lastRetryDate, c.flags,"
@@ -466,7 +466,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             return null;
         }
 
-        // The cid corresponds to a group member and we must find it because we loaded the full GroupConversation.
+        // The cid corresponds to a group member, and we must find it because we loaded the full GroupConversation.
         final GroupConversationImpl groupConversation = (GroupConversationImpl) object;
         return groupConversation.getConversation(cid);
     }
@@ -497,7 +497,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             Log.d(LOG_TAG, "internalLoadConversationWithId: cid=" + cid);
         }
 
-        // Load a conversation by its conversation Id.  If this is a group member conversation id,
+        // Load a conversation by its conversation ID.  If this is a group member conversation id,
         // we must get the GroupConversation.  The first condition matches the contact conversation and
         // the second condition matches the group member conversation and then matches in C1 the group
         // conversation that we must return.
@@ -683,7 +683,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 values.put(Columns.CREATION_DATE, now);
                 values.put(Columns.PEER_TWINCODE_OUTBOUND, groupTwincode.getDatabaseId().getId());
                 values.put(Columns.PERMISSIONS, groupConversation.getPermissions());
-                values.put(Columns.JOIN_PERMISSIONS, groupConversation.getJoinPermissions());
+                values.put(Columns.JOIN_PERMISSIONS, groupConversation.getJoinPermissionsAsLong());
                 values.put(Columns.RESOURCE_ID, resourceId.toString());
                 values.put(Columns.FLAGS, groupConversation.getFlags());
                 transaction.insertOrThrow(Tables.CONVERSATION, null, values);
@@ -702,7 +702,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
     /**
      * Create a group member conversation object and insert it in the database.  Before inserting the
      * new group member conversation, check that the group member with the given twincode is not already
-     * inserted and update and return it if necessary.  The member twincode may not be known yet and we
+     * inserted and update and return it if necessary.  The member twincode may not be known yet, and we
      * have to insert an entry in the database and mark it for the TwincodeOutboundService to fetch the
      * attributes on the server later on.
      *
@@ -743,11 +743,6 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 return (GroupMemberConversationImpl) member;
 
             } else {
-                // Too many members or pending invitation in the group, refuse the invitation.
-                if (groupConversation.getActiveMemberCount() > MAX_GROUP_MEMBERS) {
-                    return null;
-                }
-
                 final TwincodeOutbound memberTwincode = transaction.loadOrStoreTwincodeOutboundId(memberTwincodeId);
                 if (memberTwincode == null) {
                     return null;
@@ -851,7 +846,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             final ContentValues values = new ContentValues();
             values.put(Columns.FLAGS, conversation.getFlags());
             values.put(Columns.PERMISSIONS, conversation.getPermissions());
-            values.put(Columns.JOIN_PERMISSIONS, conversation.getJoinPermissions());
+            values.put(Columns.JOIN_PERMISSIONS, conversation.getJoinPermissionsAsLong());
 
             transaction.updateWithId(Tables.CONVERSATION, values, conversation.getDatabaseId().getId());
 
@@ -908,7 +903,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         query.filterLong("c.subject", subjectId);
 
         // Keep the list of conversation to delete in a list.  For a group, we get the group as well as all its members.
-        // (because we are going to remove them and we can't iterate at the same time).
+        // (because we are going to remove them, and we can't iterate at the same time).
         try (DatabaseCursor cursor = mDatabase.execQuery(query)) {
             while (cursor.moveToNext()) {
                 long id = cursor.getLong(0);
@@ -933,7 +928,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             if (object != null) {
                 mDatabase.evictCache(identifier);
 
-                // If the conversation was in the cache, there could be some pending operations
+                // If the conversation was in the cache, there could be some pending operations,
                 // and we must notify the conversation scheduler.
                 if (object instanceof ConversationImpl) {
                     deletedList.add((ConversationImpl) object);
@@ -1181,7 +1176,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
     /**
      * Get the list of twincodes associated with all descriptors matching the condition.
-     * A twincode appears only once if the user has send at least one message.
+     * A twincode appears only once if the user has sent at least one message.
      *
      * @param conversation the optional conversation.
      * @param type the optional descriptor type.
@@ -1435,12 +1430,19 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         }
 
         // Get the descriptor annotations in a second query.
-        if (!descriptorMap.isEmpty() && conversation != null) {
+        if (!descriptorMap.isEmpty()) {
 
-            query = new QueryBuilder("descriptor, kind, value, COUNT(*) FROM annotation");
-            query.filterLong("cid", conversation.getDatabaseId().getId());
+            if (conversation != null) {
+                query = new QueryBuilder("a.descriptor, a.kind, a.value, t.twincodeId FROM annotation AS a LEFT JOIN twincodeOutbound AS t ON a.peerTwincodeOutbound=t.id");
+                query.filterLong("cid", conversation.getDatabaseId().getId());
+            } else {
+                query = new QueryBuilder("a.descriptor, a.kind, a.value, t.twincodeId FROM annotation AS a "
+                        + "INNER JOIN conversation AS c ON a.cid = c.id "
+                        + "INNER JOIN repository AS r ON c.subject = r.id "
+                        + "INNER JOIN twincodeOutbound AS t ON a.peerTwincodeOutbound=t.id OR r.twincodeOutbound = t.id");
+            }
+
             query.filterIn("descriptor", descriptorMap.keySet());
-            query.append("GROUP BY descriptor, kind, value");
 
             // Step 2: run the query and dispatch the annotation to the corresponding descriptor.
             try (DatabaseCursor annotationCursor = mDatabase.execQuery(query)) {
@@ -1450,16 +1452,29 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                     AnnotationType kind = toAnnotationType(annotationCursor.getInt(1));
                     if (kind != null) {
                         long value = annotationCursor.getLong(2);
-                        int count = annotationCursor.getInt(3);
+                        UUID twincodeOutboundId = annotationCursor.getUUID(3);
 
                         DescriptorImpl descriptorImpl = descriptorMap.get(descriptorId);
                         if (descriptorImpl != null) {
-                            List<DescriptorAnnotation> annotations = descriptorImpl.getAnnotations();
-                            if (annotations == null) {
-                                annotations = new ArrayList<>();
-                                descriptorImpl.setAnnotations(annotations);
+
+                            if (twincodeOutboundId == null) {
+                                if (conversation != null) {
+                                    twincodeOutboundId = conversation.getTwincodeOutboundId();
+                                } else {
+                                    Log.w(LOG_TAG, "No twincodeOutboundId for annotation "+kind+"="+value+", descriptor: "+descriptorImpl);
+                                    continue;
+                                }
                             }
-                            annotations.add(new DescriptorAnnotation(kind, value, count));
+
+                            Map<UUID, List<DescriptorAnnotation>> annotations = descriptorImpl.getAnnotations();
+
+                            List<DescriptorAnnotation> descriptorAnnotations = annotations.get(twincodeOutboundId);
+                            if (descriptorAnnotations == null) {
+                                descriptorAnnotations = new ArrayList<>();
+                                annotations.put(twincodeOutboundId, descriptorAnnotations);
+                            }
+
+                            descriptorAnnotations.add(new DescriptorAnnotation(kind, value));
                         }
                     }
                 }
@@ -1504,25 +1519,41 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             return null;
         }
 
-        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT kind, value, COUNT(*) FROM annotation WHERE"
-                + " cid=? AND descriptor=? GROUP BY kind, value", new String[]{
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT kind, value, t.twincodeId FROM annotation AS a " +
+                        "LEFT JOIN twincodeOutbound AS t ON a.peerTwincodeOutbound=t.id " +
+                        "WHERE cid=? AND descriptor=?",
+                new String[]{
                 Long.toString(descriptor.getConversationId()),
                 Long.toString(descriptor.getDatabaseId())})) {
 
-            List<DescriptorAnnotation> annotations = null;
+            Map<UUID, List<DescriptorAnnotation>> annotations = new HashMap<>();
             while (cursor.moveToNext()) {
                 AnnotationType type = toAnnotationType(cursor.getInt(0));
                 if (type != null) {
                     long value = cursor.getLong(1);
-                    int count = cursor.getInt(2);
+                    UUID twincodeOutboundId = cursor.getUUID(2);
 
-                    if (annotations == null) {
-                        annotations = new ArrayList<>();
-                        descriptor.setAnnotations(annotations);
+                    if (twincodeOutboundId == null) {
+                        Conversation conversation = loadConversationWithId(descriptor.getConversationId());
+                        if (conversation == null) {
+                            Log.e(LOG_TAG, "Can't find Conversation for Descriptor " + descriptor.getDescriptorId());
+                            continue;
+                        }
+                        twincodeOutboundId = conversation.getTwincodeOutboundId();
                     }
-                    annotations.add(new DescriptorAnnotation(type, value, count));
+
+                    List<DescriptorAnnotation> peerAnnotations = annotations.get(twincodeOutboundId);
+
+                    if (peerAnnotations == null) {
+                        peerAnnotations = new ArrayList<>();
+                        annotations.put(twincodeOutboundId, peerAnnotations);
+                    }
+
+                    peerAnnotations.add(new DescriptorAnnotation(type, value));
                 }
             }
+
+            descriptor.setAnnotations(annotations);
 
         } catch (DatabaseException exception) {
             mService.onDatabaseException(exception);
@@ -1652,6 +1683,11 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                         sendTo, replyTo, creationDate, sendDate, receiveDate, readDate, updateDate, peerDeleteDate, deleteDate,
                         expireTimeout, value);
 
+            case 14: // Poll descriptor
+                return new PollDescriptorImpl(descriptorId, cid,
+                        creationDate, sendDate, receiveDate, readDate, updateDate, peerDeleteDate, deleteDate,
+                        expireTimeout, flags, content);
+
             default:
                 return null;
         }
@@ -1696,8 +1732,8 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         return -1L;
     }
 
-    interface DescriptorFactory {
-        DescriptorImpl create(long id, long sequenceId, long cid);
+    interface DescriptorFactory<D extends DescriptorImpl> {
+        D create(long id, long sequenceId, long cid);
     }
 
     /**
@@ -1711,7 +1747,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      * @return the descriptor instance or null.
      */
     @Nullable
-    DescriptorImpl createDescriptor(@NonNull Conversation conversation, @NonNull DescriptorFactory factory) {
+    <D extends DescriptorImpl> D createDescriptor(@NonNull Conversation conversation, @NonNull DescriptorFactory<D> factory) {
         if (DEBUG) {
             Log.d(LOG_TAG, "createDescriptor: conversation=" + conversation);
         }
@@ -1720,7 +1756,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         try (Transaction transaction = newTransaction()) {
             final long descriptorId = transaction.allocateId(DatabaseTable.TABLE_DESCRIPTOR);
             final long sequenceId = transaction.allocateId(DatabaseTable.SEQUENCE);
-            final DescriptorImpl result = factory.create(descriptorId, sequenceId, localCid);
+            final D result = factory.create(descriptorId, sequenceId, localCid);
             if (result != null) {
                 internalInsertDescriptor(transaction, result, localCid);
                 transaction.commit();
@@ -1731,23 +1767,6 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             mService.onDatabaseException(exception);
             return null;
         }
-    }
-
-    Result createDescriptor(@NonNull Conversation conversation, @NonNull DescriptorImpl descriptorImpl) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "createObjectDescriptor: conversation=" + conversation);
-        }
-
-        final long localCid = conversation.getDatabaseId().getId();
-        try (Transaction transaction = newTransaction()) {
-            internalInsertDescriptor(transaction, descriptorImpl, localCid);
-
-            transaction.commit();
-
-        } catch (Exception exception) {
-            mService.onDatabaseException(exception);
-        }
-        return null;
     }
 
     private void internalInsertDescriptor(@NonNull Transaction transaction,
@@ -1850,15 +1869,6 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         final long cid = conversation.getDatabaseId().getId();
         final long groupId = groupConversation.getDatabaseId().getId();
         try (Transaction transaction = newTransaction()) {
-            final Long count = mDatabase.longQuery("SELECT COUNT(*) FROM invitation AS i"
-                    + " INNER JOIN descriptor AS d ON i.id=d.id"
-                    + " WHERE i.groupId=? AND d.value=0", new String[] { Long.toString(groupId) });
-
-            // Too many members or pending invitation in the group, refuse the invitation.
-            if (count != null && count + groupConversation.getActiveMemberCount() > MAX_GROUP_MEMBERS) {
-                return null;
-            }
-
             long id = transaction.allocateId(DatabaseTable.TABLE_DESCRIPTOR);
             long sequenceId = transaction.allocateId(DatabaseTable.SEQUENCE);
             final UUID twincodeOutboundId = conversation.getTwincodeOutboundId();
@@ -2174,8 +2184,8 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             query.filterLong("d.cid", localCid);
             query.filterBefore("d.creationDate", beforeDate);
             query.where("d.descriptorType >= 4 AND d.descriptorType <= 8 AND (");
-            query.filterLong("d.twincodeOutbound", ownerTwincodeId);
-            query.where(" OR d.peerDeleteDate=0)");
+            query.filter("d.twincodeOutbound=?", String.valueOf(ownerTwincodeId));
+            query.append(" OR d.peerDeleteDate=0)");
 
             try (DatabaseCursor cursor = mDatabase.execQuery(query)) {
                 while (cursor.moveToNext()) {
@@ -2269,8 +2279,8 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
     }
 
     /**
-     * The peer has cleared the descriptors on its side and we have to mark those descriptors as deleted by
-     * the peer.  If some descriptor are marked DELETED, it means we were waiting for the peer deletion and
+     * The peer has cleared the descriptors on its side, and we have to mark those descriptors as deleted by
+     * the peer.  If some descriptor are marked DELETED, it means we were waiting for the peer deletion, and
      * we can remove them.  To notify upper layers, we return a list of DescriptorId that are really deleted now.
      * Note: we don't delete the peer descriptors since it was a local clear on its side.
      *
@@ -2439,7 +2449,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 if (type != null) {
                     final long value = cursor.getLong(1);
 
-                    annotations.add(new DescriptorAnnotation(type, value, 0));
+                    annotations.add(new DescriptorAnnotation(type, value));
                 }
             }
         } catch (DatabaseException sqlException) {
@@ -2455,12 +2465,12 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      * @param descriptorImpl the descriptor to update.
      * @param peerTwincodeOutboundId the peer twincode.
      * @param annotations the list of annotations to set.
-     * @param annotatingUsers update to indicate the user who annotated the descriptor.
+     * @param updatedAnnotations updated with the peer's TwincodeOutbound and their new/modified annotations.
      * @return true if the descriptor was modified (some annotations added, updated or removed).
      */
     boolean setAnnotations(@NonNull DescriptorImpl descriptorImpl, @NonNull UUID peerTwincodeOutboundId,
                            @NonNull List<DescriptorAnnotation> annotations,
-                           @NonNull Set<TwincodeOutbound> annotatingUsers) {
+                           @NonNull Map<TwincodeOutbound, Set<DescriptorAnnotation>> updatedAnnotations) {
         if (DEBUG) {
             Log.d(LOG_TAG, "setAnnotations: descriptorImpl=" + descriptorImpl);
         }
@@ -2468,10 +2478,13 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
         final String descriptorId = Long.toString(descriptorImpl.getDatabaseId());
         final String conversationId = Long.toString(descriptorImpl.getConversationId());
 
-        final Map<AnnotationType, Long> newList = new HashMap<>();
+        final Map<AnnotationType, DescriptorAnnotation> peerAnnotationsByType = new HashMap<>();
         for (DescriptorAnnotation annotation : annotations) {
-            newList.put(annotation.getType(), annotation.getValue());
+            peerAnnotationsByType.put(annotation.getType(), annotation);
         }
+
+        final Set<DescriptorAnnotation> peerAnnotations = new HashSet<>();
+
         List<AnnotationType> deleteList = null;
         List<AnnotationType> updateList = null;
         boolean modified = false;
@@ -2497,14 +2510,17 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                     if (type != null) {
                         final long value = cursor.getLong(1);
 
-                        final Long newValue = newList.get(type);
-                        if (newValue == null) {
-                            if (deleteList == null) {
-                                deleteList = new ArrayList<>();
+                        final DescriptorAnnotation peerAnnotation = peerAnnotationsByType.get(type);
+                        if (peerAnnotation == null) {
+                            if (type.isFromPeer() || (type == AnnotationType.RECEIVED && peerAnnotationsByType.containsKey(AnnotationType.READ))) {
+                                // The peer has deleted the annotation, or we're overriding a RECEIVED timestamp with a READ one.
+                                if (deleteList == null) {
+                                    deleteList = new ArrayList<>();
+                                }
+                                deleteList.add(type);
                             }
-                            deleteList.add(type);
-                        } else if (newValue == value) {
-                            newList.remove(type);
+                        } else if (peerAnnotation.getValue() == value) {
+                            peerAnnotationsByType.remove(type);
                         } else {
                             if (updateList == null) {
                                 updateList = new ArrayList<>();
@@ -2539,7 +2555,13 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 if (updateList != null) {
                     final ContentValues values = new ContentValues();
                     for (AnnotationType kind : updateList) {
-                        values.put(Columns.VALUE, newList.remove(kind));
+                        DescriptorAnnotation annotation = peerAnnotationsByType.remove(kind);
+                        if (annotation == null) {
+                            Log.w(LOG_TAG, "Can't find annotation " + kind + " in " + Arrays.asList(peerAnnotationsByType.keySet().toArray()) + ", this should not happen");
+                            continue;
+                        }
+
+                        values.put(Columns.VALUE, annotation.getValue());
                         values.put(Columns.CREATION_DATE, System.currentTimeMillis());
                         values.putNull(Columns.NOTIFICATION_ID);
 
@@ -2552,28 +2574,29 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                                         Integer.toString(fromAnnotationType(kind))
                         });
                         modified = true;
+                        peerAnnotations.add(annotation);
                     }
-                    annotatingUsers.add(twincodeOutbound);
                 }
 
                 // Step 4: add the new ones.
-                if (!newList.isEmpty()) {
+                if (!peerAnnotationsByType.isEmpty()) {
                     final ContentValues values = new ContentValues();
-                    for (final Map.Entry<AnnotationType, Long> newAnnotation : newList.entrySet()) {
+                    for (final DescriptorAnnotation annotation : peerAnnotationsByType.values()) {
                         values.put(Columns.CID, conversationId);
                         values.put(Columns.DESCRIPTOR, descriptorId);
-                        values.put(Columns.KIND, fromAnnotationType(newAnnotation.getKey()));
-                        values.put(Columns.VALUE, newAnnotation.getValue());
+                        values.put(Columns.KIND, fromAnnotationType(annotation.getType()));
+                        values.put(Columns.VALUE, annotation.getValue());
                         values.put(Columns.PEER_TWINCODE_OUTBOUND, twincodeId);
                         values.put(Columns.CREATION_DATE, System.currentTimeMillis());
 
                         transaction.insertOrThrow(Tables.ANNOTATION, null, values);
                         modified = true;
+                        peerAnnotations.add(annotation);
                     }
-                    annotatingUsers.add(twincodeOutbound);
                 }
 
                 if (modified) {
+                    updatedAnnotations.put(twincodeOutbound, peerAnnotations);
                     reloadAnnotations(descriptorImpl);
                 }
             } catch (Exception exception) {
@@ -2598,8 +2621,22 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      * @return true if the annotation was inserted or updated and false if it existed and was not modified.
      */
     boolean setAnnotation(@NonNull DescriptorImpl descriptorImpl, @NonNull AnnotationType type, long value) {
+        return setAnnotation(descriptorImpl, null, type, value);
+    }
+
+    /**
+     * Set the descriptor annotation for the peer to a new value.  The descriptor annotation is
+     * either inserted or updated if a previous annotation from the user was set.
+     *
+     * @param descriptorImpl the descriptor to annotate.
+     * @param peerTwincodeOutbound the peer who owns the annotation. If null, the owner will be the current user.
+     * @param type the annotation type.
+     * @param value the value to set on the annotation.
+     * @return true if the annotation was inserted or updated and false if it existed and was not modified.
+     */
+    boolean setAnnotation(@NonNull DescriptorImpl descriptorImpl, @Nullable TwincodeOutbound peerTwincodeOutbound, @NonNull AnnotationType type, long value) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "setAnnotation: descriptorImpl=" + descriptorImpl + " type=" + type + " value=" + value);
+            Log.d(LOG_TAG, "setAnnotation: descriptorImpl=" + descriptorImpl + " peerTwincodeOutbound=" + peerTwincodeOutbound + " type=" + type + " value=" + value);
         }
 
         boolean modified = false;
@@ -2610,14 +2647,25 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             values.put(Columns.VALUE, value);
             long result;
 
+            String whereClause = "cid=? AND descriptor=? AND kind=? AND value != ? ";
+
+            List<String> args = new ArrayList<>();
+            args.add(Long.toString(conversationId));
+            args.add(Long.toString(id));
+            args.add(Integer.toString(fromAnnotationType(type)));
+            args.add(Long.toString(value));
+
+            if (peerTwincodeOutbound == null) {
+                whereClause += " AND peerTwincodeOutbound IS NULL";
+            } else {
+                whereClause += " AND peerTwincodeOutbound = ?";
+                args.add(Long.toString(peerTwincodeOutbound.getDatabaseId().getId()));
+            }
+
+
             result = transaction.update(Tables.ANNOTATION, values,
-                        "cid=? AND descriptor=? AND peerTwincodeOutbound IS NULL AND kind=? AND value != ?",
-                        new String[]{
-                                Long.toString(conversationId),
-                                Long.toString(id),
-                                Integer.toString(fromAnnotationType(type)),
-                                Long.toString(value)
-                        });
+                        whereClause,
+                        args.toArray(new String[0]));
 
             if (result > 0) {
                 modified = true;
@@ -2627,7 +2675,12 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 values.put(Columns.DESCRIPTOR, id);
                 values.put(Columns.KIND, fromAnnotationType(type));
                 values.put(Columns.CREATION_DATE, System.currentTimeMillis());
-                values.putNull(Columns.PEER_TWINCODE_OUTBOUND);
+
+                if (peerTwincodeOutbound == null) {
+                    values.putNull(Columns.PEER_TWINCODE_OUTBOUND);
+                } else {
+                    values.put(Columns.PEER_TWINCODE_OUTBOUND, peerTwincodeOutbound.getDatabaseId().getId());
+                }
 
                 result = transaction.insert(Tables.ANNOTATION, values);
 
@@ -2650,7 +2703,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      *
      * @param descriptorImpl the descriptor to update.
      * @param type the annotation to remove.
-     * @return true if an annotation was removed and false if there was not change.
+     * @return true if an annotation was removed and false if there was no change.
      */
     boolean deleteAnnotation(@NonNull DescriptorImpl descriptorImpl, @NonNull AnnotationType type) {
         if (DEBUG) {
@@ -2690,7 +2743,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      * @param descriptorImpl the descriptor to update.
      * @param type the annotation to remove or add.
      * @param value the annotation value
-     * @return true if an annotation was removed and false if there was not change.
+     * @return true if an annotation was removed and false if there was no change.
      */
     boolean toggleAnnotation(@NonNull DescriptorImpl descriptorImpl,
                              @NonNull AnnotationType type, long value) {
@@ -2787,7 +2840,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                         annotations = new ArrayList<>();
                         result.put(twincodeOutbound, annotations);
                     }
-                    annotations.add(new DescriptorAnnotation(type, value, 1));
+                    annotations.add(new DescriptorAnnotation(type, value));
                 }
             }
         } catch (DatabaseException exception) {
@@ -2806,26 +2859,43 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             Log.d(LOG_TAG, "reloadAnnotations descriptorImpl=" + descriptorImpl);
         }
 
-        List<DescriptorAnnotation> annotations = null;
+        Map<UUID, List<DescriptorAnnotation>> annotations = new HashMap<>();
         final String[] params = {
                 Long.toString(descriptorImpl.getConversationId()),
                 Long.toString(descriptorImpl.getDatabaseId())
         };
 
-        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT kind, value, COUNT(*)"
-                + " FROM annotation WHERE cid=? AND descriptor=? GROUP BY kind, value", params)) {
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT a.kind, a.value, t.twincodeId " +
+                "FROM annotation AS a LEFT JOIN twincodeOutbound AS t ON a.peerTwincodeOutbound = t.id " +
+                "WHERE a.cid=? AND a.descriptor=?", params)) {
+
+            Conversation conversation = null;
 
             while (cursor.moveToNext()) {
                 final AnnotationType type = toAnnotationType(cursor.getInt(0));
                 if (type != null) {
                     final long value = cursor.getLong(1);
-                    final int count = cursor.getInt(2);
+                    UUID twincodeOutboundId = cursor.getUUID(2);
 
-                    if (annotations == null) {
-                        annotations = new ArrayList<>();
+                    if (twincodeOutboundId == null) {
+                        if (conversation == null) {
+                            conversation = loadConversationWithId(descriptorImpl.getConversationId());
+                        }
+                        if (conversation == null) {
+                            // Descriptor has no conversation, should not happen.
+                            continue;
+                        }
+                        twincodeOutboundId = conversation.getTwincodeOutboundId();
                     }
 
-                    annotations.add(new DescriptorAnnotation(type, value, count));
+                    List<DescriptorAnnotation> peerAnnotations = annotations.get(twincodeOutboundId);
+
+                    if (peerAnnotations == null) {
+                        peerAnnotations = new ArrayList<>();
+                        annotations.put(twincodeOutboundId, peerAnnotations);
+                    }
+
+                    peerAnnotations.add(new DescriptorAnnotation(type, value));
                 }
             }
         } catch (DatabaseException exception) {
@@ -2941,6 +3011,15 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
                     case 18: // Added 2025-05-21
                         operation = new UpdateDescriptorOperation(operationId, conversationId, creationDate,
+                                descriptorId, cursor.getBlob(6));
+                        break;
+
+                    case 19: // Added 2026-03-20
+                        operation = new PushPollOperation(operationId, conversationId, creationDate, descriptorId);
+                        break;
+
+                    case 20: // Added 2026-04-09
+                        operation = new GroupJoinOperation(operationId, Operation.Type.INVOKE_ROSTER_REMOVE, conversationId, creationDate,
                                 descriptorId, cursor.getBlob(6));
                         break;
 
@@ -3120,6 +3199,9 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case CLEAR_DESCRIPTOR:
                 return 13;
+
+            case POLL_DESCRIPTOR:
+                return 14;
         }
         return 0;
     }
@@ -3151,6 +3233,9 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case READ:
                 return 7;
+
+            case ERROR:
+                return 8;
         }
         return 0;
     }
@@ -3218,6 +3303,12 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case UPDATE_OBJECT: // Added 2025-05-21
                 return 18;
+
+            case PUSH_POLL: // Added 2026-03-20
+                return 19;
+
+            case INVOKE_ROSTER_REMOVE: // Added 2026-04-09
+                return 20;
         }
         return 0;
     }
@@ -3249,6 +3340,9 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case 7:
                 return AnnotationType.READ;
+
+            case 8:
+                return AnnotationType.ERROR;
         }
 
         return null;

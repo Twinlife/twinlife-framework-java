@@ -20,6 +20,7 @@ import org.twinlife.twinlife.ConversationService.DescriptorId;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.PushNotificationOperation;
 import org.twinlife.twinlife.SerializerException;
+import org.twinlife.twinlife.database.DatabaseObjectImpl;
 
 public class Operation implements Comparable<Operation> {
     private static final String LOG_TAG = "Operation";
@@ -43,13 +44,15 @@ public class Operation implements Comparable<Operation> {
         PUSH_GEOLOCATION,
         PUSH_TWINCODE,
         PUSH_COMMAND,
+        PUSH_POLL,
         UPDATE_ANNOTATIONS,
         UPDATE_OBJECT,
 
         // Operations that don't need the P2P connection to be opened.
         INVOKE_JOIN_GROUP,
         INVOKE_LEAVE_GROUP,
-        INVOKE_ADD_MEMBER
+        INVOKE_ADD_MEMBER,
+        INVOKE_ROSTER_REMOVE
     }
 
     private long mId;
@@ -79,7 +82,7 @@ public class Operation implements Comparable<Operation> {
         mRequestId = NO_REQUEST_ID;
     }
 
-    protected Operation(@NonNull Type type, @NonNull ConversationImpl conversationImpl) {
+    protected Operation(@NonNull Type type, @NonNull DatabaseObjectImpl conversationImpl) {
         if (DEBUG) {
             Log.d(LOG_TAG, "Operation: type=" + type + " conversationImpl=" + conversationImpl);
         }
@@ -170,7 +173,8 @@ public class Operation implements Comparable<Operation> {
      */
     boolean isInvoke() {
 
-        return mType == Type.INVOKE_JOIN_GROUP || mType == Type.INVOKE_LEAVE_GROUP || mType == Type.INVOKE_ADD_MEMBER;
+        return mType == Type.INVOKE_JOIN_GROUP || mType == Type.INVOKE_LEAVE_GROUP
+                || mType == Type.INVOKE_ADD_MEMBER || mType == Type.INVOKE_ROSTER_REMOVE;
     }
 
     /**
@@ -184,6 +188,7 @@ public class Operation implements Comparable<Operation> {
 
         return (mRequestId == Operation.NO_REQUEST_ID)
                 && (mType == Type.INVOKE_JOIN_GROUP || mType == Type.INVOKE_LEAVE_GROUP || mType == Type.INVOKE_ADD_MEMBER
+                || mType == Type.INVOKE_ROSTER_REMOVE
                 || conversation.getState() == ConversationConnection.State.OPEN);
     }
 
@@ -260,10 +265,10 @@ public class Operation implements Comparable<Operation> {
         }
 
         // Put invoke operations first (before synchronize).
-        if (mType == Type.INVOKE_ADD_MEMBER || mType == Type.INVOKE_JOIN_GROUP || mType == Type.INVOKE_LEAVE_GROUP) {
+        if (mType == Type.INVOKE_ADD_MEMBER || mType == Type.INVOKE_JOIN_GROUP || mType == Type.INVOKE_LEAVE_GROUP || mType == Type.INVOKE_ROSTER_REMOVE) {
             return -1;
         }
-        if (type2 == Type.INVOKE_ADD_MEMBER || type2 == Type.INVOKE_JOIN_GROUP || type2 == Type.INVOKE_LEAVE_GROUP) {
+        if (type2 == Type.INVOKE_ADD_MEMBER || type2 == Type.INVOKE_JOIN_GROUP || type2 == Type.INVOKE_LEAVE_GROUP || type2 == Type.INVOKE_ROSTER_REMOVE) {
             return 1;
         }
         if (mType == Type.SYNCHRONIZE_CONVERSATION) {

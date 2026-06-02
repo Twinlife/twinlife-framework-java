@@ -187,7 +187,7 @@ class CryptoServiceProvider extends DatabaseServiceProvider {
                 return null;
             }
 
-            return new KeyInfo(twincodeOutbound, modificationDate, flags,
+            return new TwincodeKeyInfo(twincodeOutbound, modificationDate, flags,
                     signingKey, encryptionKey, 0, 0, null);
 
         } catch (DatabaseException exception) {
@@ -221,7 +221,7 @@ class CryptoServiceProvider extends DatabaseServiceProvider {
             long modificationDate = cursor.getLong(1);
             byte[] signingKey = cursor.getBlob(2);
             byte[] encryptionKey = cursor.getBlob(3);
-            return new KeyInfo(twincodeOutbound, modificationDate, flags,
+            return new TwincodeKeyInfo(twincodeOutbound, modificationDate, flags,
                     signingKey, encryptionKey, 0, 0, null);
 
         } catch (DatabaseException exception) {
@@ -376,7 +376,7 @@ class CryptoServiceProvider extends DatabaseServiceProvider {
                     useSecret = null;
                 }
 
-                result = new KeyInfo(twincodeOutbound, modificationDate, flags,
+                result = new TwincodeKeyInfo(twincodeOutbound, modificationDate, flags,
                         signingKey, encryptionKey, nonceSequence, keyIndex, useSecret);
 
             } catch (DatabaseException exception) {

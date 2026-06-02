@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2021-2024 twinlife SA.
+ *  Copyright (c) 2021-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.conversation;
@@ -23,6 +24,40 @@ import java.util.UUID;
 
 /**
  * PushGeolocation IQ.
+ * <p>
+ *  Schema version 3
+ *   Date: 2026/04/29
+ *  
+ *  <pre>
+ *  {
+ *   "schemaId":"7a9772c3-5f99-468d-87af-d67fdb181295",
+ *   "schemaVersion":"3",
+ *  
+ *   "type":"record",
+ *   "name":"PushGeolocationIQ",
+ *   "namespace":"org.twinlife.schemas.conversation",
+ *   "super":"org.twinlife.schemas.BinaryPacketIQ"
+ *   "fields": [
+ *      {"name":"twincodeOutboundId", "type":"uuid"}
+ *      {"name":"sequenceId", "type":"long"}
+ *      {"name":"sendToTwincodeOutboundId", "type":["null", "UUID"]},
+ *      {"name":"replyTo", "type":["null", {
+ *          {"name":"twincodeOutboundId", "type":"uuid"},
+ *          {"name":"sequenceId", "type":"long"}
+ *      }},
+ *      {"name":"createdTimestamp", "type":"long"}
+ *      {"name":"sentTimestamp", "type":"long"}
+ *      {"name":"expireTimeout", "type":"long"}
+ *      {"name":"longitude", "type":"double"}
+ *      {"name":"latitude", "type":"double"}
+ *      {"name":"altitude", "type":"double"}
+ *      {"name":"mapLongitudeDelta", "type":"double"}
+ *      {"name":"mapLatitudeDelta", "type":"double"}
+ *      {"name":"copyAllowed", "type":"boolean"}
+ *   ]
+ *  }
+ *  
+ *  </pre>
  * <p>
  * Schema version 2
  *  Date: 2021/04/07
@@ -59,9 +94,11 @@ import java.util.UUID;
  */
 class PushGeolocationIQ extends BinaryPacketIQ {
 
-    static final int SCHEMA_VERSION_2 = 2;
     static final UUID SCHEMA_ID = UUID.fromString("7a9772c3-5f99-468d-87af-d67fdb181295");
-    static final BinaryPacketIQSerializer IQ_PUSH_GEOLOCATION_SERIALIZER = createSerializer(SCHEMA_ID, SCHEMA_VERSION_2);
+    static final int SCHEMA_VERSION_3 = 3;
+    static final int SCHEMA_VERSION_2 = 2;
+    static final BinaryPacketIQSerializer IQ_PUSH_GEOLOCATION_SERIALIZER_3 = new PushGeolocationIQSerializer_3(SCHEMA_ID, SCHEMA_VERSION_3);
+    static final BinaryPacketIQSerializer IQ_PUSH_GEOLOCATION_SERIALIZER_2 = new PushGeolocationIQSerializer_2(SCHEMA_ID, SCHEMA_VERSION_2);
 
     @NonNull
     final GeolocationDescriptorImpl geolocationDescriptorImpl;
@@ -71,12 +108,6 @@ class PushGeolocationIQ extends BinaryPacketIQ {
         super(serializer, requestId);
 
         this.geolocationDescriptorImpl = geolocationDescriptorImpl;
-    }
-
-    @NonNull
-    static BinaryPacketIQSerializer createSerializer(@NonNull UUID schemaId, int schemaVersion) {
-
-        return new PushGeolocationIQSerializer(schemaId, schemaVersion);
     }
 
     //
@@ -106,9 +137,75 @@ class PushGeolocationIQ extends BinaryPacketIQ {
         }
     }
 
-    static class PushGeolocationIQSerializer extends BinaryPacketIQSerializer {
+    static class PushGeolocationIQSerializer_3 extends BinaryPacketIQSerializer {
 
-        PushGeolocationIQSerializer(@NonNull UUID schemaId, int schemaVersion) {
+        PushGeolocationIQSerializer_3(@NonNull UUID schemaId, int schemaVersion) {
+
+            super(schemaId, schemaVersion, PushGeolocationIQ.class);
+        }
+
+        @Override
+        public void serialize(@NonNull SerializerFactory serializerFactory, @NonNull Encoder encoder,
+                              @NonNull Object object) throws SerializerException {
+
+            super.serialize(serializerFactory, encoder, object);
+
+            PushGeolocationIQ pushGeolocationIQ = (PushGeolocationIQ) object;
+
+            GeolocationDescriptorImpl geolocationDescriptor = pushGeolocationIQ.geolocationDescriptorImpl;
+            encoder.writeUUID(geolocationDescriptor.getTwincodeOutboundId());
+            encoder.writeLong(geolocationDescriptor.getSequenceId());
+            encoder.writeOptionalUUID(geolocationDescriptor.getSendTo());
+            DescriptorId replyTo = geolocationDescriptor.getReplyToDescriptorId();
+            if (replyTo == null) {
+                encoder.writeEnum(0);
+            } else {
+                encoder.writeEnum(1);
+                encoder.writeUUID(replyTo.twincodeOutboundId);
+                encoder.writeLong(replyTo.sequenceId);
+            }
+            encoder.writeLong(geolocationDescriptor.getCreatedTimestamp());
+            encoder.writeLong(geolocationDescriptor.getSentTimestamp());
+            encoder.writeLong(geolocationDescriptor.getExpireTimeout());
+            encoder.writeDouble(geolocationDescriptor.getLongitude());
+            encoder.writeDouble(geolocationDescriptor.getLatitude());
+            encoder.writeDouble(geolocationDescriptor.getAltitude());
+            encoder.writeDouble(geolocationDescriptor.getMapLongitudeDelta());
+            encoder.writeDouble(geolocationDescriptor.getMapLatitudeDelta());
+            encoder.writeBoolean(geolocationDescriptor.isCopyAllowed());
+        }
+
+        @Override
+        @NonNull
+        public Object deserialize(@NonNull SerializerFactory serializerFactory,
+                                  @NonNull Decoder decoder) throws SerializerException {
+
+            final long requestId = decoder.readLong();
+            final UUID twincodeOutboundId = decoder.readUUID();
+            final long sequenceId = decoder.readLong();
+            final UUID sendTo = decoder.readOptionalUUID();
+            final DescriptorId replyTo = DescriptorImpl.DescriptorImplSerializer_4.readOptionalDescriptorId(decoder);
+            final long createdTimestamp = decoder.readLong();
+            final long sentTimestamp = decoder.readLong();
+            final long expireTimeout = decoder.readLong();
+
+            double longitude = decoder.readDouble();
+            double latitude = decoder.readDouble();
+            double altitude = decoder.readDouble();
+            double mapLongitudeDelta = decoder.readDouble();
+            double mapLatitudeDelta = decoder.readDouble();
+            boolean copyAllowed = decoder.readBoolean();
+
+            GeolocationDescriptorImpl geolocationDescriptor = new GeolocationDescriptorImpl(twincodeOutboundId, sequenceId, expireTimeout,
+                    sendTo, replyTo, createdTimestamp, sentTimestamp, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, false, null, copyAllowed);
+            return new PushGeolocationIQ(this, requestId, geolocationDescriptor);
+        }
+    }
+
+
+    static class PushGeolocationIQSerializer_2 extends BinaryPacketIQSerializer {
+
+        PushGeolocationIQSerializer_2(@NonNull UUID schemaId, int schemaVersion) {
 
             super(schemaId, schemaVersion, PushGeolocationIQ.class);
         }
@@ -164,7 +261,7 @@ class PushGeolocationIQ extends BinaryPacketIQ {
             double mapLatitudeDelta = decoder.readDouble();
 
             GeolocationDescriptorImpl geolocationDescriptor = new GeolocationDescriptorImpl(twincodeOutboundId, sequenceId, expireTimeout,
-                    sendTo, replyTo, createdTimestamp, sentTimestamp, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, false, null);
+                    sendTo, replyTo, createdTimestamp, sentTimestamp, longitude, latitude, altitude, mapLongitudeDelta, mapLatitudeDelta, false, null, false);
             return new PushGeolocationIQ(this, requestId, geolocationDescriptor);
         }
     }

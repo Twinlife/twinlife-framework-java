@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2017-2024 twinlife SA.
+ *  Copyright (c) 2017-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Chedi Baccari (Chedi.Baccari@twinlife-systems.com)
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.notification;
@@ -16,6 +17,7 @@ import androidx.annotation.Nullable;
 
 import android.util.Log;
 
+import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
 import org.twinlife.twinlife.ConversationService.AnnotationType;
 import org.twinlife.twinlife.DatabaseCursor;
@@ -292,7 +294,7 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
                 + " n.flags, n.subject, r.schemaId, n.descriptor, d.sequenceId, d.twincodeOutbound, a.peerTwincodeOutbound, a.kind, a.value"
                 + " FROM notification AS n INNER JOIN repository AS r ON r.id=n.subject"
                 + " LEFT JOIN descriptor AS d ON n.descriptor=d.id"
-                + " LEFT JOIN annotation AS a ON n.type=17 AND a.descriptor=d.id AND a.notificationId=n.id AND a.kind=4");
+                + " LEFT JOIN annotation AS a ON n.type=17 AND a.descriptor=d.id AND a.notificationId=n.id");
         query.filterUUID("n.uuid", notificationId);
         try (DatabaseCursor cursor = mDatabase.execQuery(query)) {
             if (!cursor.moveToFirst()) {
@@ -319,7 +321,7 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
                 + " n.flags, n.subject, r.schemaId, n.descriptor, d.sequenceId, d.twincodeOutbound, a.peerTwincodeOutbound, a.kind, a.value"
                 + " FROM notification AS n INNER JOIN repository AS r ON n.subject=r.id"
                 + " LEFT JOIN descriptor AS d ON n.descriptor=d.id"
-                + " LEFT JOIN annotation AS a ON n.type=17 AND a.descriptor=d.id AND a.notificationId=n.id AND a.kind=4");
+                + " LEFT JOIN annotation AS a ON n.type=17 AND a.descriptor=d.id AND a.notificationId=n.id");
         query.filterBefore("n.creationDate", filter.before);
         query.filterOwner("r.owner", filter.owner);
         query.filterName("r.name", filter.name);
@@ -339,7 +341,7 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
                 + " n.type, n.flags, n.subject, r.schemaId, n.descriptor, d.sequenceId, d.twincodeOutbound, a.peerTwincodeOutbound, a.kind, a.value"
                 + " FROM notification AS n INNER JOIN repository AS r ON n.subject=r.id"
                 + " LEFT JOIN descriptor AS d ON n.descriptor=d.id"
-                + " LEFT JOIN annotation AS a ON n.type=17 AND a.descriptor=d.id AND a.notificationId=n.id AND a.kind=4");
+                + " LEFT JOIN annotation AS a ON n.type=17 AND a.descriptor=d.id AND a.notificationId=n.id");
         query.filterOwner("n.subject", subject);
         query.filterInt("n.flags", 0);
         return loadNotificationsInternal(query, null);
@@ -422,7 +424,7 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
     Notification createNotification(int sysId, @NonNull NotificationService.NotificationType type,
                                     @NonNull RepositoryObject subject,
                                     @Nullable DescriptorId descriptorId,
-                                    @Nullable TwincodeOutbound annotatingUser) {
+                                    @Nullable TwincodeOutbound annotatingUser, @Nullable ConversationService.DescriptorAnnotation annotation) {
         if (DEBUG) {
             Log.d(LOG_TAG, "createNotification: sysId=" + sysId + " type=" + type + " subject=" + subject
                     + " annotatingUser=" + annotatingUser);
@@ -432,14 +434,14 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
 
             AnnotationType annotationType = null;
             int annotationValue = 0;
-            if (annotatingUser != null && descriptorId != null) {
+            if (annotatingUser != null && descriptorId != null && annotation != null) {
                 Long value = mDatabase.longQuery("SELECT value FROM annotation"
-                        + " WHERE descriptor=? AND peerTwincodeOutbound=? AND kind=4", new Object[] {
-                                descriptorId.id, annotatingUser.getDatabaseId().getId()
+                        + " WHERE descriptor=? AND peerTwincodeOutbound=? AND kind=?", new Object[]{
+                        descriptorId.id, annotatingUser.getDatabaseId().getId(), ConversationServiceProvider.fromAnnotationType(annotation.getType())
                 });
-                if (value != null) {
+                if (value != null && value == annotation.getValue()) {
                     annotationValue = value.intValue();
-                    annotationType = AnnotationType.LIKE;
+                    annotationType = annotation.getType();
                 }
             }
             final long now = System.currentTimeMillis();
@@ -461,14 +463,15 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
             transaction.insertOrThrow(Tables.NOTIFICATION, null, values);
 
             // Associate the LIKE annotation with the notification so that we can retrieve it.
-            if (annotatingUser != null && descriptorId != null) {
+            if (annotatingUser != null && descriptorId != null && annotation != null) {
                 values.clear();
                 values.put(Columns.NOTIFICATION_ID, notificationId);
                 transaction.update(Tables.ANNOTATION, values,
-                        "descriptor=? AND peerTwincodeOutbound=? AND kind=4",
+                        "descriptor=? AND peerTwincodeOutbound=? AND kind=?",
                         new String[] {
                                 Long.toString(descriptorId.id),
-                                Long.toString(annotatingUser.getDatabaseId().getId())
+                                Long.toString(annotatingUser.getDatabaseId().getId()),
+                                Integer.toString(ConversationServiceProvider.fromAnnotationType(annotation.getType()))
                         });
             }
             transaction.commit();
@@ -569,6 +572,9 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
             case 17:
                 return NotificationService.NotificationType.UPDATED_ANNOTATION;
 
+            case 18:
+                return NotificationService.NotificationType.NEW_POLL_MESSAGE;
+
             default:
                 return null;
         }
@@ -630,6 +636,9 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
 
             case UPDATED_ANNOTATION:
                 return 17;
+
+            case NEW_POLL_MESSAGE:
+                return 18;
         }
 
         return 0;

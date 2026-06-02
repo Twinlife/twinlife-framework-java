@@ -1,9 +1,10 @@
 /*
- *  Copyright (c) 2019-2025 twinlife SA.
+ *  Copyright (c) 2019-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 /*
@@ -45,6 +46,7 @@ import java.util.UUID;
 
 import static org.twinlife.twinlife.conversation.ConversationServiceImpl.MAJOR_VERSION_2;
 import static org.twinlife.twinlife.conversation.ConversationServiceImpl.MINOR_VERSION_12;
+import static org.twinlife.twinlife.conversation.ConversationServiceImpl.MINOR_VERSION_21;
 
 class PushGeolocationOperation extends Operation {
     private static final String LOG_TAG = "PushGeolocationOp..";
@@ -95,8 +97,14 @@ class PushGeolocationOperation extends Operation {
 
         final long requestId = connection.newRequestId();
         updateRequestId(requestId);
-        if (connection.isSupported(MAJOR_VERSION_2, MINOR_VERSION_12)) {
-            final PushGeolocationIQ pushGeolocationIQ = new PushGeolocationIQ(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER, requestId, geolocationDescriptorImpl);
+        if (connection.isSupported(MAJOR_VERSION_2, MINOR_VERSION_21)) {
+            final PushGeolocationIQ pushGeolocationIQ = new PushGeolocationIQ(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_3, requestId, geolocationDescriptorImpl);
+
+            connection.sendPacket(PeerConnectionService.StatType.IQ_SET_PUSH_GEOLOCATION, pushGeolocationIQ);
+            return ErrorCode.QUEUED;
+
+        } else if (connection.isSupported(MAJOR_VERSION_2, MINOR_VERSION_12)) {
+            final PushGeolocationIQ pushGeolocationIQ = new PushGeolocationIQ(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_2, requestId, geolocationDescriptorImpl);
 
             connection.sendPacket(PeerConnectionService.StatType.IQ_SET_PUSH_GEOLOCATION, pushGeolocationIQ);
             return ErrorCode.QUEUED;

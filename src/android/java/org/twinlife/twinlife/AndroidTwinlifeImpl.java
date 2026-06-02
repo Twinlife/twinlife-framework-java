@@ -723,19 +723,16 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         }
 
         String restoreDbName = getDatabaseName(true, getDatabaseVersion(true));
-        File restoreDb = mContext.getDatabasePath(restoreDbName);
-        if (restoreDb.exists()) {
-            if (!restoreDb.delete()) {
-                Log.w(LOG_TAG, "Could not delete database: " + restoreDb);
-                return BaseService.ErrorCode.DATABASE_ERROR;
-            }
-        }
+        mContext.deleteDatabase(restoreDbName);
+
+        getDatabaseService().syncDatabase();
 
         closeDatabase();
 
         if (inPlaceRestore) {
             String currentDbName = getDatabaseName(false, getDatabaseVersion(false));
             File currentDb = mContext.getDatabasePath(currentDbName);
+            File restoreDb = mContext.getDatabasePath(restoreDbName);
             if (currentDb.exists()) {
                 BaseService.ErrorCode errorCode = Utils.copyFile(currentDb, restoreDb);
                 if (errorCode != BaseService.ErrorCode.SUCCESS) {
@@ -801,7 +798,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             // and performs a restore.
             if (mTwinlifeSecuredConfiguration.createdKey && databaseFile.exists()) {
                 Log.e(LOG_TAG, "openDatabase: a previous database exists but a new key was generated");
-                Utils.deleteFile(LOG_TAG, databaseFile);
+                mContext.deleteDatabase(name);
             }
 
             if (BuildConfig.ENABLE_DUMP) {
@@ -842,14 +839,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         mRestoreMode = false;
 
         for (String existingDbName : new String[]{CIPHER_V4_DATABASE_NAME, CIPHER_V3_DATABASE_NAME, DATABASE_NAME}) {
-            File existingDb = mContext.getDatabasePath(existingDbName);
-
-            if (existingDb.exists()) {
-                if (DEBUG) {
-                    Log.d(LOG_TAG, "Deleting existing DB: " + existingDb.getPath());
-                }
-                Utils.deleteFile(LOG_TAG, existingDb);
-            }
+            mContext.deleteDatabase(existingDbName);
         }
 
         String restoredDbName = getDatabaseName(true, 4);
@@ -887,11 +877,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
 
         String restoredDbName = getDatabaseName(true, 4);
 
-        File restoredDb = mContext.getDatabasePath(restoredDbName);
-
-        if (restoredDb.exists()) {
-            return restoredDb.delete();
-        }
+        mContext.deleteDatabase(restoredDbName);
 
         try {
             mRestoreMode = false;
@@ -1055,7 +1041,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             database.close();
             database = null;
 
-            if (oldDatabaseFile.delete()) {
+            if (mContext.deleteDatabase(oldDatabaseFile.getName())) {
                 Log.w(LOG_TAG, "Database migrated to SQLcipher");
             }
             return true;
@@ -1064,7 +1050,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             if (database != null && database.isOpen()) {
                 database.close();
             }
-            Utils.deleteFile(LOG_TAG, newDatabaseFile);
+            mContext.deleteDatabase(CIPHER_V4_DATABASE_NAME);
             return false;
         }
     }
@@ -1094,7 +1080,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             database.execSQL("DETACH DATABASE 'encrypted'");
             database.close();
             database = null;
-            if (oldDatabaseFile.delete()) {
+            if (mContext.deleteDatabase(oldDatabaseFile.getName())) {
                 Log.w(LOG_TAG, "Database migrated to SQLcipher");
             }
             return true;
@@ -1103,7 +1089,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             if (database != null && database.isOpen()) {
                 database.close();
             }
-            Utils.deleteFile(LOG_TAG, newDatabaseFile);
+            mContext.deleteDatabase(CIPHER_V4_DATABASE_NAME);
             return false;
         }
     }

@@ -36,6 +36,9 @@ public interface Twinlife {
     String TMP_DIR = "tmp";
     String OLD_TMP_DIR = "images"; // Legacy tmp directory: images are removed when application was restarted.
 
+    // Tag created and used to trigger the migration of groups to use secure roster on 2026-04-21 (DB version 26).
+    String GROUP_SECURE_ROSTER_MIGRATION = "GroupSecureRosterMigration";
+
     interface ServiceFactory {
 
         BaseServiceImpl<?> createServices(TwinlifeImpl twinlife, Connection connection);

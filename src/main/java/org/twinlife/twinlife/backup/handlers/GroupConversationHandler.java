@@ -74,7 +74,7 @@ public class GroupConversationHandler extends BackupHandler<ConversationService.
             encoder.writeOptionalUUID(incomingConversation.getPeerResourceId());
             encoder.writeOptionalUUID(incomingConversation.getInvitedContactId());
             encoder.writeLong(((GroupConversationImpl) conversation).getPermissions());
-            encoder.writeLong(conversation.getJoinPermissions());
+            encoder.writeLong(conversation.getJoinPermissions().value);
             encoder.writeInt(((GroupConversationImpl) conversation).getFlags());
 
             for (ConversationService.GroupMemberConversation groupMemberConversation : conversation.getGroupMembers(ConversationService.MemberFilter.ALL_MEMBERS)) {
