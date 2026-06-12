@@ -150,7 +150,7 @@ class TwinlifeSecuredConfiguration {
     final String databaseKey;
     @NonNull
     final String deviceIdentifier;
-    final boolean createdKey;
+    boolean createdKey;
 
     private TwinlifeSecuredConfiguration(String databaseKey, @NonNull String deviceIdentifier, boolean createdKey) {
         if (DEBUG) {

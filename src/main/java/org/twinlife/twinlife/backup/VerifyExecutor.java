@@ -36,7 +36,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -94,6 +96,42 @@ class VerifyExecutor {
         initHandlers();
 
         setRestoreState(RestoreState.STARTING);
+    }
+
+    VerifyExecutor(@NonNull BackupServiceImpl backupService, @NonNull String backupPath) {
+        mBackupService = backupService;
+        mTwinlifeImpl = backupService.getTwinlifeImpl();
+        mBackupPath = backupPath;
+        mUserPassword = new byte[0];
+        mSupportedSchemaIds = Collections.emptyList();
+    }
+
+    BackupService.ErrorCode verifyHeader() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "verifyHeader");
+        }
+
+        File backupFile = new File(URI.create(mBackupPath));
+
+        if (!backupFile.exists()) {
+            Log.e(LOG_TAG, "Backup file does not exist: " + mBackupPath);
+            return BackupService.ErrorCode.IO_ERROR;
+        }
+
+        try (InputStream inputStream = new FileInputStream(backupFile)) {
+            new BackupHeaderHandler(BackupConfig.FILE_SIGNATURE).verify(new BinaryDecoder(inputStream));
+            // BackupHeaderHandler.verify() always returns Present if it didn't throw.
+            return BackupService.ErrorCode.SUCCESS;
+        } catch (BackupService.WrongAppException e) {
+            Log.e(LOG_TAG, "Backup file " + mBackupPath + " created by wrong app", e);
+            return BackupService.ErrorCode.WRONG_APP;
+        } catch (BackupService.WrongVersionException e) {
+            Log.e(LOG_TAG, "Backup file " + mBackupPath + " created by wrong version", e);
+            return BackupService.ErrorCode.WRONG_VERSION;
+        } catch (Exception e) {
+            Log.e(LOG_TAG, "Error occurred while checking header in backup file " + mBackupPath, e);
+            return BackupService.ErrorCode.INVALID_FILE;
+        }
     }
 
     void startVerify() {
@@ -319,10 +357,10 @@ class VerifyExecutor {
                         VerifyResult verifyResult = handler.verify(mDecoder);
                         handleVerifyResult(verifyResult);
                     }
-                } catch (SerializerException e) {
-                    Log.e(LOG_TAG, "Error occurred while restoring data", e);
+                } catch (Throwable t) {
+                    Log.e(LOG_TAG, "Error occurred while restoring data", t);
 
-                    BackupService.ErrorCode error = (e.getCause() instanceof IOException) ? BackupService.ErrorCode.IO_ERROR : BackupService.ErrorCode.INVALID_FILE;
+                    BackupService.ErrorCode error = (t.getCause() instanceof IOException) ? BackupService.ErrorCode.IO_ERROR : BackupService.ErrorCode.INVALID_FILE;
                     mBackupService.onRestoreError(error, BaseService.ErrorCode.DECRYPT_ERROR);
 
                     cancel();

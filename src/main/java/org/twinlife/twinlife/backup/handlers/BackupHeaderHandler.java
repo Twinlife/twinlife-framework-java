@@ -13,6 +13,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.twinlife.twinlife.BackupService;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.backup.BackupHandler;
 import org.twinlife.twinlife.backup.BackupHeaderInfo;
@@ -28,7 +29,7 @@ public class BackupHeaderHandler extends BackupHandler<BackupHeaderInfo> {
     private static final boolean DEBUG = false;
 
     public static final UUID SCHEMA_ID = UUID.fromString("7fe7023c-f2f3-4148-bf40-43ef04e7a86a");
-    private static final int SCHEMA_VERSION = 1;
+    private static final int SCHEMA_VERSION = 2;
 
     private final long mDate;
     @Nullable
@@ -65,6 +66,7 @@ public class BackupHeaderHandler extends BackupHandler<BackupHeaderInfo> {
     @Override
     protected void initDeserializers() {
         mRestorers.put(BackupHeaderRestorerV1.VERSION, new BackupHeaderRestorerV1());
+        mRestorers.put(BackupHeaderRestorerV2.VERSION, new BackupHeaderRestorerV2());
     }
 
     public void backup(@NonNull BinaryEncoder encoder) throws SerializerException {
@@ -114,10 +116,16 @@ public class BackupHeaderHandler extends BackupHandler<BackupHeaderInfo> {
 
         if (!checkSignature(decoder)) {
             Log.e(LOG_TAG, "Invalid file signature");
-            throw new SerializerException("Invalid file signature");
+            throw new BackupService.WrongAppException("Invalid file signature");
         }
 
-        return super.verify(decoder);
+        int version = decoder.readInt();
+        Restorer<BackupHeaderInfo> restorer = mRestorers.get(version);
+        if (restorer == null) {
+            throw new BackupService.WrongVersionException("No restorer found for version " + version);
+        }
+
+        return restorer.verify(decoder);
     }
 
     public boolean checkSignature(@NonNull BinaryDecoder decoder) throws SerializerException {
@@ -128,6 +136,10 @@ public class BackupHeaderHandler extends BackupHandler<BackupHeaderInfo> {
         byte[] signature = decoder.readBytes(null).array();
 
         return Arrays.equals(signature, mFileSignature);
+    }
+
+    private static class BackupHeaderRestorerV2 extends BackupHeaderRestorerV1 {
+        public static final int VERSION = 2;
     }
 
     private static class BackupHeaderRestorerV1 implements Restorer<BackupHeaderInfo> {

@@ -794,8 +794,6 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
 
             File databaseFile = mContext.getDatabasePath(name);
 
-            // TODO BKP: this deletes the restored DB when the user runs the app for the first time
-            // and performs a restore.
             if (mTwinlifeSecuredConfiguration.createdKey && databaseFile.exists()) {
                 Log.e(LOG_TAG, "openDatabase: a previous database exists but a new key was generated");
                 mContext.deleteDatabase(name);
@@ -853,6 +851,8 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             return false;
         }
 
+        // Make sure openDatabase() doesn't delete the restored DB.
+        mTwinlifeSecuredConfiguration.createdKey = false;
 
         try {
             openDatabase();

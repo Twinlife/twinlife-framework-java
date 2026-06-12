@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024-2025 twinlife SA.
+ *  Copyright (c) 2024-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -17,7 +17,6 @@ import org.twinlife.twinlife.BackupService;
 import org.twinlife.twinlife.BackupService.BackupState;
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BuildConfig;
-import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.TwinlifeImpl;
 import org.twinlife.twinlife.account.DerivedServerKeyInfo;
 import org.twinlife.twinlife.backup.handlers.AccountSecuredConfigurationHandler;
@@ -27,6 +26,7 @@ import org.twinlife.twinlife.backup.handlers.RepositoryObjectHandler;
 import org.twinlife.twinlife.backup.handlers.TwincodeInboundHandler;
 import org.twinlife.twinlife.backup.handlers.TwincodeOutboundHandler;
 import org.twinlife.twinlife.util.BinaryEncoder;
+import org.twinlife.twinlife.util.Utils;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -111,8 +111,12 @@ public class BackupExecutor {
         }
 
         mBackupState = BackupState.GENERATE_KEY;
+        mBackupService.onBackupStateChange(mBackupId, mBackupState);
 
-        mTwinlifeImpl.getAccountServiceImpl().generateBackupKey(mBackupId, mUserPassword, mSalt, false, this::onGenerateKey);
+        mTwinlifeImpl.getTwinlifeExecutor().execute(() ->
+                mTwinlifeImpl.getAccountServiceImpl().generateBackupKey(mBackupId, mUserPassword, mSalt, false,
+                        (errorCode, derivedServerKey) ->
+                                mExecutor.execute(() -> BackupExecutor.this.onGenerateKey(errorCode, derivedServerKey))));
     }
 
     private void onGenerateKey(@NonNull BaseService.ErrorCode errorCode, @Nullable DerivedServerKeyInfo derivedServerKey) {
@@ -121,8 +125,7 @@ public class BackupExecutor {
         }
 
         if (errorCode != BaseService.ErrorCode.SUCCESS || derivedServerKey == null) {
-            mBackupService.onBackupError(BackupService.ErrorCode.KEY_GEN_FAILED, errorCode);
-            mExecutor.shutdown();
+            handleError(BackupService.ErrorCode.KEY_GEN_FAILED, errorCode);
             return;
         }
 
@@ -130,11 +133,11 @@ public class BackupExecutor {
         mBackupService.onBackupStateChange(mBackupId, mBackupState);
 
         if (mBackupFile == null) {
-            mBackupService.onBackupError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_FOUND);
-            mExecutor.shutdown();
+            handleError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_FOUND);
             return;
         }
 
+        //noinspection IOStreamConstructor (needs SDK 26)
         try (OutputStream outputStream = new FileOutputStream(mBackupFile)) {
             BinaryEncoder encoder = new BinaryEncoder(outputStream);
 
@@ -146,8 +149,7 @@ public class BackupExecutor {
 
                 if (encryptedOutputStream == null) {
                     Log.e(LOG_TAG, "CryptoOutputStream creation failed");
-                    mBackupService.onBackupError(BackupService.ErrorCode.KEY_GEN_FAILED, BaseService.ErrorCode.ENCRYPT_ERROR);
-                    mExecutor.shutdown();
+                    handleError(BackupService.ErrorCode.KEY_GEN_FAILED, BaseService.ErrorCode.ENCRYPT_ERROR);
                     return;
                 }
 
@@ -160,10 +162,9 @@ public class BackupExecutor {
                     }
                 }
             }
-        } catch (IOException | SerializerException e) {
-            Log.e(LOG_TAG, "Encrypted file creation failed", e);
-            mBackupService.onBackupError(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
-            mExecutor.shutdown();
+        } catch (Throwable t) {
+            Log.e(LOG_TAG, "Encrypted file creation failed", t);
+            handleError(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -179,12 +180,10 @@ public class BackupExecutor {
         mUnencryptedHandlers.clear();
         mUnencryptedHandlers.add(new BackupHeaderHandler(mBackupId, mDate, mSalt, mTwinlifeImpl.getApplicationName(), mTwinlifeImpl.getApplicationVersion(), BackupConfig.FILE_SIGNATURE));
 
+        File filesDir = mTwinlifeImpl.getFilesDir();
+
         mEncryptedHandlers.clear();
         mEncryptedHandlers.add(new AccountSecuredConfigurationHandler(mTwinlifeImpl.getConfigurationService()));
-        File filesDir = mTwinlifeImpl.getFilesDir();
-        if (filesDir == null) {
-            throw new IllegalStateException("filesDir not initialized");
-        }
         mEncryptedHandlers.add(new ImageHandler(mTwinlifeImpl.getImageServiceImpl(), filesDir));
         mEncryptedHandlers.add(new TwincodeOutboundHandler(mTwinlifeImpl.getTwincodeOutboundServiceImpl(), mTwinlifeImpl.getCryptoService()));
         mEncryptedHandlers.add(new TwincodeInboundHandler(mTwinlifeImpl.getTwincodeInboundServiceImpl(), mTwinlifeImpl.getTwincodeOutboundServiceImpl()));
@@ -219,5 +218,16 @@ public class BackupExecutor {
         }
 
         return created;
+    }
+
+    private void handleError(@NonNull BackupService.ErrorCode backupError, @NonNull BaseService.ErrorCode baseError) {
+        Log.e(LOG_TAG, "handleError: backupError=" + backupError + " baseError=" + baseError);
+
+        if (mBackupFile != null) {
+            Utils.deleteFile(LOG_TAG, mBackupFile);
+        }
+
+        mBackupService.onBackupError(backupError, baseError);
+        mExecutor.shutdown();
     }
 }

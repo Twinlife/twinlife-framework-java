@@ -35,6 +35,7 @@ import org.twinlife.twinlife.database.TwincodeObjectFactory;
 import org.twinlife.twinlife.twincode.TwincodesAssertPoint;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -216,22 +217,12 @@ class TwincodeInboundServiceProvider extends DatabaseServiceProvider implements 
             Log.d(LOG_TAG, "loadTwincodes");
         }
 
-        List<TwincodeInbound> twincodes = new ArrayList<>();
-
-        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT twi.twincodeId FROM twincodeInbound AS twi INNER JOIN twincodeOutbound AS two ON twi.twincodeOutbound = two.id", null)) {
-            while (cursor.moveToNext()) {
-                UUID twincodeId = cursor.getUUID(0);
-                if (twincodeId != null) {
-                    TwincodeInbound twincodeInbound = loadTwincode(twincodeId);
-                    if (twincodeInbound != null) {
-                        twincodes.add(twincodeInbound);
-                    }
-                }
-            }
-        } catch (Exception exception) {
-            mService.onDatabaseException(exception);
+        try {
+            return mDatabase.loadAllTwincodeInbounds();
+        } catch (DatabaseException e) {
+            mService.onDatabaseException(e);
+            return Collections.emptyList();
         }
-        return twincodes;
     }
 
     @Nullable
@@ -421,7 +412,7 @@ class TwincodeInboundServiceProvider extends DatabaseServiceProvider implements 
 
     @Nullable
     TwincodeInbound restoreTwincode(long databaseId, @NonNull UUID twincodeId, @NonNull TwincodeOutbound twincodeOutbound,
-                                    @Nullable UUID twincodeFactoryId, long modificationDate) {
+                                    @Nullable UUID twincodeFactoryId, long modificationDate, @NonNull List<BaseService.AttributeNameValue> attributes) {
 
         if (DEBUG) {
             Log.d(LOG_TAG, "restoreTwincode: databaseId=" + databaseId + " twincodeId=" + twincodeId +
@@ -435,7 +426,7 @@ class TwincodeInboundServiceProvider extends DatabaseServiceProvider implements 
                 throw new IllegalStateException("Twincode " + twincodeId + " already exists in database");
             }
 
-            TwincodeInbound twincodeInbound = transaction.storeTwincodeInbound(databaseId, twincodeId, twincodeOutbound, twincodeFactoryId, null, 0, modificationDate);
+            TwincodeInbound twincodeInbound = transaction.storeTwincodeInbound(databaseId, twincodeId, twincodeOutbound, twincodeFactoryId, attributes, 0, modificationDate);
 
             transaction.commit();
             return twincodeInbound;

@@ -428,7 +428,7 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
 
     @Nullable
     public TwincodeInbound restoreTwincode(long databaseId, @NonNull UUID twincodeId, @NonNull TwincodeOutbound twincodeOutbound,
-                                           @Nullable UUID twincodeFactoryId, long modificationDate) {
+                                           @Nullable UUID twincodeFactoryId, long modificationDate, @NonNull List<AttributeNameValue> attributes) {
         if (DEBUG) {
             Log.d(LOG_TAG, "restoreTwincode: databaseId=" + databaseId + " twincodeId=" + twincodeId +
                     " twincodeOutbound=" + twincodeOutbound + " twincodeFactoryId=" + twincodeFactoryId +
@@ -440,7 +440,7 @@ public class TwincodeInboundServiceImpl extends BaseServiceImpl<BaseService.Serv
             return null;
         }
 
-        return mServiceProvider.restoreTwincode(databaseId, twincodeId, twincodeOutbound, twincodeFactoryId, modificationDate);
+        return mServiceProvider.restoreTwincode(databaseId, twincodeId, twincodeOutbound, twincodeFactoryId, modificationDate, attributes);
     }
 
     /**

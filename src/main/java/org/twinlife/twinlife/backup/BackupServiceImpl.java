@@ -80,24 +80,12 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
         setConfigured(true);
     }
 
-    public boolean checkFileSignature(@NonNull String backupPath) {
+    public BackupService.ErrorCode checkFileCompatibility(@NonNull String backupPath) {
         if (DEBUG) {
             Log.d(LOG_TAG, "checkFileSignature: backupPath=" + backupPath);
         }
 
-        File backupFile = new File(URI.create(backupPath));
-
-        if (!backupFile.exists()) {
-            Log.e(LOG_TAG, "Backup file does not exist: " + backupPath);
-            return false;
-        }
-
-        try (InputStream inputStream = new FileInputStream(backupFile)) {
-            return new BackupHeaderHandler(BackupConfig.FILE_SIGNATURE).checkSignature(new BinaryDecoder(inputStream));
-        } catch (Exception e) {
-            Log.e(LOG_TAG, "Error occurred while reading signature in backup file " + backupPath, e);
-            return false;
-        }
+        return new VerifyExecutor(this, backupPath).verifyHeader();
     }
 
     @Override

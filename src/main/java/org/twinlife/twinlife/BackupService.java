@@ -63,7 +63,10 @@ public interface BackupService extends BaseService<BackupService.ServiceObserver
         REVOKED,
 
         // The current version is older than the version that performed the backup.
-        BAD_VERSION,
+        WRONG_VERSION,
+
+        // The backup file was created on another variant.
+        WRONG_APP,
 
         // Error occurred while generating the key
         KEY_GEN_FAILED,
@@ -82,6 +85,19 @@ public interface BackupService extends BaseService<BackupService.ServiceObserver
         SUCCESS
     }
 
+    class WrongAppException extends SerializerException {
+
+        public WrongAppException(@NonNull String message) {
+            super(message);
+        }
+    }
+
+    class WrongVersionException extends SerializerException {
+
+        public WrongVersionException(@NonNull String message) {
+            super(message);
+        }
+    }
 
     class BackupServiceConfiguration extends BaseService.BaseServiceConfiguration {
 
@@ -120,7 +136,7 @@ public interface BackupService extends BaseService<BackupService.ServiceObserver
         }
     }
 
-    boolean checkFileSignature(@NonNull String backupPath);
+    ErrorCode checkFileCompatibility(@NonNull String backupPath);
 
     void backup(@NonNull byte[] password, @NonNull List<UUID> supportedSchemaIds);
 

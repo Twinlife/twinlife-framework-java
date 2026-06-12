@@ -794,7 +794,7 @@ public class TwincodeOutboundServiceImpl extends BaseServiceImpl<TwincodeOutboun
                 break;
 
             case AccountMigration:
-                uri = TwincodeURI.ACCOUNT_MIGRATION_LEGACY_ACTION + "/?id=" + twincodeId;
+                uri = TwincodeURI.ACCOUNT_MIGRATION_ACTION + "/?id=" + twincodeId;
                 label = Utils.toString(twincodeId);
                 if (pubKey != null) {
                     uri = uri + "&pubKey=" + pubKey;

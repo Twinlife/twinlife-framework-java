@@ -493,6 +493,25 @@ public class DatabaseServiceImpl implements BaseServiceProvider {
         }
     }
 
+    @NonNull
+    public List<TwincodeInbound> loadAllTwincodeInbounds() throws DatabaseException {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "loadAllTwincodeInbounds");
+        }
+
+        List<TwincodeInbound> result = new ArrayList<>();
+        try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT " + TWINCODE_IN_COLUMNS
+                + " FROM twincodeInbound AS ti INNER JOIN twincodeOutbound AS two ON ti.twincodeOutbound = two.id", null)) {
+            while (cursor.moveToNext()) {
+                TwincodeInbound twincodeInbound = loadTwincodeInbound(cursor, 0);
+                if (twincodeInbound != null) {
+                    result.add(twincodeInbound);
+                }
+            }
+        }
+        return result;
+    }
+
     @Nullable
     public TwincodeOutbound loadTwincodeOutbound(@NonNull UUID twincodeOutboundId) throws DatabaseException {
         if (DEBUG) {
