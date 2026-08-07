@@ -83,6 +83,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import org.jetbrains.annotations.Contract;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.DescriptorAnnotation;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
@@ -104,7 +105,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class DescriptorImpl implements ConversationService.Descriptor {
+class DescriptorImpl implements ConversationService.Descriptor {
     private static final String LOG_TAG = "DescriptorImpl";
     private static final boolean DEBUG = false;
 
@@ -365,6 +366,7 @@ public class DescriptorImpl implements ConversationService.Descriptor {
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 
@@ -905,6 +907,7 @@ public class DescriptorImpl implements ConversationService.Descriptor {
         }
     }
 
+    @Contract(value = "null, _, null -> null ; _, _, !null -> !null", pure = true)
     @Nullable
     static String extractString(@Nullable String[] args, int pos, @Nullable String defaultValue) {
         if (DEBUG) {

@@ -42,7 +42,7 @@ import org.twinlife.twinlife.SerializerFactory;
 
 import java.util.UUID;
 
-public class TransientObjectDescriptorImpl extends DescriptorImpl implements ConversationService.TransientObjectDescriptor {
+class TransientObjectDescriptorImpl extends DescriptorImpl implements ConversationService.TransientObjectDescriptor {
     private static final String LOG_TAG = "TransientObjectDescr...";
     private static final boolean DEBUG = false;
 
@@ -122,6 +122,7 @@ public class TransientObjectDescriptorImpl extends DescriptorImpl implements Con
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

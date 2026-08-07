@@ -17,6 +17,7 @@ import android.util.Pair;
 import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.PushNotificationPriority;
 import org.twinlife.twinlife.PeerCallService;
 import org.twinlife.twinlife.Offer;
@@ -47,7 +48,7 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
     private static final boolean DEBUG = false;
 
     private static final int MAJOR_VERSION = 2;
-    private static final int MINOR_VERSION = 2;
+    private static final int MINOR_VERSION = 3;
 
     private static final UUID CREATE_CALL_ROOM_SCHEMA_ID = UUID.fromString("e53c8953-6345-4e77-bf4b-c1dc227d5d2f");
     private static final UUID ON_CREATE_CALL_ROOM_SCHEMA_ID = UUID.fromString("9e53e24a-acf3-4819-8539-2af37272254f");
@@ -94,16 +95,16 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
 
     static final BinaryPacketIQSerializer IQ_SESSION_INITIATE_SERIALIZER = SessionInitiateIQ.createSerializer(SESSION_INITIATE_SCHEMA_ID, 1);
     static final BinaryPacketIQSerializer IQ_SESSION_ACCEPT_SERIALIZER = SessionAcceptIQ.createSerializer(SESSION_ACCEPT_SCHEMA_ID, 1);
-    static final BinaryPacketIQSerializer IQ_SESSION_UPDATE_SERIALIZER = SessionUpdateIQ.createSerializer(SESSION_UPDATE_SCHEMA_ID, 1);
-    static final BinaryPacketIQSerializer IQ_TRANSPORT_INFO_SERIALIZER = TransportInfoIQ.createSerializer(TRANSPORT_INFO_SCHEMA_ID, 1);
+    public static final BinaryPacketIQSerializer IQ_SESSION_UPDATE_SERIALIZER = SessionUpdateIQ.createSerializer(SESSION_UPDATE_SCHEMA_ID, 1);
+    public static final BinaryPacketIQSerializer IQ_TRANSPORT_INFO_SERIALIZER = TransportInfoIQ.createSerializer(TRANSPORT_INFO_SCHEMA_ID, 1);
     static final BinaryPacketIQSerializer IQ_SESSION_TERMINATE_SERIALIZER = SessionTerminateIQ.createSerializer(SESSION_TERMINATE_SCHEMA_ID, 1);
     static final BinaryPacketIQSerializer IQ_SESSION_PING_SERIALIZER = SessionPingIQ.createSerializer(SESSION_PING_SCHEMA_ID, 1);
     static final BinaryPacketIQSerializer IQ_DEVICE_RINGING_SERIALIZER = DeviceRingingIQ.createSerializer(DEVICE_RINGING_SCHEMA_ID, 1);
 
     private static final BinaryPacketIQSerializer IQ_ON_SESSION_INITIATE_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_SESSION_INITIATE_SCHEMA_ID, 1);
     private static final BinaryPacketIQSerializer IQ_ON_SESSION_ACCEPT_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_SESSION_ACCEPT_SCHEMA_ID, 1);
-    private static final BinaryPacketIQSerializer IQ_ON_TRANSPORT_INFO_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_TRANSPORT_INFO_SCHEMA_ID, 1);
-    private static final BinaryPacketIQSerializer IQ_ON_SESSION_UPDATE_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_SESSION_UPDATE_SCHEMA_ID, 1);
+    public static final BinaryPacketIQSerializer IQ_ON_TRANSPORT_INFO_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_TRANSPORT_INFO_SCHEMA_ID, 1);
+    public static final BinaryPacketIQSerializer IQ_ON_SESSION_UPDATE_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_SESSION_UPDATE_SCHEMA_ID, 1);
     private static final BinaryPacketIQSerializer IQ_ON_SESSION_TERMINATE_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_SESSION_TERMINATE_SCHEMA_ID, 1);
     private static final BinaryPacketIQSerializer IQ_ON_SESSION_PING_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_SESSION_PING_SCHEMA_ID, 1);
 
@@ -150,7 +151,7 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
 
         @Override
         @NonNull
-        public ErrorCode onSessionUpdate(@NonNull UUID sessionId, @NonNull SdpType updateType, @NonNull Sdp sdp) {
+        public ErrorCode onSessionUpdate(@NonNull UUID sessionId, @NonNull SdpType updateType, @NonNull Sdp sdp, long sequenceId) {
 
             return ErrorCode.ITEM_NOT_FOUND;
         }
@@ -612,20 +613,28 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
             Log.d(LOG_TAG, "transportInfo sessionId=" + sessionId + " to=" + to + " sdp=" + sdp);
         }
 
+        final TransportInfoIQ transportInfoIQ = createTransportInfo(requestId, sessionId, to, sdp);
+        synchronized (mPendingRequests) {
+            mPendingRequests.put(requestId, new SessionPendingRequest(sessionId, onComplete));
+        }
+
+        sendDataPacket(transportInfoIQ, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    @NonNull
+    public TransportInfoIQ createTransportInfo(long requestId, @NonNull UUID sessionId, @NonNull String to, @NonNull Sdp sdp) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "createTransportInfo sessionId=" + sessionId + " to=" + to + " sdp=" + sdp);
+        }
+
         final long expirationDeadline = System.currentTimeMillis() + 30 * 1000L;
         int mode = sdp.isCompressed() ? SessionInitiateIQ.OFFER_COMPRESSED : 0;
         if (sdp.isEncrypted()) {
             mode |= (sdp.getKeyIndex() << SessionInitiateIQ.OFFER_ENCRYPT_SHIFT) & SessionInitiateIQ.OFFER_ENCRYPT_MASK;
         }
 
-        final TransportInfoIQ transportInfoIQ = new TransportInfoIQ(IQ_TRANSPORT_INFO_SERIALIZER, requestId, to, sessionId,
+        return new TransportInfoIQ(IQ_TRANSPORT_INFO_SERIALIZER, requestId, to, sessionId,
                 expirationDeadline, mode, sdp.getData(), sdp.getLength(), null);
-
-        synchronized (mPendingRequests) {
-            mPendingRequests.put(requestId, new SessionPendingRequest(sessionId, onComplete));
-        }
-
-        sendDataPacket(transportInfoIQ, DEFAULT_REQUEST_TIMEOUT);
     }
 
     /**
@@ -635,13 +644,28 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
      * @param to the peer identification string.
      * @param sdp the sdp to send.
      * @param type the update type to indicate whether this is an offer or answer.
+     * @param sequenceId the sequence ID for the session-update SDP.
      * @param onComplete the completion handler executed when the server sends us its response.
      */
     @Override
-    public void sessionUpdate(@NonNull UUID sessionId, @NonNull String to, @NonNull Sdp sdp, @NonNull SdpType type,
+    public void sessionUpdate(@NonNull UUID sessionId, @NonNull String to, @NonNull Sdp sdp, @NonNull SdpType type, int sequenceId,
                               @NonNull Consumer<Long> onComplete) {
         if (DEBUG) {
             Log.d(LOG_TAG, "sessionUpdate sessionId=" + sessionId + " to=" + to + " sdp=" + sdp + " type=" + type);
+        }
+
+        final SessionUpdateIQ updateIQ = createSessionUpdate(sessionId, to, sdp, type, sequenceId);
+        synchronized (mPendingRequests) {
+            mPendingRequests.put(updateIQ.getRequestId(), new SessionPendingRequest(sessionId, onComplete));
+        }
+
+        sendDataPacket(updateIQ, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    @NonNull
+    public SessionUpdateIQ createSessionUpdate(@NonNull UUID sessionId, @NonNull String to, @NonNull Sdp sdp, @NonNull SdpType type, int sequenceId) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "createSessionUpdate sessionId=" + sessionId + " to=" + to + " sdp=" + sdp + " type=" + type);
         }
 
         final long expirationDeadline = System.currentTimeMillis() + 30 * 1000L;
@@ -653,15 +677,18 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
         if (sdp.isEncrypted()) {
             updateType |= (sdp.getKeyIndex() << SessionInitiateIQ.OFFER_ENCRYPT_SHIFT) & SessionInitiateIQ.OFFER_ENCRYPT_MASK;
         }
+        updateType |= sequenceId << SessionInitiateIQ.OFFER_SEQUENCE_SHIFT;
 
-        final SessionUpdateIQ updateIQ = new SessionUpdateIQ(IQ_SESSION_UPDATE_SERIALIZER, requestId, to, sessionId,
+        return new SessionUpdateIQ(IQ_SESSION_UPDATE_SERIALIZER, requestId, to, sessionId,
                 expirationDeadline, updateType, sdp.getData(), sdp.getLength());
+    }
 
+    public void sendPacket(@NonNull UUID sessionId, @NonNull BinaryPacketIQ iq, @NonNull Consumer<Long> onComplete) {
         synchronized (mPendingRequests) {
-            mPendingRequests.put(requestId, new SessionPendingRequest(sessionId, onComplete));
+            mPendingRequests.put(iq.getRequestId(), new SessionPendingRequest(sessionId, onComplete));
         }
 
-        sendDataPacket(updateIQ, DEFAULT_REQUEST_TIMEOUT);
+        sendDataPacket(iq, DEFAULT_REQUEST_TIMEOUT);
     }
 
     /**
@@ -1050,9 +1077,10 @@ public class PeerCallServiceImpl extends BaseServiceImpl<PeerCallService.Service
         }
 
         final SessionUpdateIQ sessionUpdateIQ = (SessionUpdateIQ) iq;
-        final SdpType type = (sessionUpdateIQ.updateType & SessionInitiateIQ.OFFER_ANSWER) != 0 ? SdpType.ANSWER : SdpType.OFFER;
+        final SdpType type = sessionUpdateIQ.getType();
         final Sdp sdp = sessionUpdateIQ.getSdp();
-        final ErrorCode result = mPeerSignalingListener.onSessionUpdate(sessionUpdateIQ.sessionId, type, sdp);
+        final long sequenceId = sessionUpdateIQ.getSequenceId();
+        final ErrorCode result = mPeerSignalingListener.onSessionUpdate(sessionUpdateIQ.sessionId, type, sdp, sequenceId);
 
         sendResponse(new BinaryErrorPacketIQ(IQ_ON_SESSION_UPDATE_SERIALIZER, iq, result));
     }

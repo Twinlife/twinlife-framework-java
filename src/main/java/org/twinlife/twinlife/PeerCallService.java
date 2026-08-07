@@ -20,7 +20,7 @@ import java.util.UUID;
 
 public interface PeerCallService extends BaseService<PeerCallService.ServiceObserver> {
 
-    String VERSION = "1.5.1";
+    String VERSION = "1.6.1";
 
     enum MemberStatus {
         NEW_MEMBER,
@@ -211,10 +211,11 @@ public interface PeerCallService extends BaseService<PeerCallService.ServiceObse
      * @param to the peer identification string.
      * @param sdp the sdp to send.
      * @param type the update type to indicate whether this is an offer or answer.
+     * @param sequenceId the sequence ID for the session-update SDP.
      * @param onComplete the completion handler executed when the server sends us its response.
      */
     void sessionUpdate(@NonNull UUID sessionId, @NonNull String to, @NonNull Sdp sdp, @NonNull SdpType type,
-                       @NonNull Consumer<Long> onComplete);
+                       int sequenceId, @NonNull Consumer<Long> onComplete);
 
     /**
      * Send a session-ping with the session id and peer identification string.  The server will check the

@@ -67,7 +67,7 @@ import org.twinlife.twinlife.Twincode;
 
 import java.util.UUID;
 
-public class TwincodeDescriptorImpl extends DescriptorImpl implements ConversationService.TwincodeDescriptor {
+class TwincodeDescriptorImpl extends DescriptorImpl implements ConversationService.TwincodeDescriptor {
     private static final String LOG_TAG = "TwincodeDescriptorImpl";
     private static final boolean DEBUG = false;
 
@@ -212,6 +212,7 @@ public class TwincodeDescriptorImpl extends DescriptorImpl implements Conversati
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

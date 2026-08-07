@@ -14,7 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BaseService;
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.BaseService.AttributeNameValue;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.ConversationService;
@@ -218,7 +218,7 @@ class GroupConversationManager {
                     return ErrorCode.SUCCESS;
                 }
 
-                //noinspection unchecked
+                @SuppressWarnings("unchecked")
                 final List<AttributeNameValue> memberInfo = (List<AttributeNameValue>) list.value;
                 final UUID memberTwincodeId = AttributeNameValue.getUUIDAttribute(memberInfo, ConversationProtocol.PARAM_MEMBER_TWINCODE_ID);
                 final String memberPubKey = AttributeNameValue.getStringAttribute(memberInfo, ConversationProtocol.PARAM_PUBLIC_KEY);

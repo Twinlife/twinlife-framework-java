@@ -343,7 +343,8 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
         return mState == State.TERMINATE || (mState == State.WAIT_ACCOUNT && mAccountReceived && mAccountSent);
     }
 
-    private long newRequestId() {
+    @Override
+    public long newRequestId() {
 
         return mTwinlifeImpl.newRequestId() + mOffsetRequestId;
     }
@@ -1072,7 +1073,7 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
 
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "Fatal IO error for ", iq.fileId, ": ", exception.getMessage());
+                    Logger.exception(LOG_TAG, exception, "Fatal IO error for ", iq.fileId, ": ", exception.getMessage());
                 }
 
                 sendPeerPacket(IQ_STAT_ERROR, sendError(iq.getRequestId(), ErrorCode.IO_ERROR));
@@ -1126,7 +1127,7 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
             }
         } catch (IOException exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Fatal IO Error: ", exception.getMessage());
+                Logger.exception(LOG_TAG, exception, "Fatal IO Error: ", exception.getMessage());
             }
             offset = -1; // IO error means we cannot retry.
             mReceiveErrorCount++;
@@ -1135,7 +1136,7 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
         } catch (Exception exception) {
             offset = 0; // We could retry
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Exception ", exception);
+                Logger.exception(LOG_TAG, exception, "Exception ", exception.getMessage());
             }
         }
         sendPeerPacket(IQ_STAT_ON_PUT_FILE, new OnPutFileIQ(IQ_ON_PUT_FILE_SERIALIZER, iq, iq.fileId, offset));
@@ -1679,7 +1680,7 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Exception ", exception);
+                Logger.exception(LOG_TAG, exception, "Exception ", exception.getMessage());
             }
             return null;
         }

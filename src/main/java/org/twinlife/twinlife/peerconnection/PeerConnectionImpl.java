@@ -12,12 +12,13 @@ package org.twinlife.twinlife.peerconnection;
 
 import android.os.SystemClock;
 import android.util.Log;
+import android.util.Pair;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.AssertPoint;
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.ManagementService;
 import org.twinlife.twinlife.PeerConnectionService;
@@ -83,9 +84,9 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
     private static final String LOG_TAG = "PeerConnectionImpl";
     private static final boolean DEBUG = false;
 
-    private static final int CONNECT_REPORT_VERSION = 2;
+    private static final int CONNECT_REPORT_VERSION = 3;
     private static final int STATS_REPORT_VERSION = 2;
-    private static final int IQ_REPORT_VERSION = 6;
+    private static final int IQ_REPORT_VERSION = 7;
     private static final int AUDIO_REPORT_VERSION = 2;
     private static final int VIDEO_REPORT_VERSION = 2;
 
@@ -107,6 +108,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             StatType.IQ_SET_SYNCHRONIZE,
             StatType.IQ_SET_SIGNATURE_INFO,
             StatType.IQ_SET_PUSH_POLL,
+            StatType.IQ_SET_PUSH_CONTACT_SHARE,
+            StatType.IQ_SET_ANSWER_CONTACT_SHARE,
+            StatType.IQ_SET_SDP_TRANSPORT_INFO,
+            StatType.IQ_SET_SDP_UPDATE,
             StatType.IQ_ERROR
     };
 
@@ -127,7 +132,11 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             StatType.IQ_RESULT_PUSH_TWINCODE,
             StatType.IQ_RESULT_SYNCHRONIZE,
             StatType.IQ_RESULT_SIGNATURE_INFO,
-            StatType.IQ_RESULT_PUSH_POLL
+            StatType.IQ_RESULT_PUSH_POLL,
+            StatType.IQ_RESULT_PUSH_CONTACT_SHARE,
+            StatType.IQ_RESULT_ANSWER_CONTACT_SHARE,
+            StatType.IQ_RESULT_SDP_TRANSPORT_INFO,
+            StatType.IQ_RESULT_SDP_UPDATE
     };
 
     // Defines the content of the 'recv_report' and order in which these counters are reported.
@@ -158,6 +167,14 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
 
     /*
      * <pre>
+     * Date: 2026/07/24
+     *  changes: added IQ stat push-contact-share, answer-contact-share, sdp-transport-info, sdp-update
+     *           added ms 'duration' in the connectReport
+     *  iqReport: version 7
+     *  ...
+     *  connectReport: version 3
+     *  connect_report = version::connect:connectmS::duration::durationmS::accept:acceptmS::iceRemote:value::iceLocal:value:
+     *
      * Date: 2026/05/13
      *  changes: added IQ stat push-poll
      *  iqReport: version 6
@@ -458,6 +475,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
     private ScheduledFuture<?> mFlushCandidates = null;
     @Nullable
     private ScheduledFuture<?> mRestartIce = null;
+    @Nullable
+    private ScheduledFuture<?> mFailedIce = null;
+    private long mLastSequenceId = 0;
+    private int mSequenceId = 0;
 
     //
     // Package specific Methods
@@ -595,6 +616,46 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         }
     }
 
+    /**
+     * Check if the peer supports receiving SDP signaling (transport-info and session-update)
+     * from the data-channel.  The preconditions:
+     * - the peer version must be >= 2.3
+     * - the data channel must be opened,
+     * - the WebRTC connection must be connected.
+     * @return true if we can send the SDP in the data-channel.
+     */
+    boolean isSignalingSupported() {
+
+        return mState == IceConnectionState.CONNECTED && mDataChannelState == DataChannel.State.OPEN
+                && mPeerOffer != null && mPeerOffer.version != null
+                && (mPeerOffer.version.major >= 3 || (mPeerOffer.version.major == 2 && mPeerOffer.version.minor >= 3));
+    }
+
+    /**
+     * Check if the session-update SDP was already received and handled.
+     * @param sequenceId the session-update sequence ID.
+     * @return true if the session-update was already received and false if this is a new session-update.
+     */
+    synchronized boolean wasReceived(long sequenceId) {
+
+        if (mLastSequenceId >= sequenceId) {
+            return true;
+        }
+        mLastSequenceId = sequenceId;
+        return false;
+    }
+
+    /**
+     * Allocate a new sequence ID for the session-update SDP that we send to the peer.
+     * This is the low part (16-bits) of the real sequence id, the high part are created
+     * from the Unix timestamp.  The sequence ID is allocated only for session-update.
+     * @return the new sequence ID.
+     */
+    int allocateSequenceId() {
+
+        return ++mSequenceId;
+    }
+
     @NonNull
     String getPeerId() {
 
@@ -622,14 +683,13 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         mObserver = observer;
     }
 
-    void createIncomingPeerConnection(@NonNull PeerConnection.RTCConfiguration rtcConfiguration,
-                                      @Nullable SessionDescription sessionDescription,
+    void createIncomingPeerConnection(@Nullable SessionDescription sessionDescription,
                                       @NonNull Offer offer, @NonNull OfferToReceive offerToReceive,
                                       @Nullable PeerConnectionService.DataChannelObserver consumer,
                                       @NonNull PeerConnectionObserver observer,
                                       @NonNull Consumer<UUID> complete) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "createIncomingPeerConnection rtcConfiguration=" + rtcConfiguration);
+            Log.d(LOG_TAG, "createIncomingPeerConnection offer=" + offer);
         }
 
         mPeerConnectionExecutor.execute(() -> {
@@ -639,18 +699,17 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             if (sessionDescription != null) {
                 mSessionDescription = sessionDescription;
             }
-            complete.onGet(createPeerConnectionInternal(rtcConfiguration, consumer), mId);
+            complete.onGet(createPeerConnectionInternal(consumer), mId);
         });
     }
 
-    void createOutgoingPeerConnection(@NonNull PeerConnection.RTCConfiguration rtcConfiguration,
-                                      @Nullable PeerConnectionService.DataChannelObserver observer,
+    void createOutgoingPeerConnection(@Nullable PeerConnectionService.DataChannelObserver observer,
                                       @NonNull Consumer<UUID> complete) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "createOutgoingPeerConnection rtcConfiguration=" + rtcConfiguration);
+            Log.d(LOG_TAG, "createOutgoingPeerConnection");
         }
 
-        mPeerConnectionExecutor.execute(() -> complete.onGet(createPeerConnectionInternal(rtcConfiguration, observer), mId));
+        mPeerConnectionExecutor.execute(() -> complete.onGet(createPeerConnectionInternal(observer), mId));
     }
 
     void initSources(boolean audioOn, boolean videoOn) {
@@ -752,9 +811,7 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             Log.d(LOG_TAG, "onTwinlifeSuspend " + mId);
         }
 
-        mPeerConnectionExecutor.execute(() -> {
-            terminatePeerConnectionInternal(mConnectedTimestamp > 0 ? TerminateReason.DISCONNECTED : TerminateReason.CANCEL, true);
-        });
+        mPeerConnectionExecutor.execute(() -> terminatePeerConnectionInternal(mConnectedTimestamp > 0 ? TerminateReason.DISCONNECTED : TerminateReason.CANCEL, true));
     }
 
     void sendDeviceRinging(){
@@ -799,29 +856,26 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
     }
 
     @NonNull
-    private ErrorCode createPeerConnectionInternal(@NonNull PeerConnection.RTCConfiguration rtcConfiguration,
-                                                   @Nullable PeerConnectionService.DataChannelObserver observer) {
+    private ErrorCode createPeerConnectionInternal(@Nullable PeerConnectionService.DataChannelObserver observer) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "createPeerConnectionInternal id=" + mId + " rtcConfiguration=" + rtcConfiguration);
+            Log.d(LOG_TAG, "createPeerConnectionInternal id=" + mId);
         }
 
         // Use a data only peer connection factory if this is a data-channel only connection.
         // We avoid the creation and initialization of audio threads, audio devices, codecs and WebRTC media engine.
         // However, if the media aware peer connection factory is available, we are going to use it.
         mWithMedia = mOffer.audio | mOffer.video | mOffer.videoBell;
-        final PeerConnectionFactory peerConnectionFactory = mPeerConnectionServiceImpl.getPeerConnectionFactory(mWithMedia);
+        final Pair<PeerConnectionFactory, PeerConnection.RTCConfiguration> peerConnectionFactory = mPeerConnectionServiceImpl.getPeerConnectionFactory(mWithMedia);
         mStartTimestamp = SystemClock.elapsedRealtime();
         mDataChannelObserver = observer;
+        mPeerConnectionFactory = peerConnectionFactory.first;
 
-        rtcConfiguration.tcpCandidatePolicy = mWithMedia ? PeerConnection.TcpCandidatePolicy.DISABLED : PeerConnection.TcpCandidatePolicy.ENABLED;
-        mPeerConnection = peerConnectionFactory.createPeerConnection(rtcConfiguration, this);
+        mPeerConnection = mPeerConnectionFactory.createPeerConnection(peerConnectionFactory.second, this);
         if (mPeerConnection == null) {
 
             return ErrorCode.WEBRTC_ERROR;
         }
-
-        mPeerConnectionFactory = peerConnectionFactory;
-        peerConnectionFactory.incrementUseCounter();
+        mPeerConnectionFactory.incrementUseCounter();
 
         if (mSessionDescription != null) {
             SessionDescription updatedSessionDescription = updateCodecs(mSessionDescription);
@@ -1022,8 +1076,9 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         // Handle renegotiation only when:
         // - we have sent the session-initiate,
         // - the WebRTC observer peerConnectionShouldNegotiate() was called.
+        // - the signaling state is stable.
         int updatedCounter = mRenegotiationNeeded.addAndGet(-counter);
-        if (updatedCounter > 0) {
+        if (updatedCounter > 0 && mPeerConnection != null && mPeerConnection.signalingState() == SignalingState.STABLE) {
             // We can handle the renegotiation only if there is nothing in progress.
             // Check and update the pending counter as it will be used to decrement
             // the renegotationNeeded when we have sent our session-update.
@@ -1081,7 +1136,8 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         // so it is safe to chain it on our Operations Chain now.
         SignalingState state = mPeerConnection.signalingState();
         boolean isOffer = sessionDescription.type == SessionDescription.Type.OFFER;
-        boolean readyForOffer = mRenegotiationPending.get() == 0 && (state == SignalingState.STABLE || mIsSettingRemoteAnswerPending);
+        boolean readyForOffer = mRenegotiationPending.get() == 0 && (state == SignalingState.STABLE
+                || state == SignalingState.HAVE_LOCAL_OFFER || mIsSettingRemoteAnswerPending);
         boolean offerCollision = isOffer && !readyForOffer;
 
         mIgnoreOffer = !mInitiator && offerCollision;
@@ -1139,6 +1195,11 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             }
         }
 
+        // We have some new ICE to check and we can clear the failed ICE timer if it is set.
+        if (mFailedIce != null) {
+            mFailedIce.cancel(false);
+            mFailedIce = null;
+        }
         long dt = SystemClock.elapsedRealtime() - mStartTimestamp;
 
         List<IceCandidate> removeList = null;
@@ -1381,6 +1442,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
                     mRestartIce.cancel(false);
                     mRestartIce = null;
                 }
+                if (mFailedIce != null) {
+                    mFailedIce.cancel(false);
+                    mFailedIce = null;
+                }
                 break;
 
             case DISCONNECTED:
@@ -1393,11 +1458,28 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
                         if (mRestartIce != null) {
                             mRestartIce.cancel(false);
                         }
+                        if (mFailedIce != null) {
+                            mFailedIce.cancel(false);
+                            mFailedIce = null;
+                        }
                         mRestartIce = mPeerConnectionExecutor.schedule(this::restartIce, mWithMedia ? 2500 : 5000, TimeUnit.MILLISECONDS);
                         return;
                     }
                 }
-                terminatePeerConnectionInternal(iceConnectionState == IceConnectionState.DISCONNECTED ? TerminateReason.DISCONNECTED : TerminateReason.CONNECTIVITY_ERROR, true);
+                if (iceConnectionState == IceConnectionState.DISCONNECTED) {
+                    terminatePeerConnectionInternal(TerminateReason.DISCONNECTED, true);
+                    return;
+                }
+                if (mConnectedTimestamp > 0 || mPeerConnection == null) {
+                    terminatePeerConnectionInternal(TerminateReason.CONNECTIVITY_ERROR, true);
+                    return;
+                }
+
+                // Setup the failed ICE timer to give some time for the peer to give us more ICEs.
+                if (mFailedIce != null) {
+                    mFailedIce.cancel(false);
+                }
+                mFailedIce = mPeerConnectionExecutor.schedule(() -> terminatePeerConnectionInternal(TerminateReason.CONNECTIVITY_ERROR, true), 15000, TimeUnit.MILLISECONDS);
                 break;
 
             case CLOSED:
@@ -1531,6 +1613,14 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
                 onSendServer(errorCode, null);
             });
         }
+    }
+
+    void ackTransportInfo(long requestId) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "ackTransportInfo: id=" + mId + " requestId=" + requestId);
+        }
+
+        mPendingCandidates.remove(requestId);
     }
 
     @Override
@@ -1674,7 +1764,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             Log.d(LOG_TAG, "onCreateOfferFailureInternal: id=" + mId + " error=" + error);
         }
 
-        mTwinlifeImpl.assertion(PeerConnectionAssertPoint.OFFER_FAILURE, AssertPoint.createPeerConnectionId(mId));
+        if (isTerminated() || mPeerConnection == null) {
+            return;
+        }
+        mTwinlifeImpl.assertion(PeerConnectionAssertPoint.OFFER_FAILURE, AssertPoint.createPeerConnectionId(mId).put(mPeerConnection.signalingState()));
 
         terminatePeerConnectionInternal(TerminateReason.GENERAL_ERROR, true);
     }
@@ -1684,7 +1777,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             Log.d(LOG_TAG, "onSetLocalDescriptionFailureInternal: id=" + mId + " error=" + error);
         }
 
-        mTwinlifeImpl.assertion(PeerConnectionAssertPoint.SET_LOCAL_FAILURE, AssertPoint.createPeerConnectionId(mId));
+        if (isTerminated() || mPeerConnection == null) {
+            return;
+        }
+        mTwinlifeImpl.assertion(PeerConnectionAssertPoint.SET_LOCAL_FAILURE, AssertPoint.createPeerConnectionId(mId).put(mPeerConnection.signalingState()));
 
         terminatePeerConnectionInternal(TerminateReason.GENERAL_ERROR, true);
     }
@@ -1839,7 +1935,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
             Log.d(LOG_TAG, "onSetRemoteDescriptionFailureInternal: id=" + mId + " error=" + error);
         }
 
-        mTwinlifeImpl.assertion(PeerConnectionAssertPoint.SET_REMOTE_FAILURE, AssertPoint.createPeerConnectionId(mId));
+        if (isTerminated() || mPeerConnection == null) {
+            return;
+        }
+        mTwinlifeImpl.assertion(PeerConnectionAssertPoint.SET_REMOTE_FAILURE, AssertPoint.createPeerConnectionId(mId).put(mPeerConnection.signalingState()));
         mIsSettingRemoteAnswerPending = false;
 
         terminatePeerConnectionInternal(TerminateReason.GENERAL_ERROR, true);
@@ -1874,6 +1973,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
 
                 return;
             }
+        }
+        SignalingState state = mPeerConnection.signalingState();
+        if (state != SignalingState.STABLE) {
+            return;
         }
 
         mPeerConnection.createOffer(mCreateOfferObserver, new MediaConstraints());
@@ -1991,6 +2094,10 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         if (mRestartIce != null) {
             mRestartIce.cancel(false);
             mRestartIce = null;
+        }
+        if (mFailedIce != null) {
+            mFailedIce.cancel(false);
+            mFailedIce = null;
         }
         if (mFlushCandidates != null) {
             mFlushCandidates.cancel(false);
@@ -2110,8 +2217,12 @@ class PeerConnectionImpl implements PeerConnection.Observer, DataChannel.Observe
         stringBuilder.append("::connect:");
         if (mConnectedTimestamp != 0 && mAcceptTimestamp != 0) {
             stringBuilder.append(mConnectedTimestamp - mAcceptTimestamp);
+            stringBuilder.append("::duration:");
+            stringBuilder.append(mStopTimestamp - mConnectedTimestamp);
         } else if (mConnectedTimestamp != 0) {
             stringBuilder.append(mConnectedTimestamp - mStartTimestamp);
+            stringBuilder.append("::duration:");
+            stringBuilder.append(mStopTimestamp - mConnectedTimestamp);
         } else {
             stringBuilder.append(mStopTimestamp - mStartTimestamp);
         }

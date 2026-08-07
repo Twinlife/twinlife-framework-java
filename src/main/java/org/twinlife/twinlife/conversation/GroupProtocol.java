@@ -15,7 +15,6 @@ import androidx.annotation.Nullable;
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.RosterId;
 import org.twinlife.twinlife.TwincodeOutbound;
-import org.twinlife.twinlife.util.Utils;
 
 import java.util.List;
 import java.util.UUID;

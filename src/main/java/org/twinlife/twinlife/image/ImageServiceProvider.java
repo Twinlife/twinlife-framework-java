@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2025 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -160,13 +160,17 @@ class ImageServiceProvider extends DatabaseServiceProvider implements ImagesClea
         }
 
         try (Transaction transaction = newTransaction()) {
+            // If the copiedImageId is itself a copy of an image, get the id of the original image.
+            // Note: we assume that in that case, it is the real original and not another copy.
+            Long copiedId = mDatabase.longQuery("SELECT img.copiedFrom FROM image AS img WHERE img.id=?",
+                    new String[]{ Long.toString(copiedImageId.getId()) });
             long id = transaction.allocateId(DatabaseTable.TABLE_IMAGE);
             ContentValues values = new ContentValues();
             values.put(Columns.ID, id);
             values.put(Columns.UUID, imageId.toString());
             values.put(Columns.FLAGS, fromImageStatus(ImageInfo.Status.OWNER));
             values.put(Columns.CREATION_DATE, System.currentTimeMillis());
-            values.put(Columns.COPIED_FROM_ID, copiedImageId.getId());
+            values.put(Columns.COPIED_FROM_ID, copiedId == null ? copiedImageId.getId() : copiedId);
             transaction.insertOrThrow(Tables.IMAGE, null, values);
             transaction.commit();
             return new ExportedImageId(id, imageId);
@@ -184,9 +188,14 @@ class ImageServiceProvider extends DatabaseServiceProvider implements ImagesClea
         }
 
         final String[] params = { String.valueOf(imageId.getId()) };
+        // In some situations, we can have an image that was created as a copy of another copy.
+        // The join on `origin2` is here to retrieve such copy.  With the fix made in copyImage(),
+        // we should not have this situation very often but we must be ready for it.
         try (DatabaseCursor cursor = mDatabase.rawQuery("SELECT img.uuid, img.flags, img.thumbnail, origin.flags AS origFlags,"
-                + " origin.thumbnail AS originThumbnail, origin.uuid AS originUuid FROM image AS img"
+                + " origin.thumbnail AS originThumbnail, origin.uuid AS originUuid, origin2.flags AS orig2Flags,"
+                + " origin2.thumbnail AS origin2Thumbnail, origin2.uuid AS origin2Uuid FROM image AS img"
                 + " LEFT JOIN image AS origin ON img.copiedFrom = origin.id"
+                + " LEFT JOIN image AS origin2 ON origin.copiedFrom = origin2.id"
                 + " WHERE img.id=?", params)) {
             if (!cursor.moveToFirst()) {
                 return null;
@@ -197,6 +206,13 @@ class ImageServiceProvider extends DatabaseServiceProvider implements ImagesClea
             if (thumbnail != null) {
                 final ImageInfo.Status status = toImageStatus(cursor.isNull(1), cursor.getInt(1));
                 return new ImageInfo(uuid, status, thumbnail, null);
+            } else if (!cursor.isNull(6)) {
+                // This image is a copy of a copy.
+                final ImageInfo.Status originStatus = toImageStatus(cursor.isNull(6), cursor.getInt(6));
+                final byte[] copiedFrom = cursor.getBlob(7);
+                final UUID originUuid = cursor.getUUID(8);
+
+                return new ImageInfo(uuid, originStatus, copiedFrom, originUuid);
             } else {
                 final ImageInfo.Status originStatus = toImageStatus(cursor.isNull(3), cursor.getInt(3));
                 final byte[] copiedFrom = cursor.getBlob(4);
@@ -208,6 +224,7 @@ class ImageServiceProvider extends DatabaseServiceProvider implements ImagesClea
             mService.onDatabaseException(exception);
             return null;
         }
+
     }
 
     void saveRemainUploadSize(@NonNull ImageId imageId, @NonNull ImageService.Kind kind, long remainSize) {
@@ -319,10 +336,10 @@ class ImageServiceProvider extends DatabaseServiceProvider implements ImagesClea
 
         // Cache files associated with the image can be removed when there is no more reference.
         // PR 3318:
-        //  When a user creates a contact with its own profile deleteImage is called on the peerAvatarId
+        //  When a user creates a contact with its own profile, deleteImage is called on the peerAvatarId
         //   that is indeed the avatarId of the profile
         //   Using DeleteStatus.DELETE_NONE instead of DeleteStatus.DELETE_REMOTE solved this problem and does
-        //   not generated phantom image in the server
+        //   not generate phantom image in the server
         //
         if (status == ImageInfo.Status.OWNER) {
             return new DeleteImageInfo(uuid, count == 0 ? DeleteImageInfo.Status.DELETE_LOCAL_REMOTE : DeleteImageInfo.Status.DELETE_NONE);

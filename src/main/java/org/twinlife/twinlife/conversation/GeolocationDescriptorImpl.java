@@ -270,6 +270,7 @@ public class GeolocationDescriptorImpl extends DescriptorImpl implements Convers
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

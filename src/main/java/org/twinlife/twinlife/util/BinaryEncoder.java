@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2024 twinlife SA.
+ *  Copyright (c) 2015-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -309,6 +309,7 @@ public class BinaryEncoder implements Encoder {
         }
     }
 
+    @SuppressWarnings("unchecked")
     public void writeAttribute(@NonNull BaseService.AttributeNameValue attr) throws SerializerException {
         if (DEBUG) {
             Log.d(LOG_TAG, "serializeAttributes");
@@ -334,8 +335,7 @@ public class BinaryEncoder implements Encoder {
             writeUUID(((ExportedImageId) attr.value).getExportedId());
         } else if (attr.value instanceof List) {
             writeEnum(5);
-            //noinspection unchecked
-            writeAttributes((List) attr.value);
+            writeAttributes((List<BaseService.AttributeNameValue>) attr.value);
         } else {
             throw new SerializerException("Unsupported Attribute: " + attr);
         }

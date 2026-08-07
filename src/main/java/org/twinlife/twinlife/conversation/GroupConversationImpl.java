@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2023 twinlife SA.
+ *  Copyright (c) 2018-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -245,13 +245,10 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
             return false;
         }
 
-        // If we are already joined, keep the current permissions.
-        if ((mFlags & FLAG_JOINED) == 0) {
-            mFlags |= FLAG_JOINED;
-            mPermissions = permissions;
-            mIncomingConversation.setPermissions(permissions);
-            mJoinPermissions = permissions;
-        }
+        mFlags |= FLAG_JOINED;
+        mPermissions = permissions;
+        mIncomingConversation.setPermissions(permissions);
+        mJoinPermissions = permissions;
         return true;
     }
 

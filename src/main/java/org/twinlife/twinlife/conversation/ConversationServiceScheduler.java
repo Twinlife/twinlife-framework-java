@@ -13,10 +13,10 @@ package org.twinlife.twinlife.conversation;
 
 import android.util.Log;
 
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.DatabaseIdentifier;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.JobService;
 import org.twinlife.twinlife.PushNotificationContent;
 import org.twinlife.twinlife.TerminateReason;
@@ -370,7 +370,7 @@ public class ConversationServiceScheduler implements JobService.Observer {
             mServiceProvider.updateDescriptorImplTimestamps(descriptorImpl);
 
             if (conversation != null) {
-                mServiceProvider.setAnnotation(descriptorImpl, conversation.getPeerTwincodeOutbound(), ConversationService.AnnotationType.ERROR, BaseService.ErrorCode.fromErrorCode(BaseService.ErrorCode.EXPIRED));
+                mServiceProvider.setAnnotation(descriptorImpl, conversation.getPeerTwincodeOutbound(), ConversationService.AnnotationType.ERROR, ErrorCode.fromErrorCode(ErrorCode.EXPIRED));
             }
         }
     }

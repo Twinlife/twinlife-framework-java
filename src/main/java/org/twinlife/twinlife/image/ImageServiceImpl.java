@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2025 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -25,6 +25,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.ExportedImageId;
 import org.twinlife.twinlife.ImageId;
 import org.twinlife.twinlife.ImageService;
@@ -413,7 +414,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
                 }
             } catch (Throwable throwable) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "getCachedImage", throwable);
+                    Logger.exception(LOG_TAG, throwable,"getCachedImage", throwable.getMessage());
                 }
 
                 // the image cannot be decoded on this device - return thumbnail if available
@@ -510,7 +511,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
                     }
                 } catch (Throwable throwable) {
                     if (Logger.ERROR) {
-                        Logger.error(LOG_TAG, "getCachedImage", throwable);
+                        Logger.exception(LOG_TAG, throwable, "getCachedImage", throwable.getMessage());
                     }
 
                     // the image cannot be decoded on this device - return thumbnail if available
@@ -612,7 +613,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
                 }
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "copyImage 1", exception);
+                    Logger.exception(LOG_TAG, exception, "copyImage 1", exception.getMessage());
                 }
                 normalFile = null;
             }
@@ -628,7 +629,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
                     }
                 } catch (Exception exception) {
                     if (Logger.ERROR) {
-                        Logger.error(LOG_TAG, "copyImage 2", exception);
+                        Logger.exception(LOG_TAG, exception, "copyImage 2", exception.getMessage());
                     }
                     largeFile = null;
                 }
@@ -710,7 +711,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
 
                 } catch (Exception exception) {
                     if (Logger.ERROR) {
-                        Logger.error(LOG_TAG, "createLocalImage 1", exception);
+                        Logger.exception(LOG_TAG, exception, "createLocalImage 1", exception.getMessage());
                     }
                     consumer.onGet(ErrorCode.NO_STORAGE_SPACE, null);
                     return;
@@ -741,7 +742,9 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
                 mImageTools.copyImage(imagePath, restoredImagePath, LOCAL_IMAGE_WIDTH, LOCAL_IMAGE_HEIGHT, true);
                 imagePath.delete();
             } catch (IOException e) {
-                Log.e(LOG_TAG, "Could not copy restored image " + imageId, e);
+                if (Logger.ERROR) {
+                    Logger.exception(LOG_TAG, e, "Could not copy restored image ", imageId, e.getMessage());
+                }
                 return null;
             }
         }
@@ -878,7 +881,8 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
         if (info.status == DeleteImageInfo.Status.DELETE_LOCAL) {
             // No copy exist, we can remove the image.
             removeCachedImagePath(info.publicId);
-
+            File file = getLocalImagePath(info.publicId);
+            Utils.deleteFile(LOG_TAG, file);
             mThumbnailCache.remove(exportedImageId);
             mImageCache.remove(exportedImageId);
 
@@ -1030,7 +1034,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
             }
         } catch (Exception ex) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Exception while uploading image: ", ex);
+                Logger.exception(LOG_TAG, ex, "Exception while uploading image: ", ex.getMessage());
             }
         }
     }
@@ -1202,7 +1206,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
                 image = BitmapFactory.decodeByteArray(imageData, 0, imageData.length);
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "Cannot save image: ", exception);
+                    Logger.exception(LOG_TAG, exception, "Cannot save image: ", exception.getMessage());
                 }
             }
 
@@ -1427,7 +1431,7 @@ public class ImageServiceImpl extends BaseServiceImpl<BaseService.ServiceObserve
 
     private void removeCachedImagePath(@NonNull UUID exportedImageId) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "getCachedImagePath: imageId=" + exportedImageId);
+            Log.d(LOG_TAG, "removeCachedImagePath: imageId=" + exportedImageId);
         }
 
         File file;

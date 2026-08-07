@@ -32,7 +32,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.util.UUID;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 
 public class Utils {
     private static final String LOG_TAG = "Utils";
@@ -166,19 +166,20 @@ public class Utils {
 
         } catch (FileNotFoundException exception) {
             if (Logger.ERROR) {
+                // No need for a stack trace.
                 Logger.error(LOG_TAG, "saveFile: ", path, " not found");
             }
             return ErrorCode.FILE_NOT_FOUND;
 
         } catch (SecurityException exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "saveFile: ", path, " transferTo failed: ", exception);
+                Logger.exception(LOG_TAG, exception, "saveFile: ", path, " transferTo failed: ", exception.getMessage());
             }
             return ErrorCode.NO_PERMISSION;
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "saveFile: ", path, " transferTo failed: ", exception);
+                Logger.exception(LOG_TAG, exception, "saveFile: ", path, " transferTo failed: ", exception.getMessage());
             }
             return ErrorCode.NO_STORAGE_SPACE;
         }
@@ -206,19 +207,20 @@ public class Utils {
 
         } catch (FileNotFoundException exception) {
             if (Logger.ERROR) {
+                // No need for a stack trace.
                 Logger.error(LOG_TAG, "saveFile: ", path, " not found");
             }
             return ErrorCode.FILE_NOT_FOUND;
 
         } catch (SecurityException exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "saveFile: ", path, " transferTo failed: ", exception);
+                Logger.exception(LOG_TAG, exception, "saveFile: ", path, " transferTo failed: ", exception.getMessage());
             }
             return ErrorCode.NO_PERMISSION;
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "saveFile: ", path, " transferTo failed: ", exception);
+                Logger.exception(LOG_TAG, exception, "saveFile: ", path, " transferTo failed: ", exception.getMessage());
             }
             return ErrorCode.NO_STORAGE_SPACE;
         }
@@ -250,7 +252,7 @@ public class Utils {
             }
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "copyStream: transferTo() failed: ", exception);
+                Logger.exception(LOG_TAG, exception, "copyStream: transferTo() failed: ", exception.getMessage());
             }
         } finally {
             try {
@@ -260,7 +262,7 @@ public class Utils {
                 }
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "copyStream: close() failed: ", exception);
+                    Logger.exception(LOG_TAG, exception, "copyStream: close() failed: ", exception.getMessage());
                 }
             }
             try {
@@ -270,7 +272,7 @@ public class Utils {
                 }
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "close", exception);
+                    Logger.exception(LOG_TAG, exception, "close", exception.getMessage());
                 }
             }
         }
@@ -321,7 +323,7 @@ public class Utils {
             //noinspection EmptyCatchBlock
             try {
                 return UUID.fromString(value);
-            } catch (Exception exception) {
+            } catch (Exception ignored) {
             }
         }
 
@@ -655,7 +657,7 @@ public class Utils {
             InetAddress addr = InetAddress.getByName(hostname);
             return true;
 
-        } catch (Exception ex) {
+        } catch (Exception ignored) {
             return false;
         }
     }

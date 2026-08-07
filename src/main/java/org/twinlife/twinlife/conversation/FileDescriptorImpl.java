@@ -100,7 +100,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.util.UUID;
 
-public class FileDescriptorImpl extends DescriptorImpl implements ConversationService.FileDescriptor {
+class FileDescriptorImpl extends DescriptorImpl implements ConversationService.FileDescriptor {
     private static final String LOG_TAG = "FileObjectDescriptor...";
     private static final boolean DEBUG = false;
 
@@ -334,6 +334,7 @@ public class FileDescriptorImpl extends DescriptorImpl implements ConversationSe
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

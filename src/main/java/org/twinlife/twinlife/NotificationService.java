@@ -45,6 +45,7 @@ public interface NotificationService extends BaseService<NotificationService.Ser
         NEW_VIDEO_MESSAGE,
     	NEW_FILE_MESSAGE,
         NEW_POLL_MESSAGE,
+        NEW_CONTACT_SHARE,
         NEW_GEOLOCATION,
         NEW_GROUP_INVITATION,
         NEW_GROUP_JOINED,
@@ -59,6 +60,7 @@ public interface NotificationService extends BaseService<NotificationService.Ser
                 NotificationType.NEW_VIDEO_MESSAGE,
                 NotificationType.NEW_FILE_MESSAGE,
                 NotificationType.NEW_POLL_MESSAGE,
+                NotificationType.NEW_CONTACT_SHARE,
                 NotificationType.NEW_GEOLOCATION,
                 NotificationType.UPDATED_ANNOTATION
         );

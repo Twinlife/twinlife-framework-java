@@ -19,7 +19,7 @@ import java.util.UUID;
 
 public interface RepositoryService extends BaseService<RepositoryService.ServiceObserver> {
 
-    String VERSION = "3.2.0";
+    String VERSION = "3.2.1";
     String XML_SERIALIZER = "XML";
 
     class RepositoryServiceConfiguration extends BaseServiceConfiguration {
@@ -45,6 +45,8 @@ public interface RepositoryService extends BaseService<RepositoryService.Service
         NB_AUDIO_SENT,
         NB_GEOLOCATION_SENT,
         NB_TWINCODE_SENT,
+        NB_POLL_SENT,
+        NB_CONTACT_SHARE_SENT,
         NB_MESSAGE_RECEIVED,
         NB_FILE_RECEIVED,
         NB_IMAGE_RECEIVED,
@@ -52,6 +54,8 @@ public interface RepositoryService extends BaseService<RepositoryService.Service
         NB_AUDIO_RECEIVED,
         NB_GEOLOCATION_RECEIVED,
         NB_TWINCODE_RECEIVED,
+        NB_POLL_RECEIVED,
+        NB_CONTACT_SHARE_RECEIVED,
         NB_AUDIO_CALL_SENT,
         NB_VIDEO_CALL_SENT,
         NB_AUDIO_CALL_RECEIVED,

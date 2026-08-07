@@ -103,7 +103,7 @@ class PushPollIQ extends BinaryPacketIQ {
 
         PushPollIQSerializer(@NonNull UUID schemaId, int schemaVersion) {
 
-            super(schemaId, schemaVersion, PushGeolocationIQ.class);
+            super(schemaId, schemaVersion, PushPollIQ.class);
         }
 
         @Override

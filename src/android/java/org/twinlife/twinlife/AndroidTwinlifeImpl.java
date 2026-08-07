@@ -108,7 +108,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             Log.e(LOG_TAG, "Corruption reported by sqlite on database: " + dbObj.getPath());
 
             // Don't erase the database file.  The application fatal error will be displayed.
-            error(BaseService.ErrorCode.DATABASE_CORRUPTION, "Corruption reported by SQLCipher");
+            error(ErrorCode.DATABASE_CORRUPTION, "Corruption reported by SQLCipher");
         }
     }
 
@@ -699,25 +699,25 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
 
     @Override
     @NonNull
-    public BaseService.ErrorCode getDatabaseStatus() {
+    public ErrorCode getDatabaseStatus() {
         if (DEBUG) {
             Log.d(LOG_TAG, "getDatabaseStatus");
         }
 
-        BaseService.ErrorCode errorCode;
+        ErrorCode errorCode;
         synchronized (mTwinlifeSQLiteLock) {
             if (mTwinlifeSQLiteOpenHelper == null) {
-                errorCode = BaseService.ErrorCode.SERVICE_UNAVAILABLE;
+                errorCode = ErrorCode.SERVICE_UNAVAILABLE;
             } else {
                 errorCode = mDatabaseError;
-                mDatabaseError = BaseService.ErrorCode.SUCCESS;
+                mDatabaseError = ErrorCode.SUCCESS;
             }
         }
         return errorCode;
     }
 
     @NonNull
-    public BaseService.ErrorCode prepareDatabaseForRestore(boolean inPlaceRestore) {
+    public ErrorCode prepareDatabaseForRestore(boolean inPlaceRestore) {
         if (DEBUG) {
             Log.d(LOG_TAG, "prepareDatabaseForRestore: inPlaceRestore=" + inPlaceRestore);
         }
@@ -734,8 +734,8 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             File currentDb = mContext.getDatabasePath(currentDbName);
             File restoreDb = mContext.getDatabasePath(restoreDbName);
             if (currentDb.exists()) {
-                BaseService.ErrorCode errorCode = Utils.copyFile(currentDb, restoreDb);
-                if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                ErrorCode errorCode = Utils.copyFile(currentDb, restoreDb);
+                if (errorCode != ErrorCode.SUCCESS) {
                     Log.e(LOG_TAG, "Could not copy database: " + currentDb + " to " + restoreDb);
                     return errorCode;
                 }
@@ -747,10 +747,10 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         try {
             openDatabase();
         } catch (DatabaseException e) {
-            return BaseService.ErrorCode.DATABASE_ERROR;
+            return ErrorCode.DATABASE_ERROR;
         }
 
-        return BaseService.ErrorCode.SUCCESS;
+        return ErrorCode.SUCCESS;
     }
 
 
@@ -858,7 +858,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             openDatabase();
             return true;
         } catch (DatabaseException e) {
-            mTwinlifeContext.fireFatalError(BaseService.ErrorCode.DATABASE_ERROR);
+            mTwinlifeContext.fireFatalError(ErrorCode.DATABASE_ERROR);
             return false;
         }
     }
@@ -883,7 +883,7 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
             mRestoreMode = false;
             openDatabase();
         } catch (DatabaseException e) {
-            mTwinlifeContext.fireFatalError(BaseService.ErrorCode.DATABASE_ERROR);
+            mTwinlifeContext.fireFatalError(ErrorCode.DATABASE_ERROR);
             return false;
         }
 

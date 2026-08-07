@@ -11,9 +11,9 @@ package org.twinlife.twinlife.account;
 
 import androidx.annotation.NonNull;
 
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.SerializerFactory;
 import org.twinlife.twinlife.util.BinaryPacketIQ;
@@ -64,7 +64,7 @@ public class OnTerminateAccountRestoreIQ extends BinaryPacketIQ {
         public Object deserialize(@NonNull SerializerFactory serializerFactory, @NonNull Decoder decoder) throws SerializerException {
             BinaryPacketIQ iq = (BinaryPacketIQ) super.deserialize(serializerFactory, decoder);
 
-            BaseService.ErrorCode errorCode = BaseService.ErrorCode.toErrorCode(decoder.readEnum());
+            ErrorCode errorCode = ErrorCode.toErrorCode(decoder.readEnum());
             int restoreCount = decoder.readInt();
 
             return new OnTerminateAccountRestoreIQ(this, iq, errorCode, restoreCount);
@@ -77,10 +77,10 @@ public class OnTerminateAccountRestoreIQ extends BinaryPacketIQ {
         return new OnTerminateAccountRestoreIQSerializer(schemaId, schemaVersion);
     }
 
-    final BaseService.ErrorCode errorCode;
+    final ErrorCode errorCode;
     final int restoreCount;
 
-    public OnTerminateAccountRestoreIQ(@NonNull BinaryPacketIQSerializer serializer, @NonNull BinaryPacketIQ serviceRequestIQ, @NonNull BaseService.ErrorCode errorCode, int restoreCount) {
+    public OnTerminateAccountRestoreIQ(@NonNull BinaryPacketIQSerializer serializer, @NonNull BinaryPacketIQ serviceRequestIQ, @NonNull ErrorCode errorCode, int restoreCount) {
 
         super(serializer, serviceRequestIQ);
 

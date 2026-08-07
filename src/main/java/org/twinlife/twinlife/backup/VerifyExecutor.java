@@ -16,8 +16,8 @@ import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BackupService;
 import org.twinlife.twinlife.BackupService.RestoreState;
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.ConfigurationService;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.TwincodeOutbound;
@@ -154,6 +154,7 @@ class VerifyExecutor {
         mExecutor.execute(runnable);
     }
 
+    @SuppressWarnings("unchecked")
     private void internalStartVerify() {
         if (DEBUG) {
             Log.d(LOG_TAG, "internalStartVerify");
@@ -163,7 +164,7 @@ class VerifyExecutor {
         Uri uri = Uri.parse(mBackupPath);
         if (uri.getPath() == null) {
             Log.e(LOG_TAG, "Backup file path " + mBackupPath + " is invalid");
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_FOUND);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_FOUND);
             return;
         }
 
@@ -171,7 +172,7 @@ class VerifyExecutor {
             mInputStream = new FileInputStream(uri.getPath());
         } catch (FileNotFoundException e) {
             Log.e(LOG_TAG, "Backup file path " + mBackupPath + " is invalid");
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_FOUND);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_FOUND);
             return;
         }
         mDecoder = new BinaryDecoder(mInputStream);
@@ -180,14 +181,13 @@ class VerifyExecutor {
         try {
             VerifyResult header = new BackupHeaderHandler(BackupConfig.FILE_SIGNATURE).verify(mDecoder);
             if (!(header instanceof VerifyResult.Present)) {
-                mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_SUPPORTED);
+                mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_SUPPORTED);
                 return;
             }
-            //noinspection unchecked
             mBackupHeaderInfo = ((VerifyResult.Present<BackupHeaderInfo>) header).object;
         } catch (SerializerException e) {
             Log.e(LOG_TAG, "Couldn't decode BackupHeaderInfo", e);
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_SUPPORTED);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_SUPPORTED);
             return;
         }
 
@@ -195,19 +195,19 @@ class VerifyExecutor {
                 executeIfNotCancelled(() -> onGenerateBackupKey(errorCode, derivedServerKeyInfo)));
     }
 
-    private void onGenerateBackupKey(@NonNull BaseService.ErrorCode errorCode, @Nullable DerivedServerKeyInfo derivedServerKeyInfo) {
+    private void onGenerateBackupKey(@NonNull ErrorCode errorCode, @Nullable DerivedServerKeyInfo derivedServerKeyInfo) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onGenerateBackupKey: errorCode=" + errorCode + " derivedServerKeyInfo=" + derivedServerKeyInfo);
         }
 
-        if (errorCode != BaseService.ErrorCode.SUCCESS || derivedServerKeyInfo == null) {
+        if (errorCode != ErrorCode.SUCCESS || derivedServerKeyInfo == null) {
             mBackupService.onRestoreError(BackupService.ErrorCode.KEY_GEN_FAILED, errorCode);
             cancel();
             return;
         }
 
         if (mBackupHeaderInfo == null) {
-            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
             cancel();
             return;
         }
@@ -217,7 +217,7 @@ class VerifyExecutor {
         setRestoreState(RestoreState.RESTORE_ACCOUNT);
 
         if (mInputStream == null) {
-            mBackupService.onRestoreError(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.IO_ERROR, ErrorCode.LIBRARY_ERROR);
             cancel();
             return;
         }
@@ -226,7 +226,7 @@ class VerifyExecutor {
         mInputStream = mTwinlifeImpl.getCryptoService().wrapCryptoInputStream(mInputStream, derivedServerKeyInfo.derivedServerKey);
 
         if (mInputStream == null) {
-            mBackupService.onRestoreError(BackupService.ErrorCode.KEY_GEN_FAILED, BaseService.ErrorCode.DECRYPT_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.KEY_GEN_FAILED, ErrorCode.DECRYPT_ERROR);
             cancel();
             return;
         }
@@ -272,7 +272,7 @@ class VerifyExecutor {
 
         if (backupHeaderInfo == null) {
             Log.e(LOG_TAG, "No BackupHeaderInfo");
-            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
             cancel();
             return false;
         }
@@ -281,20 +281,21 @@ class VerifyExecutor {
             UUID accountConfId = mDecoder.readUUID();
             if (!accountConfId.equals(AccountSecuredConfigurationHandler.SCHEMA_ID)) {
                 Log.e(LOG_TAG, "Expected AccountSecuredConfiguration schema ID but got: " + accountConfId);
-                mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_KEY, BaseService.ErrorCode.DECRYPT_ERROR);
+                mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_KEY, ErrorCode.DECRYPT_ERROR);
                 cancel();
 
                 return false;
             }
         } catch (SerializerException e) {
             Log.e(LOG_TAG, "Error occurred while restoring account configuration", e);
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_KEY, BaseService.ErrorCode.DECRYPT_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_KEY, ErrorCode.DECRYPT_ERROR);
             cancel();
             return false;
         }
         return true;
     }
 
+    @SuppressWarnings("unchecked")
     private boolean checkAccount() {
         if (DEBUG) {
             Log.d(LOG_TAG, "checkAccount");
@@ -315,18 +316,17 @@ class VerifyExecutor {
                 throw new IllegalStateException("AccountSecuredConfiguration not found");
             }
 
-            //noinspection unchecked
             VerifyResult.Present<ConfigurationService.SecuredConfiguration> account = (VerifyResult.Present<ConfigurationService.SecuredConfiguration>) accountVerify;
 
             if (account.modified) {
                 Log.e(LOG_TAG, "Backup and DB account are different");
-                mBackupService.onRestoreError(BackupService.ErrorCode.DIFFERENT_ACCOUNT, BaseService.ErrorCode.FILE_NOT_SUPPORTED);
+                mBackupService.onRestoreError(BackupService.ErrorCode.DIFFERENT_ACCOUNT, ErrorCode.FILE_NOT_SUPPORTED);
                 cancel();
                 return false;
             }
         } catch (SerializerException e) {
             Log.e(LOG_TAG, "Error occurred while restoring account configuration", e);
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.DECRYPT_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.DECRYPT_ERROR);
             cancel();
             return false;
         }
@@ -350,7 +350,7 @@ class VerifyExecutor {
 
                     if (handler == null) {
                         Log.e(LOG_TAG, "No handler found for schemaId " + schemaId);
-                        mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.DECRYPT_ERROR);
+                        mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.DECRYPT_ERROR);
                         cancel();
                         return false;
                     } else {
@@ -361,7 +361,7 @@ class VerifyExecutor {
                     Log.e(LOG_TAG, "Error occurred while restoring data", t);
 
                     BackupService.ErrorCode error = (t.getCause() instanceof IOException) ? BackupService.ErrorCode.IO_ERROR : BackupService.ErrorCode.INVALID_FILE;
-                    mBackupService.onRestoreError(error, BaseService.ErrorCode.DECRYPT_ERROR);
+                    mBackupService.onRestoreError(error, ErrorCode.DECRYPT_ERROR);
 
                     cancel();
                     return false;
@@ -468,6 +468,7 @@ class VerifyExecutor {
         }
     }
 
+    @SuppressWarnings("unchecked")
     private void handleVerifyResult(@NonNull VerifyResult verifyResult) {
         if (DEBUG) {
             Log.d(LOG_TAG, "handleVerifyResult: verifyResult=" + verifyResult);
@@ -486,7 +487,6 @@ class VerifyExecutor {
                 }
             } else if (present.object instanceof TwincodeOutbound) {
                 // Keep twincodes to check if repository objects were modified after reading the entire backup.
-                //noinspection unchecked
                 twincodeOutbounds.add((VerifyResult.Present<TwincodeOutbound>) present);
             }
         } else {

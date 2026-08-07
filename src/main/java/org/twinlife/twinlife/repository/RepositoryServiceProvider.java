@@ -17,8 +17,9 @@ import androidx.annotation.Nullable;
 import android.util.Log;
 import android.util.Pair;
 
+import org.twinlife.twinlife.AssertPoint;
 import org.twinlife.twinlife.BaseService;
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.DatabaseCursor;
@@ -115,7 +116,7 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
     // Implement BaseServiceProvider interface
     //
 
-    /** @noinspection unchecked*/
+    @SuppressWarnings("unchecked")
     RepositoryServiceProvider(@NonNull RepositoryServiceImpl service,
                               @NonNull DatabaseServiceImpl database,
                               @NonNull RepositoryObjectFactory<?>[] factories) {
@@ -793,22 +794,30 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
             return null;
         }
 
+        UUID statSchemaId = null;
+        int schemaVersion = 0;
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(stats);
             BinaryDecoder binaryDecoder = new BinaryDecoder(inputStream);
-            UUID statSchemaId = binaryDecoder.readUUID();
-            int schemaVersion = binaryDecoder.readInt();
+            statSchemaId = binaryDecoder.readUUID();
+            schemaVersion = binaryDecoder.readInt();
             if (ObjectStatImpl.SCHEMA_ID.equals(statSchemaId)) {
-                if (ObjectStatImpl.SCHEMA_VERSION_1 == schemaVersion) {
-                    return (ObjectStatImpl) ObjectStatImpl.SERIALIZER_1.deserialize(databaseId, binaryDecoder);
+                if (ObjectStatImpl.SCHEMA_VERSION_4 == schemaVersion) {
+                    return (ObjectStatImpl) ObjectStatImpl.SERIALIZER_4.deserialize(databaseId, binaryDecoder);
+                } else if (ObjectStatImpl.SCHEMA_VERSION_3 == schemaVersion) {
+                    return (ObjectStatImpl) ObjectStatImpl.SERIALIZER_3.deserialize(databaseId, binaryDecoder);
                 } else if (ObjectStatImpl.SCHEMA_VERSION_2 == schemaVersion) {
                     return (ObjectStatImpl) ObjectStatImpl.SERIALIZER_2.deserialize(databaseId, binaryDecoder);
-                } else if (ObjectStatImpl.SCHEMA_VERSION == schemaVersion) {
-                    return (ObjectStatImpl) ObjectStatImpl.SERIALIZER.deserialize(databaseId, binaryDecoder);
+                } else if (ObjectStatImpl.SCHEMA_VERSION_1 == schemaVersion) {
+                    return (ObjectStatImpl) ObjectStatImpl.SERIALIZER_1.deserialize(databaseId, binaryDecoder);
+                } else {
+                    mService.getTwinlifeImpl().assertion(TwinlifeAssertPoint.UNKNOWN_VERSION,
+                            AssertPoint.create(RepositoryServiceProvider.class).putSchemaId(statSchemaId).putMarker(schemaVersion));
                 }
             }
         } catch (SerializerException ex) {
-            // mTwinlifeImpl.sendProblemReport(LOG_TAG, "Cannot deserialize repository stats", ex);
+            mService.getTwinlifeImpl().exception(TwinlifeAssertPoint.SERIALIZER_EXCEPTION, ex,
+                    AssertPoint.create(RepositoryServiceProvider.class).putSchemaId(statSchemaId).putMarker(schemaVersion));
         }
         return null;
     }
@@ -821,7 +830,7 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream(DEFAULT_SIZE);
         BinaryEncoder binaryEncoder = new BinaryEncoder(outputStream);
         try {
-            ObjectStatImpl.SERIALIZER.serialize(mService.getSerializerFactoryImpl(), binaryEncoder, stats);
+            ObjectStatImpl.SERIALIZER_4.serialize(mService.getSerializerFactoryImpl(), binaryEncoder, stats);
 
         } catch (SerializerException ex) {
             mService.getTwinlifeImpl().exception(TwinlifeAssertPoint.SERIALIZER_EXCEPTION, ex, null);
@@ -1028,7 +1037,7 @@ public class RepositoryServiceProvider extends DatabaseServiceProvider implement
 
                 } catch (Exception exception) {
                     if (Logger.ERROR) {
-                        Logger.error(LOG_TAG, "deserialize", exception);
+                        Logger.exception(LOG_TAG, exception, "deserialize", exception.getMessage());
                     }
 
                 }

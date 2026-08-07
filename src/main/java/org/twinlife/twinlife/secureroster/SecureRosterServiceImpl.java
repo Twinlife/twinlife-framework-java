@@ -19,6 +19,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.CryptoService;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.RosterId;
 import org.twinlife.twinlife.RosterMember;
 import org.twinlife.twinlife.Permission;

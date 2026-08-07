@@ -9,6 +9,7 @@
 package org.twinlife.twinlife;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 /**
  * The ImageId holds a unique local identifier to reference an image.  When a twincode is received with an
@@ -23,6 +24,25 @@ public class ImageId {
     public ImageId(long localId) {
 
         mLocalId = localId;
+    }
+
+    @Nullable
+    public static ImageId fromString(@NonNull String avatarStr) {
+        if (!avatarStr.startsWith("IMG-") || avatarStr.length() == 4) {
+            return null;
+        }
+
+        String id = avatarStr.substring("IMG-".length());
+
+        if (id.contains(":")) {
+            // avatarStr is a serialized ExportedImageId: extract the local ID part.
+            id = id.split(":")[0];
+        }
+        try {
+            return new ImageId(Long.parseLong(id));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     public long getId() {

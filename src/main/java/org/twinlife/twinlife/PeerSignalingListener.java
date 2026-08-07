@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2022-2024 twinlife SA.
+ *  Copyright (c) 2022-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -12,7 +12,6 @@ package org.twinlife.twinlife;
 import androidx.annotation.NonNull;
 
 import androidx.annotation.Nullable;
-import org.twinlife.twinlife.BaseService.ErrorCode;
 
 import java.util.UUID;
 
@@ -62,10 +61,11 @@ public interface PeerSignalingListener {
      * @param sessionId the P2P session id.
      * @param updateType whether this is an offer or an answer.
      * @param sdp the sdp content (clear text | compressed | encrypted).
+     * @param sequenceId a sequence ID for the session-update SDP.
      * @return SUCCESS or ITEM_NOT_FOUND if the session id is not known.
      */
     @NonNull
-    ErrorCode onSessionUpdate(@NonNull UUID sessionId, @NonNull SdpType updateType, @NonNull Sdp sdp);
+    ErrorCode onSessionUpdate(@NonNull UUID sessionId, @NonNull SdpType updateType, @NonNull Sdp sdp, long sequenceId);
 
     /**
      * Called when a transport-info IQ is received with a list of candidates.

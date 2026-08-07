@@ -10,12 +10,16 @@ package org.twinlife.twinlife.conversation;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import android.graphics.Bitmap;
 import android.util.Log;
 
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.Conversation;
 import org.twinlife.twinlife.DatabaseIdentifier;
+import org.twinlife.twinlife.ErrorCode;
+import org.twinlife.twinlife.ImageId;
+import org.twinlife.twinlife.ImageService;
 import org.twinlife.twinlife.PeerConnectionService;
 import org.twinlife.twinlife.SerializerFactory;
 import org.twinlife.twinlife.TwinlifeImpl;
@@ -270,6 +274,14 @@ public class ConversationConnection {
         return mConversationService.loadDescriptorWithId(descriptorId);
     }
 
+    public Bitmap getImage(@NonNull ImageId imageId, @NonNull ImageService.Kind kind) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "loadImage: imageId=" + imageId + " kind=" + kind);
+        }
+
+        return mTwinlifeImpl.getImageService().getImage(imageId, kind);
+    }
+
     public void updateDescriptorImplTimestamps(@NonNull DescriptorImpl descriptorImpl) {
         if (DEBUG) {
             Log.d(LOG_TAG, "updateDescriptorImplTimestamps descriptorImpl=" + descriptorImpl);
@@ -322,7 +334,7 @@ public class ConversationConnection {
     }
 
     @NonNull
-    BaseService.ErrorCode operationNotSupported(@Nullable DescriptorImpl descriptorImpl) {
+    ErrorCode operationNotSupported(@Nullable DescriptorImpl descriptorImpl) {
 
         return mConversationService.operationNotSupported(this, descriptorImpl);
     }
@@ -401,7 +413,7 @@ public class ConversationConnection {
                 mPeerMinorVersion = Integer.parseInt(version.substring(0, index));
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "setPeerVersion: peerVersion=", peerVersion, exception);
+                    Logger.exception(LOG_TAG, exception, "setPeerVersion: peerVersion=", peerVersion, exception.getMessage());
                 }
             }
         }
@@ -801,7 +813,7 @@ public class ConversationConnection {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Cannot read file: ", exception);
+                Logger.exception(LOG_TAG, exception, "Cannot read file: ", exception.getMessage());
             }
             return null;
         }
@@ -857,6 +869,9 @@ public class ConversationConnection {
             return receivingFileInfo.getPosition();
 
         } catch (Exception exception) {
+            if (Logger.ERROR) {
+                Logger.exception(LOG_TAG, exception, "Cannot write file: ", exception.getMessage());
+            }
             return -1;
         }
     }

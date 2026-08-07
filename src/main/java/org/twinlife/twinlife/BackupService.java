@@ -123,10 +123,10 @@ public interface BackupService extends BaseService<BackupService.ServiceObserver
         default void onTerminateRestore(@NonNull TerminateReason terminateReason) {
         }
 
-        default void onBackupError(@NonNull ErrorCode backupErrorCode, @NonNull BaseService.ErrorCode baseErrorCode) {
+        default void onBackupError(@NonNull ErrorCode backupErrorCode, @NonNull org.twinlife.twinlife.ErrorCode baseErrorCode) {
 
         }
-        default void onRestoreError(@NonNull ErrorCode backupErrorCode, @NonNull BaseService.ErrorCode baseErrorCode) {
+        default void onRestoreError(@NonNull ErrorCode backupErrorCode, @NonNull org.twinlife.twinlife.ErrorCode baseErrorCode) {
         }
 
         default void onVerifyReport(@NonNull VerifyReport report) {

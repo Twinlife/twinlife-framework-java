@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2023-2024 twinlife SA.
+ *  Copyright (c) 2023-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -216,8 +216,11 @@ public class Transaction implements Closeable {
 
         // Rollback the transaction if it is active and release the database
         // lock acquired when the Transaction instance was created.
-        rollback();
-        mDatabaseService.unlock();
+        try {
+            rollback();
+        } finally {
+            mDatabaseService.unlock();
+        }
     }
 
     /**

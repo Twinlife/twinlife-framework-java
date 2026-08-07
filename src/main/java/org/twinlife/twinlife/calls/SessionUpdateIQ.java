@@ -14,6 +14,7 @@ import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
 import org.twinlife.twinlife.Sdp;
+import org.twinlife.twinlife.SdpType;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.SerializerFactory;
 import org.twinlife.twinlife.util.BinaryPacketIQ;
@@ -46,7 +47,7 @@ import java.util.UUID;
  *
  * </pre>
  */
-class SessionUpdateIQ extends BinaryPacketIQ {
+public class SessionUpdateIQ extends BinaryPacketIQ {
 
     private static class SessionUpdateIQSerializer extends BinaryPacketIQSerializer {
 
@@ -97,12 +98,23 @@ class SessionUpdateIQ extends BinaryPacketIQ {
     final
     String to;
     @NonNull
-    final UUID sessionId;
+    public final UUID sessionId;
     final long expirationDeadline;
     final int updateType;
     @NonNull
     final byte[] sdp;
     final int sdpLength;
+
+    @NonNull
+    public SdpType getType() {
+
+        return (updateType & SessionInitiateIQ.OFFER_ANSWER) != 0 ? SdpType.ANSWER : SdpType.OFFER;
+    }
+
+    public long getSequenceId() {
+
+        return (expirationDeadline & ~0x0FFFFF) + (long) ((updateType >> SessionInitiateIQ.OFFER_SEQUENCE_SHIFT) & 0x0FFFF);
+    }
 
     /**
      * Get the SDP as the Sdp instance.

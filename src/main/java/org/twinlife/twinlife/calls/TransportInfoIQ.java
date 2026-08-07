@@ -52,7 +52,7 @@ import java.util.UUID;
  *
  * </pre>
  */
-class TransportInfoIQ extends BinaryPacketIQ {
+public class TransportInfoIQ extends BinaryPacketIQ {
 
     private static final int HAS_NEXT_MARKER = 0x10000;
 
@@ -142,6 +142,12 @@ class TransportInfoIQ extends BinaryPacketIQ {
         final int keyIndex = (mode & SessionInitiateIQ.OFFER_ENCRYPT_MASK) >> SessionInitiateIQ.OFFER_ENCRYPT_SHIFT;
 
         return new Sdp(sdp, sdpLength, compressed, keyIndex);
+    }
+
+    @NonNull
+    public UUID getSessionId() {
+
+        return sessionId;
     }
 
     //

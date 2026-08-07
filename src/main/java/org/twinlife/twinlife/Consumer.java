@@ -18,5 +18,5 @@ import androidx.annotation.Nullable;
  */
 public interface Consumer<T> {
 
-    void onGet(@NonNull BaseService.ErrorCode status, @Nullable T object);
+    void onGet(@NonNull ErrorCode status, @Nullable T object);
 }

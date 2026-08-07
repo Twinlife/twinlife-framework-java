@@ -21,6 +21,7 @@ public interface ManagementService extends BaseService<ManagementService.Service
 
     String PUSH_NOTIFICATION_APNS_VARIANT = "APNS";
     String PUSH_NOTIFICATION_FIREBASE_VARIANT = "Firebase";
+    String PUSH_NOTIFICATION_HUAWEI_VARIANT = "Huawei";
 
     class ManagementServiceConfiguration extends BaseServiceConfiguration {
 

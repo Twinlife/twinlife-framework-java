@@ -27,6 +27,7 @@ import org.twinlife.twinlife.AccountService;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.ConfigurationService;
 import org.twinlife.twinlife.Consumer;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.Twinlife;
 import org.twinlife.twinlife.TwinlifeImpl;
@@ -1763,10 +1764,9 @@ public class AccountServiceImpl extends BaseServiceImpl<AccountService.ServiceOb
             ConfigurationService configurationService = mTwinlifeImpl.getConfigurationService();
             synchronized (this) {
                 mAccountSecuredConfiguration.erase(configurationService);
-                configurationService.eraseAllSecuredConfiguration();
             }
 
-            mTwinlifeImpl.onSignOut();
+            mTwinlifeImpl.finishDeleteAccount();
         } catch (Exception exception) {
             if (Logger.INFO) {
                 Logger.info(LOG_TAG, "finishDeleteAccount", exception);

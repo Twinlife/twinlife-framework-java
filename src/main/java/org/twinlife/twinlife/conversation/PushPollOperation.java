@@ -35,7 +35,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.PeerConnectionService;
@@ -44,7 +44,6 @@ import org.twinlife.twinlife.SerializerException;
 import java.util.UUID;
 
 import static org.twinlife.twinlife.conversation.ConversationServiceImpl.MAJOR_VERSION_2;
-import static org.twinlife.twinlife.conversation.ConversationServiceImpl.MINOR_VERSION_12;
 import static org.twinlife.twinlife.conversation.ConversationServiceImpl.MINOR_VERSION_21;
 
 class PushPollOperation extends Operation {

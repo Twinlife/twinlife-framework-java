@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012-2025 twinlife SA.
+ *  Copyright (c) 2012-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -19,11 +19,9 @@ import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.net.NetworkInfo;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import android.os.Build;
 import android.util.Log;
 
 import org.twinlife.twinlife.ProxyDescriptor;
@@ -202,6 +200,18 @@ public class ConnectivityServiceImpl extends BaseServiceImpl<ConnectivityService
         for (ConnectivityService.ServiceObserver serviceObserver : getServiceObservers()) {
             mTwinlifeExecutor.execute(serviceObserver::onDisconnect);
         }
+    }
+
+    @Override
+    public void onSignOut() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onDisconnect");
+        }
+
+        super.onSignOut();
+
+        final ConfigurationService.Configuration savedConfiguration = mConfigurationService.getConfiguration(WEB_SOCKET_CONNECTION_PREFERENCES);
+        mConfigurationService.deleteConfiguration(savedConfiguration);
     }
 
     /**

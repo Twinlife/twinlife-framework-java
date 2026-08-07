@@ -17,7 +17,6 @@ import android.util.Pair;
 import org.twinlife.twinlife.util.BinaryDecoder;
 import org.twinlife.twinlife.util.BinaryEncoder;
 import org.twinlife.twinlife.util.Logger;
-import org.twinlife.twinlife.BaseService.ErrorCode;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -195,7 +194,7 @@ class TwinlifeSecuredConfiguration {
 
                         } catch (Exception exception) {
                             if (Logger.ERROR) {
-                                Logger.error(LOG_TAG, "init: serialize", exception);
+                                Logger.exception(LOG_TAG, exception, "init: serialize", exception.getMessage());
                             }
                             return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
                         }
@@ -203,7 +202,7 @@ class TwinlifeSecuredConfiguration {
                 }
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "init: deserialize", exception);
+                    Logger.exception(LOG_TAG, exception, "init: deserialize", exception.getMessage());
                 }
             }
         }
@@ -221,7 +220,7 @@ class TwinlifeSecuredConfiguration {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "init: serialize", exception);
+                Logger.exception(LOG_TAG, exception, "init: serialize", exception.getMessage());
             }
             return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
         }

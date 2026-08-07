@@ -61,7 +61,7 @@ public class SNIProxyDescriptor extends ProxyDescriptor {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Invalid user proxy: ",proxy, ": ", exception);
+                Logger.exception(LOG_TAG, exception, "Invalid user proxy: ",proxy, ": ", exception.getMessage());
             }
             return null;
         }

@@ -17,8 +17,8 @@ import androidx.annotation.Nullable;
 import org.twinlife.twinlife.BackupInfo;
 import org.twinlife.twinlife.BackupService;
 import org.twinlife.twinlife.BackupService.RestoreState;
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.ConfigurationService;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.TwincodeInfo;
 import org.twinlife.twinlife.TwincodeOutbound;
@@ -176,7 +176,7 @@ class RestoreExecutor {
         Uri uri = Uri.parse(mBackupPath);
         if (uri.getPath() == null) {
             Log.e(LOG_TAG, "Backup file path " + mBackupPath + " is invalid");
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_FOUND);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_FOUND);
             return;
         }
 
@@ -184,7 +184,7 @@ class RestoreExecutor {
             mInputStream = new FileInputStream(uri.getPath());
         } catch (FileNotFoundException e) {
             Log.e(LOG_TAG, "Backup file path " + mBackupPath + " is invalid");
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_FOUND);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_FOUND);
             return;
         }
         mDecoder = new BinaryDecoder(mInputStream);
@@ -194,13 +194,13 @@ class RestoreExecutor {
             mBackupHeaderInfo = new BackupHeaderHandler(BackupConfig.FILE_SIGNATURE).restore(mDecoder, false);
         } catch (Throwable t) {
             Log.e(LOG_TAG, "Couldn't decode BackupHeaderInfo", t);
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_SUPPORTED);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_SUPPORTED);
             return;
         }
 
         if (mBackupHeaderInfo == null) {
             Log.e(LOG_TAG, "Couldn't restore BackupHeaderInfo");
-            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_SUPPORTED);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_SUPPORTED);
             try {
                 mInputStream.close();
             } catch (IOException e) {
@@ -213,18 +213,18 @@ class RestoreExecutor {
                 executeIfNotCancelled(() -> onGenerateBackupKey(errorCode, derivedServerKeyInfo)));
     }
 
-    private void onGenerateBackupKey(@NonNull BaseService.ErrorCode errorCode, @Nullable DerivedServerKeyInfo derivedServerKeyInfo) {
+    private void onGenerateBackupKey(@NonNull ErrorCode errorCode, @Nullable DerivedServerKeyInfo derivedServerKeyInfo) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onGenerateBackupPassword: errorCode=" + errorCode + " derivedServerKeyInfo=" + derivedServerKeyInfo);
         }
 
-        if (errorCode != BaseService.ErrorCode.SUCCESS || derivedServerKeyInfo == null) {
+        if (errorCode != ErrorCode.SUCCESS || derivedServerKeyInfo == null) {
             handleErrorAndCancel(BackupService.ErrorCode.KEY_GEN_FAILED, errorCode);
             return;
         }
 
         if (mBackupHeaderInfo == null) {
-            handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -238,7 +238,7 @@ class RestoreExecutor {
         setRestoreState(RestoreState.RESTORE_ACCOUNT);
 
         if (mInputStream == null) {
-            handleErrorAndCancel(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            handleErrorAndCancel(BackupService.ErrorCode.IO_ERROR, ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -246,7 +246,7 @@ class RestoreExecutor {
         mInputStream = mTwinlifeImpl.getCryptoService().wrapCryptoInputStream(mInputStream, derivedServerKeyInfo.derivedServerKey);
 
         if (mInputStream == null) {
-            handleErrorAndCancel(BackupService.ErrorCode.KEY_GEN_FAILED, BaseService.ErrorCode.DECRYPT_ERROR);
+            handleErrorAndCancel(BackupService.ErrorCode.KEY_GEN_FAILED, ErrorCode.DECRYPT_ERROR);
             return;
         }
 
@@ -256,7 +256,7 @@ class RestoreExecutor {
 
         if (backupHeaderInfo == null) {
             Log.e(LOG_TAG, "No BackupHeaderInfo");
-            handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -266,12 +266,12 @@ class RestoreExecutor {
             UUID accountConfId = mDecoder.readUUID();
             if (!accountConfId.equals(AccountSecuredConfigurationHandler.SCHEMA_ID)) {
                 Log.e(LOG_TAG, "Expected AccountSecuredConfiguration schema ID but got: " + accountConfId);
-                handleErrorAndCancel(BackupService.ErrorCode.INVALID_KEY, BaseService.ErrorCode.DECRYPT_ERROR);
+                handleErrorAndCancel(BackupService.ErrorCode.INVALID_KEY, ErrorCode.DECRYPT_ERROR);
                 return;
             }
         } catch (Throwable t) {
             Log.e(LOG_TAG, "Error occurred while restoring account configuration", t);
-            handleErrorAndCancel(BackupService.ErrorCode.INVALID_KEY, BaseService.ErrorCode.DECRYPT_ERROR);
+            handleErrorAndCancel(BackupService.ErrorCode.INVALID_KEY, ErrorCode.DECRYPT_ERROR);
             return;
         }
 
@@ -279,13 +279,13 @@ class RestoreExecutor {
             accountConfiguration = new AccountSecuredConfigurationHandler(mTwinlifeImpl.getConfigurationService()).restore(mDecoder, false);
             if (accountConfiguration == null) {
                 Log.e(LOG_TAG, "Couldn't restore AccountSecuredConfiguration");
-                handleErrorAndCancel(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.DECRYPT_ERROR);
+                handleErrorAndCancel(BackupService.ErrorCode.INVALID_FILE, ErrorCode.DECRYPT_ERROR);
                 return;
             }
             mAccountConfiguration = accountConfiguration;
         } catch (Throwable t) {
             Log.e(LOG_TAG, "Error occurred while restoring account configuration", t);
-            handleErrorAndCancel(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.DECRYPT_ERROR);
+            handleErrorAndCancel(BackupService.ErrorCode.INVALID_FILE, ErrorCode.DECRYPT_ERROR);
             return;
         }
 
@@ -295,7 +295,7 @@ class RestoreExecutor {
 
         mTwinlifeImpl.getAccountServiceImpl().restoreChallenge(accountConfiguration, backupHeaderInfo.backupId, (authErrorCode, nothing) ->
                 executeIfNotCancelled(() -> {
-                    if (authErrorCode != BaseService.ErrorCode.SUCCESS) {
+                    if (authErrorCode != ErrorCode.SUCCESS) {
                         Log.e(LOG_TAG, "Restore auth failed: " + authErrorCode);
                         handleErrorAndCancel(BackupService.ErrorCode.REVOKED, authErrorCode);
                         return;
@@ -314,20 +314,20 @@ class RestoreExecutor {
 
         if (mAccountConfiguration == null) {
             Log.e(LOG_TAG, "No mAccountConfiguration");
-            handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
             return;
         }
 
-        BaseService.ErrorCode errorCode = mTwinlifeImpl.prepareDatabaseForRestore(mInPlaceRestore);
+        ErrorCode errorCode = mTwinlifeImpl.prepareDatabaseForRestore(mInPlaceRestore);
 
-        if (errorCode != BaseService.ErrorCode.SUCCESS) {
+        if (errorCode != ErrorCode.SUCCESS) {
             Log.e(LOG_TAG, "Error while preparing database for restore: " + errorCode);
             handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, errorCode);
             return;
         }
 
         mTwinlifeImpl.getAccountServiceImpl().getAllBackups((status, backupInfos) -> {
-            if (status != BaseService.ErrorCode.SUCCESS || backupInfos == null) {
+            if (status != ErrorCode.SUCCESS || backupInfos == null) {
                 cancel(BackupService.TerminateReason.ERROR);
                 return;
             }
@@ -357,7 +357,7 @@ class RestoreExecutor {
             setRestoreState(RestoreState.RESTORE_DATA);
 
             if (mDecoder == null) {
-                handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+                handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
                 return;
             }
 
@@ -369,7 +369,7 @@ class RestoreExecutor {
 
                         if (handler == null) {
                             Log.e(LOG_TAG, "No handler found for schemaId " + schemaId);
-                            handleErrorAndCancel(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.DECRYPT_ERROR);
+                            handleErrorAndCancel(BackupService.ErrorCode.INVALID_FILE, ErrorCode.DECRYPT_ERROR);
                             return;
                         } else {
                             handler.restore(mDecoder, mInPlaceRestore);
@@ -378,7 +378,7 @@ class RestoreExecutor {
                         Log.e(LOG_TAG, "Error occurred while restoring data", t);
 
                         BackupService.ErrorCode errorCode = (t.getCause() instanceof IOException) ? BackupService.ErrorCode.IO_ERROR : BackupService.ErrorCode.INVALID_FILE;
-                        handleErrorAndCancel(errorCode, BaseService.ErrorCode.DECRYPT_ERROR);
+                        handleErrorAndCancel(errorCode, ErrorCode.DECRYPT_ERROR);
                         return;
                     }
                 } else {
@@ -422,7 +422,7 @@ class RestoreExecutor {
 
         twincodeService.getAllTwincodes((status, serverTwincodes) ->
                 executeIfNotCancelled(() -> {
-                    if (status == BaseService.ErrorCode.TWINLIFE_OFFLINE) {
+                    if (status == ErrorCode.TWINLIFE_OFFLINE) {
                         if (DEBUG) {
                             Log.d(LOG_TAG, "Device is offline, waiting for server connection to try again.");
                         }
@@ -431,7 +431,7 @@ class RestoreExecutor {
 
                     setRestoreState(RestoreState.CHECK_CONSISTENCY);
 
-                    if (status != BaseService.ErrorCode.SUCCESS || serverTwincodes == null) {
+                    if (status != ErrorCode.SUCCESS || serverTwincodes == null) {
                         Log.e(LOG_TAG, "Error occurred while getting twincodes: status=" + status);
                         handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, status);
                         return;
@@ -564,10 +564,10 @@ class RestoreExecutor {
 
             mTwinlifeImpl.getAccountServiceImpl().commitRestore((errorCode, restoreCount) -> {
 
-                if (errorCode != BaseService.ErrorCode.SUCCESS || restoreCount == null) {
+                if (errorCode != ErrorCode.SUCCESS || restoreCount == null) {
                     Log.e(LOG_TAG, "Error while committing restore: " + errorCode);
 
-                    if (errorCode == BaseService.ErrorCode.TWINLIFE_OFFLINE) {
+                    if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
                         if (mAccountConfiguration == null || mBackupHeaderInfo == null) {
                             Log.e(LOG_TAG, "Missing data to retry auth: mAccountConfiguration=" + mAccountConfiguration + ", mBackupHeaderInfo=" + mBackupHeaderInfo);
                         } else if (mRetryReconnect-- > 0) {
@@ -587,21 +587,21 @@ class RestoreExecutor {
                 ConfigurationService.SecuredConfiguration accountConfiguration = mAccountConfiguration;
                 if (accountConfiguration == null) {
                     Log.e(LOG_TAG, "Error while committing restore: no SecuredAccountConfiguration");
-                    handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+                    handleErrorAndCancel(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
                     return;
                 }
 
-                BaseService.ErrorCode imagesErrorCode = mTwinlifeImpl.getImageServiceImpl().commitRestoredImages();
-                if (imagesErrorCode != BaseService.ErrorCode.SUCCESS) {
+                ErrorCode imagesErrorCode = mTwinlifeImpl.getImageServiceImpl().commitRestoredImages();
+                if (imagesErrorCode != ErrorCode.SUCCESS) {
                     Log.e(LOG_TAG, "Error while committing restored images");
-                    handleErrorAndCancel(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.NO_STORAGE_SPACE);
+                    handleErrorAndCancel(BackupService.ErrorCode.IO_ERROR, ErrorCode.NO_STORAGE_SPACE);
                     return;
                 }
 
                 boolean dbMoveSuccess = mTwinlifeImpl.commitRestoredDatabase();
                 if (!dbMoveSuccess) {
                     Log.e(LOG_TAG, "Could not move restored DB to main DB");
-                    handleErrorAndCancel(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.DATABASE_ERROR);
+                    handleErrorAndCancel(BackupService.ErrorCode.IO_ERROR, ErrorCode.DATABASE_ERROR);
                     return;
                 }
 
@@ -623,7 +623,7 @@ class RestoreExecutor {
 
         if (mRestoreContent == null) {
             Log.e(LOG_TAG, "mRestoreContent is null");
-            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -659,7 +659,7 @@ class RestoreExecutor {
 
         if (serverTwincodes.isEmpty() && deviceObjects.isEmpty() && activeObjects.isEmpty()) {
             // Shouldn't happen, but if something went wrong we need to notify the UI.
-            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, ErrorCode.LIBRARY_ERROR);
             setRestoreState(RestoreState.TERMINATED);
             mBackupService.onTerminateRestore(BackupService.TerminateReason.ERROR);
             mExecutor.shutdown();
@@ -669,7 +669,7 @@ class RestoreExecutor {
         for (TwincodeInfo twincodeInfo : serverTwincodes) {
             mTwinlifeImpl.getTwincodeFactoryService().deleteTwincode(twincodeInfo.twincodeFactoryId,
                     (errorCode, deletedTwincodeId) -> executeIfNotCancelled(() -> {
-                        if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                        if (errorCode != ErrorCode.SUCCESS) {
                             Log.e(LOG_TAG, "Error deleting twincodeFactory " + twincodeInfo.twincodeFactoryId + ": " + errorCode);
                         } else {
                             if (DEBUG) {
@@ -677,12 +677,12 @@ class RestoreExecutor {
                             }
                         }
 
-                        if (errorCode == BaseService.ErrorCode.TWINLIFE_OFFLINE) {
+                        if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
                             //wait for reconnection
                             return;
                         }
 
-                        if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                        if (errorCode != ErrorCode.SUCCESS) {
                             mServerTwincodeSyncErrors.add(twincodeInfo.twincodeOutboundId);
                         }
 
@@ -694,7 +694,7 @@ class RestoreExecutor {
         for (RepositoryObject object : deviceObjects) {
             mTwinlifeImpl.getRepositoryServiceImpl().deleteObjectAfterRestore(mTwinlifeContext, object,
                     (errorCode, deletedObjectId) -> executeIfNotCancelled(() -> {
-                        if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                        if (errorCode != ErrorCode.SUCCESS) {
                             Log.e(LOG_TAG, "Error deleting object " + object + ": " + errorCode);
                         } else {
                             if (DEBUG) {
@@ -702,12 +702,12 @@ class RestoreExecutor {
                             }
                         }
 
-                        if (errorCode == BaseService.ErrorCode.TWINLIFE_OFFLINE) {
+                        if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
                             //wait for reconnection
                             return;
                         }
 
-                        if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                        if (errorCode != ErrorCode.SUCCESS) {
                             mLocalObjectDeleteErrors.add(object);
                         }
 
@@ -719,7 +719,7 @@ class RestoreExecutor {
         for (RepositoryObject object : activeObjects) {
             mTwinlifeImpl.getRepositoryServiceImpl().syncObjectAfterRestore(mTwinlifeContext, object,
                     (errorCode, updatedObject) -> executeIfNotCancelled(() -> {
-                        if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                        if (errorCode != ErrorCode.SUCCESS) {
                             Log.e(LOG_TAG, "Error syncing object " + object + ": " + errorCode);
                         } else {
                             if (DEBUG) {
@@ -727,12 +727,12 @@ class RestoreExecutor {
                             }
                         }
 
-                        if (errorCode == BaseService.ErrorCode.TWINLIFE_OFFLINE) {
+                        if (errorCode == ErrorCode.TWINLIFE_OFFLINE) {
                             //wait for reconnection
                             return;
                         }
 
-                        if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                        if (errorCode != ErrorCode.SUCCESS) {
                             mLocalObjectSyncErrors.add(object);
                         }
 
@@ -804,7 +804,7 @@ class RestoreExecutor {
         if (!dbDeleted) {
             Log.e(LOG_TAG, "Could not delete restored DB");
 
-            mBackupService.onRestoreError(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.DATABASE_ERROR);
+            mBackupService.onRestoreError(BackupService.ErrorCode.IO_ERROR, ErrorCode.DATABASE_ERROR);
         }
 
         File restoredImages = new File(mTwinlifeImpl.getFilesDir(), ImageHandler.RESTORE_DIR);
@@ -815,7 +815,7 @@ class RestoreExecutor {
             if (!imagesDeleted) {
                 Log.e(LOG_TAG, "Could not delete restored image directory (" + restoredImages + ")");
 
-                mBackupService.onRestoreError(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+                mBackupService.onRestoreError(BackupService.ErrorCode.IO_ERROR, ErrorCode.LIBRARY_ERROR);
             }
         }
 
@@ -862,7 +862,7 @@ class RestoreExecutor {
         mHandlers.put(ImageHandler.SCHEMA_ID, new ImageHandler(mTwinlifeImpl.getImageServiceImpl(), filesDir));
     }
 
-    private void handleErrorAndCancel(@NonNull BackupService.ErrorCode backupError, @NonNull BaseService.ErrorCode baseError) {
+    private void handleErrorAndCancel(@NonNull BackupService.ErrorCode backupError, @NonNull ErrorCode baseError) {
         Log.e(LOG_TAG, "handleErrorAndCancel: backupError=" + backupError + " baseError=" + baseError);
 
         mBackupService.onRestoreError(backupError, baseError);

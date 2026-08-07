@@ -14,8 +14,6 @@ import androidx.annotation.NonNull;
 
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
-
 import java.io.File;
 
 @SuppressWarnings("unused")

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024 twinlife SAS.
+ *  Copyright (c) 2024-2026 twinlife SAS.
  *  SPDX-License-Identifier: AGPL-3.0-only
  */
 
@@ -11,7 +11,7 @@ import android.util.Pair;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Sdp;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.SessionKeyPair;
@@ -114,14 +114,14 @@ class SessionECKeyPair implements SessionKeyPair {
 
     @Override
     @NonNull
-    public Pair<BaseService.ErrorCode, Sdp> encrypt(@NonNull Sdp sdp) {
+    public Pair<ErrorCode, Sdp> encrypt(@NonNull Sdp sdp) {
         if (DEBUG) {
             Log.d(LOG_TAG, "encrypt: sdp=" + sdp);
         }
 
         final long nonceSequence = allocateNonce();
         if (nonceSequence == 0) {
-            return new Pair<>(BaseService.ErrorCode.NO_PRIVATE_KEY, null);
+            return new Pair<>(ErrorCode.NO_PRIVATE_KEY, null);
         }
 
         CryptoBox cipher = null;
@@ -143,7 +143,7 @@ class SessionECKeyPair implements SessionKeyPair {
 
             final byte[] rawKey = mPrivateKey.getPublicKey(false);
             if (rawKey == null) {
-                return new Pair<>(BaseService.ErrorCode.NO_PRIVATE_KEY, null);
+                return new Pair<>(ErrorCode.NO_PRIVATE_KEY, null);
             }
             encoder.writeBytes(rawKey, 0, rawKey.length);
             encoder.writeUUID(getSessionId());
@@ -153,14 +153,14 @@ class SessionECKeyPair implements SessionKeyPair {
 
             cipher = CryptoBox.create(CryptoBox.Kind.AES_GCM);
             if (mPeerKey == null) {
-                return new Pair<>(BaseService.ErrorCode.NO_PUBLIC_KEY, null);
+                return new Pair<>(ErrorCode.NO_PUBLIC_KEY, null);
             }
             int status = cipher.bind(true, mPrivateKey, mPeerKey, salt);
             if (status != 1) {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "bind failed with error " + status);
                 }
-                return new Pair<>(BaseService.ErrorCode.INVALID_PRIVATE_KEY, null);
+                return new Pair<>(ErrorCode.INVALID_PRIVATE_KEY, null);
             }
             byte[] result = new byte[auth.length + sdp.getLength() + 64];
             int len = cipher.encryptAEAD(nonceSequence, sdp.getData(), sdp.getLength(), auth, result);
@@ -168,13 +168,13 @@ class SessionECKeyPair implements SessionKeyPair {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "encrypt failed with error " + len);
                 }
-                return new Pair<>(BaseService.ErrorCode.ENCRYPT_ERROR, null);
+                return new Pair<>(ErrorCode.ENCRYPT_ERROR, null);
             }
-            return new Pair<>(BaseService.ErrorCode.SUCCESS, new Sdp(result, len, sdp.isCompressed(), 1));
+            return new Pair<>(ErrorCode.SUCCESS, new Sdp(result, len, sdp.isCompressed(), 1));
 
         } catch (Exception exception) {
             Log.e(LOG_TAG, "encrypt exception", exception);
-            return new Pair<>(BaseService.ErrorCode.LIBRARY_ERROR, null);
+            return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
 
         } finally {
             if (cipher != null) {
@@ -184,13 +184,13 @@ class SessionECKeyPair implements SessionKeyPair {
     }
 
     @NonNull
-    public Pair<BaseService.ErrorCode, Sdp> decrypt(@NonNull Sdp sdp) {
+    public Pair<ErrorCode, Sdp> decrypt(@NonNull Sdp sdp) {
         if (DEBUG) {
             Log.d(LOG_TAG, "decrypt: sdp=" + sdp);
         }
 
         if (!sdp.isEncrypted()) {
-            return new Pair<>(BaseService.ErrorCode.NO_PUBLIC_KEY, sdp);
+            return new Pair<>(ErrorCode.NO_PUBLIC_KEY, sdp);
         }
 
         CryptoBox cipher = null;
@@ -209,12 +209,12 @@ class SessionECKeyPair implements SessionKeyPair {
             final byte[] rawKey = decoder.readBytes(null).array();
             pubKey = CryptoKey.importPublicKey(CryptoKey.Kind.ECDSA, rawKey, false);
             if (pubKey == null) {
-                return new Pair<>(BaseService.ErrorCode.INVALID_PUBLIC_KEY, null);
+                return new Pair<>(ErrorCode.INVALID_PUBLIC_KEY, null);
             }
 
             final UUID peerSessionId = decoder.readUUID();
             if (!peerSessionId.equals(mSessionId)) {
-                return new Pair<>(BaseService.ErrorCode.BAD_SIGNATURE, null);
+                return new Pair<>(ErrorCode.BAD_SIGNATURE, null);
             }
             final long nonceSequence = decoder.readLong();
 
@@ -226,7 +226,7 @@ class SessionECKeyPair implements SessionKeyPair {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "bind failed with error " + status);
                 }
-                return new Pair<>(BaseService.ErrorCode.NO_PRIVATE_KEY, null);
+                return new Pair<>(ErrorCode.NO_PRIVATE_KEY, null);
             }
 
             final byte[] data = new byte[encrypted.length];
@@ -235,17 +235,17 @@ class SessionECKeyPair implements SessionKeyPair {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "decrypt failed with error " + len);
                 }
-                return new Pair<>(BaseService.ErrorCode.DECRYPT_ERROR, null);
+                return new Pair<>(ErrorCode.DECRYPT_ERROR, null);
             }
 
-            return new Pair<>(BaseService.ErrorCode.SUCCESS, new Sdp(data, len, sdp.isCompressed(), 0));
+            return new Pair<>(ErrorCode.SUCCESS, new Sdp(data, len, sdp.isCompressed(), 0));
 
         } catch (SerializerException serializerException) {
-            return new Pair<>(BaseService.ErrorCode.BAD_ENCRYPTION_FORMAT, null);
+            return new Pair<>(ErrorCode.BAD_ENCRYPTION_FORMAT, null);
 
         } catch (Exception exception) {
             Log.e(LOG_TAG, "decrypt exception", exception);
-            return new Pair<>(BaseService.ErrorCode.LIBRARY_ERROR, null);
+            return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
 
         } finally {
             if (cipher != null) {
@@ -257,4 +257,12 @@ class SessionECKeyPair implements SessionKeyPair {
         }
     }
 
+    @Override
+    public boolean isAssociation(@NonNull TwincodeOutbound twincodeOutbound, @NonNull TwincodeOutbound peerTwincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "isAssociation: twincodeOutbound=" + twincodeOutbound + " peerTwincodeOutbound=" + peerTwincodeOutbound);
+        }
+
+        return false;
+    }
 }

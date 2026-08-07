@@ -33,7 +33,7 @@ import java.util.UUID;
 @SuppressWarnings("unused")
 public interface ConversationService extends BaseService<ConversationService.ServiceObserver> {
 
-    String VERSION = "2.21.1";
+    String VERSION = "2.22.1";
 
     class ConversationServiceConfiguration extends BaseServiceConfiguration {
 
@@ -264,13 +264,13 @@ public interface ConversationService extends BaseService<ConversationService.Ser
 
         /**
          * The descriptor could not be sent: the getValues() gives the reason for the failure
-         * (encoded with {@link org.twinlife.twinlife.BaseService.ErrorCode#fromErrorCode(ErrorCode)}).
+         * (encoded with {@link ErrorCode#fromErrorCode(ErrorCode)}).
          * Possible values are:
          * <dl>
-         *     <dt>{@link org.twinlife.twinlife.BaseService.ErrorCode#FEATURE_NOT_SUPPORTED_BY_PEER FEATURE_NOT_SUPPORTED_BY_PEER}:</dt>
+         *     <dt>{@link ErrorCode#FEATURE_NOT_SUPPORTED_BY_PEER FEATURE_NOT_SUPPORTED_BY_PEER}:</dt>
          *     <dd>Peer's app version doesn't support the descriptor.</dd>
          *
-         *     <dt>{@link org.twinlife.twinlife.BaseService.ErrorCode#EXPIRED EXPIRED}:</dt>
+         *     <dt>{@link ErrorCode#EXPIRED EXPIRED}:</dt>
          *     <dd>Couldn't reach the peer's device for a long period of time, so the push operation was dropped (see {@link org.twinlife.twinlife.conversation.ConversationServiceScheduler#EXPIRATION_DELAY EXPIRATION_DELAY})</dd>
          * </ul>
          *
@@ -335,9 +335,11 @@ public interface ConversationService extends BaseService<ConversationService.Ser
             TWINCODE_DESCRIPTOR,
             CALL_DESCRIPTOR,
             CLEAR_DESCRIPTOR,
-            POLL_DESCRIPTOR
+            POLL_DESCRIPTOR,
+            CONTACT_SHARE_DESCRIPTOR
         }
 
+        @NonNull
         Type getType();
 
         @NonNull
@@ -477,7 +479,49 @@ public interface ConversationService extends BaseService<ConversationService.Ser
             REFUSED,
 
             // Invitation was withdrawn.
-            WITHDRAWN
+            WITHDRAWN;
+
+            public static Status toStatus(int value) {
+                switch (value) {
+                    case 0:
+                        return Status.PENDING;
+
+                    case 1:
+                        return Status.ACCEPTED;
+
+                    case 2:
+                        return Status.REFUSED;
+
+                    case 4:
+                        return Status.JOINED;
+
+                    case 3:
+                    default:
+                        return Status.WITHDRAWN;
+                }
+            }
+
+            public int toInt() {
+                switch (this) {
+                    case PENDING:
+                        return 0;
+
+                    case ACCEPTED:
+                        return 1;
+
+                    case REFUSED:
+                        return 2;
+
+                    case WITHDRAWN:
+                        return 3;
+
+                    case JOINED:
+                        return 4;
+
+                    default:
+                        return -1;
+                }
+            }
         }
 
         @NonNull
@@ -581,6 +625,28 @@ public interface ConversationService extends BaseService<ConversationService.Ser
 
         @NonNull
         Map<UUID, List<Choice>> getVotes();
+    }
+
+    interface ContactShareDescriptor extends Descriptor {
+        @NonNull
+        String getName();
+
+        @Nullable
+        byte[] loadAvatarData(@Nullable File filesDir);
+
+        @NonNull
+        InvitationDescriptor.Status getStatus();
+
+        boolean isAutoAnswer();
+
+        @Nullable
+        UUID getInvitationTwincodeOutboundId();
+
+        @Nullable
+        UUID getTargetContactId();
+
+        @Nullable
+        CryptoService.PublicKeyData getInvitationTwincodeOutboundPubkey();
     }
 
     enum UpdateType {
@@ -869,8 +935,18 @@ public interface ConversationService extends BaseService<ConversationService.Ser
 
     void pushPoll(long requestId, @NonNull Conversation conversation, boolean multipleChoicesAllowed, @NonNull String question, @NonNull List<PollDescriptor.Choice> choices, boolean copyAllowed, long expiration);
 
+    void pushContactShare(long requestId, @NonNull Conversation conversation, @NonNull String name, @NonNull byte[] avatar, @NonNull UUID contactId, long expireTimeout);
+
+    void answerContactShare(@NonNull Conversation conversation, @NonNull ContactShareDescriptor contactShareDescriptor,
+                            @NonNull InvitationDescriptor.Status status, boolean autoAnswer, @Nullable UUID invitationTwincodeOutboundId,
+                            @Nullable CryptoService.PublicKeyData invitationPublicKey, @NonNull Consumer<ContactShareDescriptor> complete);
+
     void updateDescriptor(long requestId, @NonNull DescriptorId descriptorId, @Nullable String message,
                           @Nullable Boolean copyAllowed, @Nullable Long expiration);
+
+    ErrorCode updateContactShareDescriptor(@NonNull ContactShareDescriptor contactShareDescriptor, @NonNull InvitationDescriptor.Status status);
+
+    void cleanupContactShare(@NonNull ContactShareDescriptor contactShareDescriptor, @Nullable Conversation targetConversation);
 
     void startCall(long requestId, @NonNull RepositoryObject subject, boolean isVideo, boolean isIncoming);
 

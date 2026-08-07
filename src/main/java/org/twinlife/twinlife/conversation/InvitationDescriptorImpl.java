@@ -52,7 +52,7 @@ import org.twinlife.twinlife.Twincode;
 
 import java.util.UUID;
 
-public class InvitationDescriptorImpl extends DescriptorImpl implements ConversationService.InvitationDescriptor {
+class InvitationDescriptorImpl extends DescriptorImpl implements ConversationService.InvitationDescriptor {
     private static final String LOG_TAG = "InvitationDescriptor...";
     private static final boolean DEBUG = false;
 
@@ -76,7 +76,7 @@ public class InvitationDescriptorImpl extends DescriptorImpl implements Conversa
             encoder.writeUUID(inviteDescriptorImpl.mMemberTwincodeId);
             encoder.writeUUID(inviteDescriptorImpl.mInviterTwincodeId);
             encoder.writeString(inviteDescriptorImpl.mName);
-            encoder.writeEnum(fromInvitationStatus(inviteDescriptorImpl.mStatus));
+            encoder.writeEnum(inviteDescriptorImpl.mStatus.toInt());
         }
 
         @Override
@@ -89,54 +89,12 @@ public class InvitationDescriptorImpl extends DescriptorImpl implements Conversa
             UUID memberTwincodeId = decoder.readUUID();
             UUID inviterTwincodeId = decoder.readUUID();
             String name = decoder.readString();
-            Status status = toInvitationStatus(decoder.readEnum());
+            Status status = Status.toStatus(decoder.readEnum());
             return new InvitationDescriptorImpl(descriptorImpl, groupTwincodeId, memberTwincodeId, inviterTwincodeId, name, status);
         }
     }
 
     static final InvitationDescriptorImplSerializer_1 SERIALIZER_1 = new InvitationDescriptorImplSerializer_1();
-
-    static Status toInvitationStatus(int value) {
-        switch (value) {
-            case 0:
-                return Status.PENDING;
-
-            case 1:
-                return Status.ACCEPTED;
-
-            case 2:
-                return Status.REFUSED;
-
-            case 4:
-                return Status.JOINED;
-
-            case 3:
-            default:
-                return Status.WITHDRAWN;
-        }
-    }
-
-    static int fromInvitationStatus(@NonNull Status status) {
-        switch (status) {
-            case PENDING:
-                return 0;
-
-            case ACCEPTED:
-                return 1;
-
-            case REFUSED:
-                return 2;
-
-            case WITHDRAWN:
-                return 3;
-
-            case JOINED:
-                return 4;
-
-            default:
-                return -1;
-        }
-    }
 
     @NonNull
     private final UUID mGroupTwincodeId;
@@ -201,7 +159,7 @@ public class InvitationDescriptorImpl extends DescriptorImpl implements Conversa
             Log.d(LOG_TAG, "InvitationDescriptorImpl: descriptorId=" + descriptorId + " cid=" + cid + " content=" + content);
         }
 
-        mStatus = toInvitationStatus((int) value);
+        mStatus = Status.toStatus((int) value);
 
         final String[] args = extract(content);
         mGroupTwincodeId = extractUUID(args, 0, Twincode.NOT_DEFINED);
@@ -217,6 +175,7 @@ public class InvitationDescriptorImpl extends DescriptorImpl implements Conversa
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 
@@ -305,7 +264,7 @@ public class InvitationDescriptorImpl extends DescriptorImpl implements Conversa
 
     long getValue() {
 
-        return fromInvitationStatus(mStatus);
+        return mStatus.toInt();
     }
 
     protected void appendTo(@NonNull StringBuilder stringBuilder) {

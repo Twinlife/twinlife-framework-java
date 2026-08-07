@@ -327,7 +327,7 @@ class MigrateConversation {
 
                     } catch (Exception exception) {
                         if (Logger.ERROR) {
-                            Logger.error(LOG_TAG, "deserialize", exception);
+                            Logger.exception(LOG_TAG, exception, "deserialize", exception.getMessage());
                         }
                     }
                 }
@@ -455,7 +455,7 @@ class MigrateConversation {
 
                 } catch (Exception exception) {
                     if (Logger.ERROR) {
-                        Logger.error(LOG_TAG, "extractDescriptor", exception, twincodeOutboundId, " " + sequenceId);
+                        Logger.exception(LOG_TAG, exception, "extractDescriptor", exception, twincodeOutboundId, " " + sequenceId);
                     }
                 }
             }

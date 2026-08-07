@@ -24,6 +24,11 @@ public class SchemaKey {
         this.version = version;
     }
 
+    public boolean isSerializer(@NonNull BinaryPacketIQ.BinaryPacketIQSerializer serializer) {
+
+        return this.schemaId.equals(serializer.schemaId) && this.version == serializer.schemaVersion;
+    }
+
     @Override
     public int hashCode() {
 

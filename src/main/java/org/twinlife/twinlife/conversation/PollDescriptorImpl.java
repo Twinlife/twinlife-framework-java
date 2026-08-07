@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-public class PollDescriptorImpl extends DescriptorImpl implements ConversationService.PollDescriptor {
+class PollDescriptorImpl extends DescriptorImpl implements ConversationService.PollDescriptor {
     private static final String LOG_TAG = "PollDescriptorImpl";
     private static final boolean DEBUG = false;
 
@@ -44,8 +44,6 @@ public class PollDescriptorImpl extends DescriptorImpl implements ConversationSe
 
         String[] args = extract(content);
 
-        //extractString() can't return null with a non-null defaultValue.
-        //noinspection DataFlowIssue
         mQuestion = extractString(args, 0, "");
         int nbChoices = (int) extractLong(args, 1, 0);
         mChoices = new ArrayList<>(nbChoices);
@@ -61,7 +59,6 @@ public class PollDescriptorImpl extends DescriptorImpl implements ConversationSe
             }
             int position = (int) extractLong(args, currentIndex, 0);
             String label = extractString(args, currentIndex + 1, "");
-            //noinspection DataFlowIssue
             mChoices.add(new Choice(position, label));
             currentIndex += 2;
         }
@@ -148,6 +145,7 @@ public class PollDescriptorImpl extends DescriptorImpl implements ConversationSe
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

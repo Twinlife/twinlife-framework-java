@@ -230,6 +230,7 @@ class AudioDescriptorImpl extends FileDescriptorImpl implements ConversationServ
     // Override Descriptor methods
     //
 
+    @NonNull
     @Override
     public Type getType() {
 

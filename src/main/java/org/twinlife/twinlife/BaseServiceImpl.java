@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -20,7 +20,6 @@ import org.twinlife.twinlife.util.SerializerFactoryImpl;
 import org.twinlife.twinlife.util.Utils;
 
 import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.io.File;
 import java.util.HashMap;
 import java.util.List;
@@ -258,7 +257,7 @@ public abstract class BaseServiceImpl <Observer extends BaseService.ServiceObser
 
         // For development, abort and crash if we call a service from the main UI thread: this is forbidden.
         if (BuildConfig.ENABLE_CHECKS && Utils.isMainThread()) {
-            Log.e(LOG_TAG, "Service operation MUST NOT be called from main UI thread!");
+            Log.e(LOG_TAG, "Service operation MUST NOT be called from main UI thread!", new Exception());
             mTwinlifeImpl.assertion(TwinlifeAssertPoint.SERVICE, null);
         }
         return mServiceOn;
@@ -612,40 +611,6 @@ public abstract class BaseServiceImpl <Observer extends BaseService.ServiceObser
         ATTRIBUTE_NAME_UUID_VALUE
     }
 
-    public static void serialize(@NonNull AttributeNameValue attribute, @NonNull DataOutputStream dataOutputStream) throws SerializerException {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "serialize attribute=" + attribute + " dataOutputStream=" + dataOutputStream);
-        }
-
-        try {
-            if (attribute instanceof AttributeNameBooleanValue) {
-                dataOutputStream.writeInt(AttributeNameValueType.ATTRIBUTE_NAME_BOOLEAN_VALUE.ordinal());
-                dataOutputStream.writeUTF(attribute.name);
-                dataOutputStream.writeBoolean((Boolean) attribute.value);
-            } else if (attribute instanceof AttributeNameLongValue) {
-                dataOutputStream.writeInt(AttributeNameValueType.ATTRIBUTE_NAME_LONG_VALUE.ordinal());
-                dataOutputStream.writeUTF(attribute.name);
-                dataOutputStream.writeLong((Long) attribute.value);
-            } else if (attribute instanceof AttributeNameStringValue) {
-                dataOutputStream.writeInt(AttributeNameValueType.ATTRIBUTE_NAME_STRING_VALUE.ordinal());
-                dataOutputStream.writeUTF(attribute.name);
-                dataOutputStream.writeUTF((String) attribute.value);
-            } else if (attribute instanceof AttributeNameVoidValue) {
-                dataOutputStream.writeInt(AttributeNameValueType.ATTRIBUTE_NAME_VOID_VALUE.ordinal());
-                dataOutputStream.writeUTF(attribute.name);
-            } else if (attribute instanceof AttributeNameUUIDValue) {
-                dataOutputStream.writeInt(AttributeNameValueType.ATTRIBUTE_NAME_UUID_VALUE.ordinal());
-                dataOutputStream.writeUTF(attribute.name);
-                dataOutputStream.writeUTF(attribute.value.toString());
-            }
-        } catch (Exception exception) {
-            if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "serialize", exception);
-            }
-            throw new SerializerException(exception);
-        }
-    }
-
     @Nullable
     public static AttributeNameValue deserialize(@NonNull DataInputStream dataInputStream) throws SerializerException {
         if (DEBUG) {
@@ -694,7 +659,7 @@ public abstract class BaseServiceImpl <Observer extends BaseService.ServiceObser
             return null;
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "deserialize", exception);
+                Logger.exception(LOG_TAG, exception, "deserialize", exception.getMessage());
             }
             throw new SerializerException(exception);
         }

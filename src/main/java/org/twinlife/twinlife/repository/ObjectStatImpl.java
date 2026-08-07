@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2023 twinlife SA.
+ *  Copyright (c) 2018-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -47,9 +47,40 @@ import java.util.UUID;
  *
  */
 class ObjectStatImpl {
+    // Order in which the stats are serialized and de-serialized (for version 4).
+    // - new stats NB_POLL_SENT, NB_CONTACT_SHARE_SENT, NB_POLL_RECEIVED, NB_CONTACT_SHARE_RECEIVED,
+    private static final StatType[] serializeOrder_V4 = {
+            StatType.NB_MESSAGE_SENT,
+            StatType.NB_MESSAGE_SENT,
+            StatType.NB_MESSAGE_SENT,
+            StatType.NB_FILE_SENT,
+            StatType.NB_IMAGE_SENT,
+            StatType.NB_VIDEO_SENT,
+            StatType.NB_AUDIO_SENT,
+            StatType.NB_GEOLOCATION_SENT,
+            StatType.NB_TWINCODE_SENT,
+            StatType.NB_POLL_SENT,
+            StatType.NB_CONTACT_SHARE_SENT,
+            StatType.NB_MESSAGE_RECEIVED,
+            StatType.NB_FILE_RECEIVED,
+            StatType.NB_IMAGE_RECEIVED,
+            StatType.NB_VIDEO_RECEIVED,
+            StatType.NB_AUDIO_RECEIVED,
+            StatType.NB_GEOLOCATION_RECEIVED,
+            StatType.NB_TWINCODE_RECEIVED,
+            StatType.NB_POLL_RECEIVED,
+            StatType.NB_CONTACT_SHARE_RECEIVED,
+            StatType.NB_AUDIO_CALL_SENT,
+            StatType.NB_VIDEO_CALL_SENT,
+            StatType.NB_AUDIO_CALL_RECEIVED,
+            StatType.NB_VIDEO_CALL_RECEIVED,
+            StatType.NB_AUDIO_CALL_MISSED,
+            StatType.NB_VIDEO_CALL_MISSED
+    };
+
     // Order in which the stats are serialized and de-serialized (for version 3).
     // - new stats NB_TWINCODE_SENT and NB_TWINCODE_RECEIVED
-    private static final StatType[] serializeOrder = {
+    private static final StatType[] serializeOrder_V3 = {
             StatType.NB_MESSAGE_SENT,
             StatType.NB_MESSAGE_SENT,
             StatType.NB_MESSAGE_SENT,
@@ -121,15 +152,16 @@ class ObjectStatImpl {
             StatType.NB_VIDEO_CALL_MISSED
     };
     static final UUID SCHEMA_ID = UUID.fromString("859eee5f-8fb4-44a2-acf2-e14d3c12c160");
-    static final int SCHEMA_VERSION = 3;
+    static final int SCHEMA_VERSION_4 = 4;
+    static final int SCHEMA_VERSION_3 = 3;
     static final int SCHEMA_VERSION_2 = 2;
     static final int SCHEMA_VERSION_1 = 1;
 
-    static class ObjectStatImplSerializer extends Serializer {
+    static class ObjectStatImplSerializer_4 extends Serializer {
 
-        ObjectStatImplSerializer() {
+        ObjectStatImplSerializer_4() {
 
-            super(SCHEMA_ID, SCHEMA_VERSION, ObjectStatImpl.class);
+            super(SCHEMA_ID, SCHEMA_VERSION_4, ObjectStatImpl.class);
         }
 
         @Override
@@ -144,11 +176,11 @@ class ObjectStatImpl {
             encoder.writeDouble(stats.mPoints);
             encoder.writeLong(stats.mLastMessageDate);
 
-            for (StatType kind : serializeOrder) {
+            for (StatType kind : serializeOrder_V4) {
                 encoder.writeLong(stats.mStatCounters[kind.ordinal()]);
             }
 
-            for (StatType kind : serializeOrder) {
+            for (StatType kind : serializeOrder_V4) {
                 encoder.writeLong(stats.mReferenceCounters[kind.ordinal()]);
             }
         }
@@ -168,19 +200,61 @@ class ObjectStatImpl {
             long lastMessageDate = decoder.readLong();
 
             long[] statCounters = new long[StatType.values().length];
-            for (StatType kind : serializeOrder) {
+            for (StatType kind : serializeOrder_V4) {
                 statCounters[kind.ordinal()] = decoder.readLong();
             }
 
             long[] referenceCounters = new long[StatType.values().length];
-            for (StatType kind : serializeOrder) {
+            for (StatType kind : serializeOrder_V4) {
                 referenceCounters[kind.ordinal()] = decoder.readLong();
             }
 
             return new ObjectStatImpl(databaseId, score, scale, points, statCounters, referenceCounters, lastMessageDate);
         }
     }
-    static final ObjectStatImplSerializer SERIALIZER = new ObjectStatImplSerializer();
+    static final ObjectStatImplSerializer_4 SERIALIZER_4 = new ObjectStatImplSerializer_4();
+
+    static class ObjectStatImplSerializer_3 extends Serializer {
+
+        ObjectStatImplSerializer_3() {
+
+            super(SCHEMA_ID, SCHEMA_VERSION_3, ObjectStatImpl.class);
+        }
+
+        @Override
+        public void serialize(@NonNull SerializerFactory serializerFactory, @NonNull Encoder encoder, @NonNull Object object) throws SerializerException {
+
+            throw new SerializerException("Trying to serialize using a wrong serializer version");
+        }
+
+        @Override
+        @NonNull
+        public Object deserialize(@NonNull SerializerFactory serializerFactory, @NonNull Decoder decoder) throws SerializerException {
+            throw new SerializerException("Trying to serialize using a wrong serializer version");
+        }
+
+        @NonNull
+        public Object deserialize(long databaseId, @NonNull Decoder decoder) throws SerializerException {
+
+            double score = decoder.readDouble();
+            double scale = decoder.readDouble();
+            double points = decoder.readDouble();
+            long lastMessageDate = decoder.readLong();
+
+            long[] statCounters = new long[StatType.values().length];
+            for (StatType kind : serializeOrder_V3) {
+                statCounters[kind.ordinal()] = decoder.readLong();
+            }
+
+            long[] referenceCounters = new long[StatType.values().length];
+            for (StatType kind : serializeOrder_V3) {
+                referenceCounters[kind.ordinal()] = decoder.readLong();
+            }
+
+            return new ObjectStatImpl(databaseId, score, scale, points, statCounters, referenceCounters, lastMessageDate);
+        }
+    }
+    static final ObjectStatImplSerializer_3 SERIALIZER_3 = new ObjectStatImplSerializer_3();
 
     static class ObjectStatImplSerializer_2 extends Serializer {
 

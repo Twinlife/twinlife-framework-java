@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024 twinlife SA.
+ *  Copyright (c) 2024-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -52,10 +52,18 @@ public interface SessionKeyPair {
     boolean needRenew();
 
     @NonNull
-    Pair<BaseService.ErrorCode, Sdp> encrypt(@NonNull Sdp sdp);
+    Pair<ErrorCode, Sdp> encrypt(@NonNull Sdp sdp);
 
     @NonNull
-    Pair<BaseService.ErrorCode, Sdp> decrypt(@NonNull Sdp sdp);
+    Pair<ErrorCode, Sdp> decrypt(@NonNull Sdp sdp);
+
+    /**
+     * Check if this session key pair is for the given twincode association.
+     * @param twincodeOutbound the local twincode.
+     * @param peerTwincodeOutbound the peer twincode.
+     * @return true if the session key pair is for the twincode association.
+     */
+    boolean isAssociation(@NonNull TwincodeOutbound twincodeOutbound, @NonNull TwincodeOutbound peerTwincodeOutbound);
 
     void dispose();
 }

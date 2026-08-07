@@ -16,7 +16,13 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.util.Utils;
+
+import java.io.File;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Implementation of ConfigurationService for Android.
@@ -83,6 +89,9 @@ public class AndroidConfigurationServiceImpl implements ConfigurationService {
         }
 
         KeyChain keyChain = getKeyChain();
+        if (BuildConfig.ENABLE_INFO_LOG) {
+            Log.i(LOG_TAG, "secure configuration " + name + " protected by " + keyChain.getSecuredMethod());
+        }
         byte[] data = keyChain.getKeyChainData(name);
 
         return new AndroidSecuredConfigurationImpl(name, data);
@@ -115,6 +124,31 @@ public class AndroidConfigurationServiceImpl implements ConfigurationService {
 
         KeyChain keyChain = getKeyChain();
         keyChain.removeAllKeyChain();
+
+        // Also remove the default configurations.
+        final Map<UUID, ConfigIdentifier> configs = ConfigIdentifier.getConfigs();
+        final Set<String> deleted = new HashSet<>();
+        for (ConfigIdentifier config : configs.values()) {
+            final String configName = config.getConfigName();
+            if (!deleted.contains(configName)) {
+                deleteConfiguration(getConfiguration(configName));
+                deleted.add(configName);
+            }
+        }
+
+        final File cacheDir = mContext.getCacheDir();
+        Utils.deleteDirectory(cacheDir);
+    }
+
+    @Override
+    @NonNull
+    public SecuredMethod getSecuredMethod() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "getSecuredMethod");
+        }
+
+        final KeyChain keyChain = getKeyChain();
+        return keyChain.getSecuredMethod();
     }
 
     void initialize(@NonNull Twinlife twinlife) {

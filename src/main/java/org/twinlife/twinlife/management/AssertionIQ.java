@@ -15,10 +15,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.AssertPoint;
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.SerializerFactory;
@@ -93,7 +93,7 @@ class AssertionIQ extends BinaryPacketIQ {
                 for (Object value : assertionIQ.values.list) {
                     int kind = 0;
                     if (value instanceof Pair) {
-                        //noinspection unchecked
+                        @SuppressWarnings("unchecked")
                         Pair<Object, Object> p = (Pair<Object, Object>) value;
                         if (p.first instanceof AssertPoint.Parameter) {
                             switch ((AssertPoint.Parameter)p.first) {
@@ -166,13 +166,13 @@ class AssertionIQ extends BinaryPacketIQ {
                         encoder.writeInt(v.major);
                         encoder.writeInt(v.minor);
                         encoder.writeInt(v.patch);
-                    } else if (value instanceof BaseService.ErrorCode) {
+                    } else if (value instanceof ErrorCode) {
                         // For the ErrorCode, send the normalized error code and the enum ordinal.
                         // The normalized value will be identical between iOS and Android but
                         // some error codes are mapped to the code 7 (LibraryError).
                         encoder.writeEnum(10 | (9 << 8));
-                        encoder.writeInt(BaseService.ErrorCode.fromErrorCode((BaseService.ErrorCode) value));
-                        encoder.writeInt(((BaseService.ErrorCode) value).ordinal());
+                        encoder.writeInt(ErrorCode.fromErrorCode((ErrorCode) value));
+                        encoder.writeInt(((ErrorCode) value).ordinal());
                     } else if (value instanceof Enum) {
                         encoder.writeEnum(1 | kind);
                         encoder.writeInt(((Enum) value).ordinal());

@@ -10,14 +10,11 @@
 package org.twinlife.twinlife.accountMigration;
 
 import android.util.Log;
-import android.util.Pair;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
-import org.twinlife.twinlife.BinaryPacketListener;
-import org.twinlife.twinlife.AssertPoint;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Offer;
 import org.twinlife.twinlife.OfferToReceive;
 import org.twinlife.twinlife.PeerConnectionService;
@@ -26,26 +23,18 @@ import org.twinlife.twinlife.PeerConnectionService.StatType;
 import org.twinlife.twinlife.PushNotificationContent;
 import org.twinlife.twinlife.PushNotificationPriority;
 import org.twinlife.twinlife.PushNotificationOperation;
-import org.twinlife.twinlife.PeerConnectionService.DataChannelObserver;
-import org.twinlife.twinlife.Serializer;
-import org.twinlife.twinlife.SerializerFactory;
 import org.twinlife.twinlife.TwinlifeImpl;
-import org.twinlife.twinlife.conversation.ConversationAssertPoint;
-import org.twinlife.twinlife.util.BinaryCompactDecoder;
-import org.twinlife.twinlife.util.BinaryDecoder;
+import org.twinlife.twinlife.peerconnection.DataChannelHandler;
 import org.twinlife.twinlife.util.BinaryPacketIQ;
-import org.twinlife.twinlife.util.ByteBufferInputStream;
 import org.twinlife.twinlife.util.Logger;
-import org.twinlife.twinlife.util.SchemaKey;
 import org.twinlife.twinlife.util.Version;
 import org.webrtc.AudioTrack;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.RtpSender;
+import org.webrtc.VideoTrack;
 
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -80,7 +69,7 @@ import java.util.concurrent.TimeUnit;
  *    Android migration Twinme, Twinme+
  */
 @SuppressWarnings("rawtypes")
-abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServiceObserver implements DataChannelObserver, PeerConnectionService.PeerConnectionObserver {
+abstract class PeerConnectionObserver extends DataChannelHandler implements PeerConnectionService.ServiceObserver, PeerConnectionService.PeerConnectionObserver {
     private static final String LOG_TAG = "PeerConnectionObserver";
     private static final boolean DEBUG = false;
 
@@ -100,11 +89,6 @@ abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServi
 
     @NonNull
     protected final TwinlifeImpl mTwinlifeImpl;
-    @NonNull
-    protected final SerializerFactory mSerializerFactory;
-    @NonNull
-    private final PeerConnectionService mPeerConnectionService;
-    private final Map<SchemaKey, Pair<Serializer, BinaryPacketListener>> mBinaryListeners = new HashMap<>();
     private final Set<Long> mPendingRequests;
     private final String mPeerId;
     protected final ScheduledExecutorService mExecutor;
@@ -121,25 +105,18 @@ abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServi
     protected Version mPeerVersion;
 
     PeerConnectionObserver(@NonNull TwinlifeImpl twinlifeImpl, @NonNull String peerId) {
+        super(twinlifeImpl.getPeerConnectionService(), twinlifeImpl.getSerializerFactory());
         if (DEBUG) {
             Log.d(LOG_TAG, "PeerConnectionObserver peerId=" + peerId);
         }
 
         mTwinlifeImpl = twinlifeImpl;
         mExecutor = Executors.newSingleThreadScheduledExecutor(new ObserverThreadFactory());
-        mPeerConnectionService = twinlifeImpl.getPeerConnectionService();
-        mSerializerFactory = twinlifeImpl.getSerializerFactoryImpl();
         mPendingRequests = new HashSet<>();
         mPeerId = peerId;
         mIsOnline = twinlifeImpl.getAccountService().isTwinlifeOnline();
 
         mPeerConnectionService.addServiceObserver(this);
-    }
-
-    protected void addPacketListener(@NonNull Serializer serializer, @NonNull BinaryPacketListener packetListener) {
-
-        SchemaKey key = new SchemaKey(serializer.schemaId, serializer.schemaVersion);
-        mBinaryListeners.put(key, new Pair<>(serializer, packetListener));
     }
 
     @NonNull
@@ -342,6 +319,28 @@ abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServi
     }
 
     @Override
+    public void onDeviceRinging(UUID peerConnectionId) {
+
+    }
+
+    public void onIncomingPeerConnection(@NonNull UUID peerConnectionId, @NonNull String peerId, @NonNull Offer offer) {
+
+    }
+
+    @SuppressWarnings("EmptyMethod")
+    public void onCameraError(@Nullable String description) {
+
+    }
+
+    public void onCreateLocalVideoTrack(@NonNull VideoTrack videoTrack) {
+
+    }
+
+    public void onRemoveLocalVideoTrack() {
+
+    }
+
+    @Override
     public void onAcceptPeerConnection(@NonNull UUID peerConnectionId, @NonNull Offer offer) {
 
     }
@@ -496,44 +495,7 @@ abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServi
             }
         }
 
-        UUID schemaId = null;
-        int schemaVersion = 0;
-        try {
-            ByteBufferInputStream inputStream = new ByteBufferInputStream(buffer);
-            BinaryDecoder binaryDecoder;
-            if (leadingPadding) {
-                binaryDecoder = new BinaryDecoder(inputStream);
-            } else {
-                binaryDecoder = new BinaryCompactDecoder(inputStream);
-            }
-            schemaId = binaryDecoder.readUUID();
-            schemaVersion = binaryDecoder.readInt();
-            SchemaKey key = new SchemaKey(schemaId, schemaVersion);
-            Pair<Serializer, BinaryPacketListener> listener = mBinaryListeners.get(key);
-            if (listener != null) {
-                BinaryPacketIQ iq = (BinaryPacketIQ) listener.first.deserialize(mSerializerFactory, binaryDecoder);
-                listener.second.processPacket(iq);
-
-            } else {
-                if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "Schema key ", key, " not found");
-                }
-            }
-
-        } catch (Exception exception) {
-            if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Internal error ", exception);
-            }
-
-            mTwinlifeImpl.exception(ConversationAssertPoint.PROCESS_UPDATE_DESCRIPTOR_IQ, exception,
-                    AssertPoint.createPeerConnectionId(peerConnectionId)
-                            .putSchemaId(schemaId)
-                            .putSchemaVersion(schemaVersion));
-
-            // Something very bad happened: terminate the P2P connection because we don't want to proceed
-            // with a broken account migration.
-            terminatePeerConnection(peerConnectionId, TerminateReason.GENERAL_ERROR);
-        }
+        super.onDataChannelMessage(peerConnectionId, buffer, leadingPadding);
     }
 
     void sendPeerPacket(@NonNull StatType statType, @NonNull BinaryPacketIQ iq) {
@@ -612,7 +574,7 @@ abstract class PeerConnectionObserver extends PeerConnectionService.DefaultServi
         return false;
     }
 
-    private void terminatePeerConnection(@NonNull UUID peerConnectionId, @NonNull TerminateReason terminateReason) {
+    protected void terminatePeerConnection(@NonNull UUID peerConnectionId, @NonNull TerminateReason terminateReason) {
         if (DEBUG) {
             Log.d(LOG_TAG, "terminatePeerConnection peerConnectionId=" + peerConnectionId + " terminateReason=" + terminateReason);
         }

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2022-2023 twinlife SA.
+ *  Copyright (c) 2022-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -79,7 +79,7 @@ public class BinaryCompactEncoder extends BinaryEncoder {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error("serialize", "serialize", exception);
+                Logger.exception("serialize", exception, "serialize", exception.getMessage());
             }
             return null;
         }

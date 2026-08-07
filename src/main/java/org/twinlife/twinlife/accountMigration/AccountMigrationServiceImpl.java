@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2023 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -17,7 +17,6 @@ import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.AccountService;
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.ConfigIdentifier;
 import org.twinlife.twinlife.ConfigurationService;
@@ -59,7 +58,7 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
     private static final boolean DEBUG = false;
 
     @Nullable
-    private volatile AccountMigrationExecutor mCurrentAccountMigration;
+    private AccountMigrationExecutor mCurrentAccountMigration;
     private final DatabaseServiceImpl mDatabase;
     private File mDatabaseFile;
     @Nullable
@@ -107,8 +106,8 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
             Log.d(LOG_TAG, "finishMigration context=" + context);
         }
 
-        File rootDirectory = mTwinlifeImpl.getFilesDir();
-        if (rootDirectory != null && hasMigrationPending(rootDirectory)) {
+        final File rootDirectory = mTwinlifeImpl.getFilesDir();
+        if (hasMigrationPending(rootDirectory)) {
             // Note: Twinlife is starting and we are committing before the AccountService is started.
             // As soon as the commit is done, the Twinlife secure configuration and account
             // configuration contain the new values.
@@ -194,10 +193,6 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         }
 
         final File filesDir = mTwinlifeImpl.getFilesDir();
-        if (filesDir == null) {
-            onError(requestId, BaseService.ErrorCode.BAD_REQUEST, null);
-            return;
-        }
 
         // Force a database sync before starting the migration to flush the WAL file
         // (another one will be made before sending the database in case it was changed).
@@ -207,6 +202,11 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         final String peerId = mTwinlifeImpl.getTwincodeOutboundService().getPeerId(peerTwincodeOutboundId, twincodeOutboundId);
         synchronized (this) {
             if (mCurrentAccountMigration != null) {
+                // If the `incomingStartMigration()` was faster, we can have a current account
+                // migration, we can ignore the outgoingStart if this is the same instance.
+                if (accountMigrationId.equals(mActiveMigrationId) && accountMigrationId.equals(mCurrentAccountMigration.getAccountMigrationId())) {
+                    return;
+                }
                 accountMigration = null;
             } else {
                 accountMigration = new AccountMigrationExecutor(mTwinlifeImpl, this,
@@ -217,7 +217,7 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         }
 
         if (accountMigration == null) {
-            onError(requestId, BaseService.ErrorCode.BAD_REQUEST, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.BAD_REQUEST, null);
             return;
         }
 
@@ -246,7 +246,7 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         final PeerConnectionService peerConnectionService = mTwinlifeImpl.getPeerConnectionService();
         final Offer peerOffer = peerConnectionService.getPeerOffer(peerConnectionId);
         final File filesDir = mTwinlifeImpl.getFilesDir();
-        if (peerOffer == null || !peerOffer.data || filesDir == null || peerTwincodeOutboundId == null) {
+        if (peerOffer == null || !peerOffer.data ||  peerTwincodeOutboundId == null) {
 
             peerConnectionService.terminatePeerConnection(peerConnectionId, TerminateReason.NOT_AUTHORIZED);
 
@@ -299,12 +299,12 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
 
         final AccountMigrationExecutor accountMigration = mCurrentAccountMigration;
         if (accountMigration == null) {
-            onError(requestId, BaseService.ErrorCode.ITEM_NOT_FOUND, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.ITEM_NOT_FOUND, null);
             return;
         }
 
         if (!accountMigration.isConnected()) {
-            onError(requestId, BaseService.ErrorCode.TWINLIFE_OFFLINE, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.TWINLIFE_OFFLINE, null);
             return;
         }
 
@@ -329,12 +329,12 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
 
         final AccountMigrationExecutor accountMigration = mCurrentAccountMigration;
         if (accountMigration == null) {
-            onError(requestId, BaseService.ErrorCode.ITEM_NOT_FOUND, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.ITEM_NOT_FOUND, null);
             return;
         }
 
         if (!accountMigration.isConnected()) {
-            onError(requestId, BaseService.ErrorCode.TWINLIFE_OFFLINE, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.TWINLIFE_OFFLINE, null);
             return;
         }
 
@@ -360,7 +360,7 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
 
         final AccountMigrationExecutor accountMigration = mCurrentAccountMigration;
         if (accountMigration == null) {
-            onError(requestId, BaseService.ErrorCode.ITEM_NOT_FOUND, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.ITEM_NOT_FOUND, null);
             return;
         }
 
@@ -370,7 +370,7 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         }
 
         if (!accountMigration.isConnected()) {
-            onError(requestId, BaseService.ErrorCode.TWINLIFE_OFFLINE, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.TWINLIFE_OFFLINE, null);
             return;
         }
 
@@ -394,17 +394,17 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
 
         final AccountMigrationExecutor accountMigration = mCurrentAccountMigration;
         if (accountMigration == null) {
-            onError(requestId, BaseService.ErrorCode.ITEM_NOT_FOUND, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.ITEM_NOT_FOUND, null);
             return;
         }
 
         if (accountMigration.getState() != State.TERMINATE) {
-            onError(requestId, BaseService.ErrorCode.BAD_REQUEST, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.BAD_REQUEST, null);
             return;
         }
 
         if (!accountMigration.isConnected()) {
-            onError(requestId, BaseService.ErrorCode.TWINLIFE_OFFLINE, null);
+            onError(requestId, org.twinlife.twinlife.ErrorCode.TWINLIFE_OFFLINE, null);
             return;
         }
 
@@ -461,9 +461,7 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         }
 
         final File rootDirectory = mTwinlifeImpl.getFilesDir();
-        if (rootDirectory != null) {
-            cancel(rootDirectory, mDatabaseFile);
-        }
+        cancel(rootDirectory, mDatabaseFile);
         return true;
     }
 
@@ -482,7 +480,9 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         }
 
         if (status.getState() == State.STOPPED) {
-            mCurrentAccountMigration = null;
+            synchronized (this) {
+                mCurrentAccountMigration = null;
+            }
         }
     }
 
@@ -796,7 +796,6 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
 
     /**
      * Check and get the active account migration id.
-     *
      * If we detect an inconsistent configuration, everything is removed.
      *
      * @param rootDirectory the root directory.

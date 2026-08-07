@@ -21,6 +21,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.DatabaseIdentifier;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Filter;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.RepositoryObjectFactory;
@@ -95,7 +96,7 @@ public class RepositoryServiceImpl extends BaseServiceImpl<RepositoryService.Ser
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true);
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "start", exception);
+                Logger.exception(LOG_TAG, exception, "start", exception.getMessage());
             }
         }
         mParser = parser;

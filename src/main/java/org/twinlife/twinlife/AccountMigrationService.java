@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2025 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -20,7 +20,7 @@ import java.util.UUID;
  */
 public interface AccountMigrationService extends BaseService<AccountMigrationService.ServiceObserver> {
 
-    String VERSION = "2.1.1";
+    String VERSION = "2.1.2";
 
     enum State {
         STARTING,

@@ -31,6 +31,7 @@ import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.DisplayCallsMode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Filter;
 import org.twinlife.twinlife.ImageTools;
 import org.twinlife.twinlife.PeerConnectionService;
@@ -67,6 +68,8 @@ import org.twinlife.twinlife.conversation.ConversationServiceIQ.UpdateGroupMembe
 import org.twinlife.twinlife.conversation.UpdateDescriptorTimestampOperation.UpdateDescriptorTimestampType;
 import org.twinlife.twinlife.crypto.CryptoServiceImpl;
 import org.twinlife.twinlife.crypto.SignatureInfoIQ;
+import org.twinlife.twinlife.peerconnection.DataChannelHandler;
+import org.twinlife.twinlife.peerconnection.PeerConnectionServiceImpl;
 import org.twinlife.twinlife.util.BinaryCompactDecoder;
 import org.twinlife.twinlife.util.BinaryDecoder;
 import org.twinlife.twinlife.util.BinaryEncoder;
@@ -99,6 +102,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -119,6 +123,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     public static final int MAJOR_VERSION_2 = 2;
     public static final int MAJOR_VERSION_1 = 1;
 
+    static final int MINOR_VERSION_22 = 22; // Added PushContactShareIQ 2026-07
     static final int MINOR_VERSION_21 = 21; // Added PushPollIQ 2026-03
     static final int MINOR_VERSION_20 = 20; // Added UpdateObjectIQ 2025-05
     static final int MINOR_VERSION_19 = 19; // Added PushThumbnailIQ 2025-01
@@ -140,7 +145,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     public static final int MAX_MAJOR_VERSION = MAJOR_VERSION_2;
 
     // The maximum minor number that is supported by the major version 2.
-    public static final int MAX_MINOR_VERSION_2 = MINOR_VERSION_21;
+    public static final int MAX_MINOR_VERSION_2 = MINOR_VERSION_22;
     public static final int MAX_MINOR_VERSION_1 = MINOR_VERSION_0;
 
     /*
@@ -615,7 +620,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     private final CryptoServiceImpl mCryptoService;
     private final TwincodeOutboundService mTwincodeOutboundService;
     private final TwincodeInboundService mTwincodeInboundService;
-    private PeerConnectionService mPeerConnectionService;
+    private PeerConnectionServiceImpl mPeerConnectionService;
     private SerializerFactoryImpl mSerializerFactory;
 
     static class ConversationThreadFactory implements ThreadFactory {
@@ -692,6 +697,14 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         addPacketListener(PushPollIQ.IQ_PUSH_POLL_SERIALIZER, this::processPushPollIQ);
         addPacketListener(OnPushPollIQ.IQ_ON_PUSH_POLL_SERIALIZER, this::processOnPushPollIQ);
 
+        // Push contact share
+        addPacketListener(PushContactShareIQ.IQ_PUSH_CONTACT_SHARE_SERIALIZER, this::processPushContactShareIQ);
+        addPacketListener(OnPushContactShareIQ.IQ_ON_PUSH_CONTACT_SHARE_SERIALIZER, this::processOnPushContactShareIQ);
+
+        // Answer contact share
+        addPacketListener(AnswerContactShareIQ.IQ_ANSWER_CONTACT_SHARE_SERIALIZER, this::processAnswerContactShareIQ);
+        addPacketListener(OnAnswerContactShareIQ.IQ_ON_ANSWER_CONTACT_SHARE_SERIALIZER, this::processOnAnswerContactShareIQ);
+
         // Update timestamps
         addPacketListener(UpdateTimestampIQ.IQ_UPDATE_TIMESTAMPS_SERIALIZER, this::processUpdateTimestampIQ);
         addPacketListener(OnUpdateTimestampIQ.IQ_ON_UPDATE_TIMESTAMP_SERIALIZER, this::processOnUpdateTimestampIQ);
@@ -736,7 +749,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         setConfigured(true);
 
         mSerializerFactory = mTwinlifeImpl.getSerializerFactoryImpl();
-        mPeerConnectionService = mTwinlifeImpl.getPeerConnectionService();
+        mPeerConnectionService = (PeerConnectionServiceImpl) mTwinlifeImpl.getPeerConnectionService();
     }
 
     @Override
@@ -1077,7 +1090,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                                 UpdateDescriptorTimestampOperation updateDescriptorTimestampOperation
                                         = new UpdateDescriptorTimestampOperation(conversationImpl,
                                         UpdateDescriptorTimestampType.PEER_DELETE, descriptorId, deleteTimestamp);
-                                //noinspection unchecked
+                                @SuppressWarnings("unchecked")
                                 List<Operation> operations = (List<Operation>)pendingOperations.get(conversationImpl);
                                 if (operations == null) {
                                     operations = new ArrayList<>();
@@ -2043,6 +2056,124 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
     }
 
     @Override
+    public void pushContactShare(long requestId, @NonNull Conversation conversation, @NonNull String name, @NonNull byte[] avatar, @NonNull UUID contactId, long expireTimeout) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "pushContactShare: requestId=" + requestId + " conversation=" + conversation + " name=" + name + " avatar=" + Arrays.toString(avatar) + " contactId=" + contactId + " expireTimeout=" + expireTimeout);
+        }
+
+        if (!isServiceOn()) {
+
+            return;
+        }
+
+        if (!conversation.hasPermission(Permission.SEND_TWINCODE)) {
+            onError(requestId, ErrorCode.NO_PERMISSION, null);
+            return;
+        }
+
+        final List<ConversationImpl> conversations = getConversations(conversation, null);
+
+        final ContactShareDescriptorImpl contactShareDescriptor = mServiceProvider.createDescriptor(conversation, (long id, long sequenceId, long cid) -> {
+
+            final DescriptorId descriptorId = new DescriptorId(id, conversation.getTwincodeOutboundId(), sequenceId);
+
+            final ContactShareDescriptorImpl result = new ContactShareDescriptorImpl(descriptorId, cid, expireTimeout, name, contactId);
+
+            // If we try to send on a group with no peer, mark a send failure (ie, we are the only one in the group!).
+            if (conversations.isEmpty()) {
+                result.setSentTimestamp(-1);
+            }
+            return result;
+        });
+
+        if (contactShareDescriptor == null) {
+            onError(requestId, ErrorCode.NO_STORAGE_SPACE, null);
+            return;
+        }
+
+        contactShareDescriptor.saveAvatarData(getFilesDir(), avatar);
+
+        if (!conversations.isEmpty()) {
+            final Map<ConversationImpl, Object> pendingOperations = new HashMap<>();
+            for (final ConversationImpl conversationImpl : conversations) {
+                conversationImpl.touch();
+                conversationImpl.setIsActive(true);
+
+                final PushContactShareOperation pushObjectOperation = new PushContactShareOperation(conversationImpl, contactShareDescriptor, avatar);
+                pendingOperations.put(conversationImpl, pushObjectOperation);
+            }
+            addOperations(pendingOperations);
+        }
+
+        // Notify push operation was queued.
+        notifyPushDescriptor(requestId, conversation, contactShareDescriptor);
+    }
+
+    @Override
+    public void answerContactShare(@NonNull Conversation conversation, @NonNull ContactShareDescriptor contactShareDescriptor,
+                                   @NonNull InvitationDescriptor.Status status, boolean autoAnswer, @Nullable UUID invitationTwincodeOutboundId,
+                                   @Nullable CryptoService.PublicKeyData invitationPublicKey, @NonNull Consumer<ContactShareDescriptor> complete) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "answerContactShare: conversation=" + conversation + " contactShareDescriptor=" + contactShareDescriptor + " status=" + status + " autoAnswer=" + autoAnswer + " invitationTwincodeOutboundId=" + invitationTwincodeOutboundId + " invitationPublicKey=" + invitationPublicKey + " complete=" + complete);
+        }
+
+        if (!isServiceOn()) {
+            complete.onGet(ErrorCode.SERVICE_UNAVAILABLE, contactShareDescriptor);
+            return;
+        }
+
+        if (!conversation.hasPermission(Permission.SEND_TWINCODE)) {
+            complete.onGet(ErrorCode.NO_PERMISSION, contactShareDescriptor);
+            return;
+        }
+
+        if (!(contactShareDescriptor instanceof ContactShareDescriptorImpl)) {
+            complete.onGet(ErrorCode.BAD_REQUEST, null);
+            return;
+        }
+
+        ContactShareDescriptorImpl contactShareDescriptorImpl = (ContactShareDescriptorImpl) contactShareDescriptor;
+
+        if (contactShareDescriptorImpl.getStatus() != InvitationDescriptor.Status.PENDING) {
+            // Contact share must be pending to be able to answer.
+            complete.onGet(ErrorCode.NO_PERMISSION, null);
+            return;
+        }
+
+        contactShareDescriptorImpl.setStatus(status);
+        contactShareDescriptorImpl.setAutoAnswer(autoAnswer);
+
+        if (status == InvitationDescriptor.Status.ACCEPTED) {
+            contactShareDescriptorImpl.setInvitationTwincodeOutboundId(invitationTwincodeOutboundId);
+            contactShareDescriptorImpl.setInvitationTwincodeOutboundPubkey(invitationPublicKey);
+        }
+
+        mServiceProvider.updateDescriptor(contactShareDescriptorImpl);
+
+        final List<ConversationImpl> conversations = getConversations(conversation, null);
+
+        if (!conversations.isEmpty()) {
+            final Map<ConversationImpl, Object> pendingOperations = new HashMap<>();
+            for (final ConversationImpl conversationImpl : conversations) {
+                conversationImpl.touch();
+                conversationImpl.setIsActive(true);
+
+                final AnswerContactShareOperation answerContactShareOperation = new AnswerContactShareOperation(conversationImpl, contactShareDescriptorImpl);
+
+                pendingOperations.put(conversationImpl, answerContactShareOperation);
+            }
+            addOperations(pendingOperations);
+        }
+
+        // Notify update operation was queued.
+        for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
+            mTwinlifeExecutor.execute(() -> serviceObserver.onUpdateDescriptor(DEFAULT_REQUEST_ID, conversation, contactShareDescriptorImpl, UpdateType.CONTENT));
+        }
+
+        complete.onGet(ErrorCode.SUCCESS, contactShareDescriptor);
+    }
+
+    @Override
     public void updateDescriptor(long requestId, @NonNull DescriptorId descriptorId, @Nullable String message,
                                  @Nullable Boolean copyAllowed, @Nullable Long expiration) {
         if (DEBUG) {
@@ -2139,6 +2270,98 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
             mTwinlifeExecutor.execute(() -> serviceObserver.onUpdateDescriptor(requestId, conversation, descriptorImpl, type));
         }
+    }
+
+    @Override
+    public ErrorCode updateContactShareDescriptor(@NonNull ContactShareDescriptor contactShareDescriptor, @NonNull InvitationDescriptor.Status status) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "updateContactShareDescriptor: contactShareDescriptor=" + contactShareDescriptor + " status=" + status);
+        }
+
+        if (!isServiceOn()) {
+
+            return ErrorCode.SERVICE_UNAVAILABLE;
+        }
+
+        if (contactShareDescriptor.getStatus() == status) {
+            if (DEBUG) {
+                Log.d(LOG_TAG, "descriptor " + contactShareDescriptor.getDescriptorId() + " already has status " + status + ", nothing to do.");
+            }
+            return ErrorCode.SUCCESS;
+        }
+
+        ContactShareDescriptorImpl contactShareDescriptorImpl = (ContactShareDescriptorImpl) contactShareDescriptor;
+
+        contactShareDescriptorImpl.setStatus(status);
+
+        updateContactShareDescriptorInternal(contactShareDescriptorImpl);
+
+        Conversation conversation = mServiceProvider.loadConversationWithId(contactShareDescriptorImpl.getConversationId());
+
+        if (conversation == null) {
+            Log.e(LOG_TAG, "Couldn't find conversation for descriptor: " + contactShareDescriptor);
+            return ErrorCode.ITEM_NOT_FOUND;
+        }
+
+        final List<ConversationImpl> conversations = getConversations(conversation, null);
+
+        if (!conversations.isEmpty()) {
+            final Map<ConversationImpl, Object> pendingOperations = new HashMap<>();
+            for (final ConversationImpl conversationImpl : conversations) {
+                conversationImpl.touch();
+                conversationImpl.setIsActive(true);
+
+                final AnswerContactShareOperation answerContactShareOperation = new AnswerContactShareOperation(conversationImpl, contactShareDescriptorImpl);
+
+                pendingOperations.put(conversationImpl, answerContactShareOperation);
+            }
+            addOperations(pendingOperations);
+        }
+
+        return ErrorCode.SUCCESS;
+    }
+
+    @Override
+    public void cleanupContactShare(@NonNull ContactShareDescriptor contactShareDescriptor, @Nullable Conversation targetConversation) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "cleanupContactShare: contactShareDescriptor=" + contactShareDescriptor + " targetConversation=" + targetConversation);
+        }
+
+        UUID invitationTwincodeOutboundId = contactShareDescriptor.getInvitationTwincodeOutboundId();
+
+        if (invitationTwincodeOutboundId != null) {
+            if (targetConversation != null) {
+                // Find and delete the invitation twincodeOutbound's TwincodeDescriptor.
+                List<Descriptor> twincodeDescriptors = mServiceProvider.loadDescriptorImpls(targetConversation, new Descriptor.Type[]{Descriptor.Type.TWINCODE_DESCRIPTOR}, DisplayCallsMode.NONE, System.currentTimeMillis(), 10);
+
+                for (Descriptor descriptor : twincodeDescriptors) {
+                    TwincodeDescriptorImpl twincodeDescriptor = (TwincodeDescriptorImpl) descriptor;
+
+                    if (Objects.equals(twincodeDescriptor.getTwincodeId(), invitationTwincodeOutboundId)) {
+                        mServiceProvider.deleteDescriptor(targetConversation, descriptor.getDescriptorId());
+                        break;
+                    }
+                }
+            }
+
+            // Delete the invitation twincodeOutbound.
+            mTwincodeOutboundService.evictTwincode(invitationTwincodeOutboundId);
+        }
+
+        // Clean up the descriptor.
+        ContactShareDescriptorImpl contactShareDescriptorImpl = (ContactShareDescriptorImpl) contactShareDescriptor;
+        contactShareDescriptorImpl.setInvitationTwincodeOutboundId(null);
+        contactShareDescriptorImpl.setInvitationTwincodeOutboundPubkey(null);
+
+        mServiceProvider.updateDescriptor(contactShareDescriptorImpl);
+    }
+
+    private void updateContactShareDescriptorInternal(@NonNull ContactShareDescriptorImpl contactShareDescriptor) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "updateContactShareDescriptor: contactShareDescriptor=" + contactShareDescriptor);
+        }
+
+        mServiceProvider.updateDescriptor(contactShareDescriptor);
     }
 
     @Override
@@ -3467,6 +3690,11 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                                         .putSchemaVersion(listener.first.schemaVersion));
                     }
                 });
+                return;
+            }
+
+            // Check if the IQ can be processed by one of our SDP data channel handler.
+            if (DataChannelHandler.processSdpPacket(mPeerConnectionService, key, peerConnectionId, binaryDecoder)) {
                 return;
             }
 
@@ -5482,6 +5710,67 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         connection.sendPacket(StatType.IQ_RESULT_PUSH_POLL, onPushPollIQ);
     }
 
+    private void processPushContactShareIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processPushContactShareIQ: connection=" + connection + " iq=" + iq);
+        }
+
+        final PushContactShareIQ pushContactShareIQ = (PushContactShareIQ) iq;
+        final ConversationImpl conversationImpl = connection.getConversation();
+        final ContactShareDescriptorImpl contactShareDescriptor = pushContactShareIQ.contactShareDescriptor;
+
+        if (conversationImpl.hasPermission(Permission.SEND_MESSAGE)) {
+            contactShareDescriptor.saveAvatarData(getFilesDir(), pushContactShareIQ.avatar);
+
+            popDescriptor(contactShareDescriptor, connection);
+        } else {
+            contactShareDescriptor.setReceivedTimestamp(-1);
+        }
+
+        int deviceState = getDeviceState(connection);
+        OnPushIQ onPushContactShareIQ = new OnPushIQ(OnPushContactShareIQ.IQ_ON_PUSH_CONTACT_SHARE_SERIALIZER, pushContactShareIQ.getRequestId(), deviceState, contactShareDescriptor.getReceivedTimestamp());
+        connection.sendPacket(StatType.IQ_RESULT_PUSH_CONTACT_SHARE, onPushContactShareIQ);
+    }
+
+
+    private void processAnswerContactShareIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processAnswerContactShareIQ: connection=" + connection + " iq=" + iq);
+        }
+
+        final AnswerContactShareIQ answerContactShareIQ = (AnswerContactShareIQ) iq;
+
+        DescriptorId descriptorId = answerContactShareIQ.contactShareDescriptorId;
+
+        Descriptor descriptor = getDescriptor(descriptorId);
+
+        if (!(descriptor instanceof ContactShareDescriptorImpl)) {
+            OnPushIQ onAnswerContactShareIQ = new OnPushIQ(OnAnswerContactShareIQ.IQ_ON_ANSWER_CONTACT_SHARE_SERIALIZER, answerContactShareIQ.getRequestId(), getDeviceState(connection), -1L);
+            connection.sendPacket(StatType.IQ_RESULT_ANSWER_CONTACT_SHARE, onAnswerContactShareIQ);
+            return;
+        }
+
+        ContactShareDescriptorImpl contactShareDescriptor = (ContactShareDescriptorImpl) descriptor;
+
+        contactShareDescriptor.setAutoAnswer(answerContactShareIQ.autoAnswer);
+        contactShareDescriptor.setStatus(answerContactShareIQ.status);
+        contactShareDescriptor.setInvitationTwincodeOutboundId(answerContactShareIQ.invitationTwincodeOutboundId);
+        contactShareDescriptor.setInvitationTwincodeOutboundPubkey(answerContactShareIQ.invitationTwincodeOutboundPubkey);
+
+        updateContactShareDescriptorInternal(contactShareDescriptor);
+
+        connection.getConversation().setIsActive(true);
+
+        for (ConversationService.ServiceObserver serviceObserver : getServiceObservers()) {
+            mTwinlifeExecutor.execute(() -> serviceObserver.onUpdateDescriptor(DEFAULT_REQUEST_ID, connection.getConversation(), descriptor, UpdateType.CONTENT));
+        }
+
+        int deviceState = getDeviceState(connection);
+        OnPushIQ onAnswerContactShareIQ = new OnPushIQ(OnAnswerContactShareIQ.IQ_ON_ANSWER_CONTACT_SHARE_SERIALIZER, answerContactShareIQ.getRequestId(), deviceState, contactShareDescriptor.getReceivedTimestamp());
+        connection.sendPacket(StatType.IQ_RESULT_PUSH_CONTACT_SHARE, onAnswerContactShareIQ);
+    }
+
+
     private void processUpdateAnnotationIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
         if (DEBUG) {
             Log.d(LOG_TAG, "processUpdateAnnotationIQ: connection=" + connection + " iq=" + iq);
@@ -5605,7 +5894,8 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                     }
 
                     final int deviceState = getDeviceState(connection);
-                    final SignatureInfoIQ signatureInfo = joinResult != null && joinResult.inviterMemberTwincode != null ? mCryptoService.getSignatureInfoIQ(joinResult.inviterMemberTwincode, twincodeOutbound, false) : null;
+                    final SignatureInfoIQ signatureInfo = (errorCode2 == ErrorCode.SUCCESS && joinResult != null && joinResult.inviterMemberTwincode != null && twincodeOutbound != null)
+                            ? mCryptoService.getSignatureInfoIQ(joinResult.inviterMemberTwincode, twincodeOutbound, false) : null;
                     final OnJoinGroupIQ onJoinGroupIQ;
                     if (signatureInfo != null) {
                         mCryptoService.validateSecrets(joinResult.inviterMemberTwincode, twincodeOutbound);
@@ -6494,6 +6784,57 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         mScheduler.finishOperation(operation, connection);
     }
 
+    private void processOnPushContactShareIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processOnPushContactShareIQ: connection=" + connection + " iq=" + iq);
+        }
+
+        final OnPushIQ onPushContactShareIQ = (OnPushIQ) iq;
+        final ConversationImpl conversationImpl = connection.getConversation();
+        connection.setPeerDeviceState(onPushContactShareIQ.deviceState);
+
+        final Operation operation = mScheduler.getOperation(conversationImpl.getDatabaseId(), onPushContactShareIQ.getRequestId());
+        if (operation instanceof PushContactShareOperation) {
+            PushContactShareOperation pushContactShareOperation = (PushContactShareOperation) operation;
+            ContactShareDescriptorImpl contactShareDescriptorImpl = pushContactShareOperation.getContactShareDescriptorImpl();
+
+            // Update the received timestamp only the first time.
+            if (contactShareDescriptorImpl != null) {
+                if (contactShareDescriptorImpl.getReceivedTimestamp() <= 0) {
+                    contactShareDescriptorImpl.setReceivedTimestamp(connection.getAdjustedTime(onPushContactShareIQ.receivedTimestamp));
+                    updateDescriptor(contactShareDescriptorImpl, conversationImpl);
+                }
+                setTimestampAnnotation(contactShareDescriptorImpl, conversationImpl, AnnotationType.RECEIVED, connection.getAdjustedTime(onPushContactShareIQ.receivedTimestamp));
+            }
+        }
+
+        mScheduler.finishOperation(operation, connection);
+    }
+
+    private void processOnAnswerContactShareIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "processOnAnswerContactShareIQ: connection=" + connection + " iq=" + iq);
+        }
+
+        final OnPushIQ onAnswerContactShareIQ = (OnPushIQ) iq;
+        final ConversationImpl conversationImpl = connection.getConversation();
+        connection.setPeerDeviceState(onAnswerContactShareIQ.deviceState);
+
+        final Operation operation = mScheduler.getOperation(conversationImpl.getDatabaseId(), onAnswerContactShareIQ.getRequestId());
+        if (operation instanceof AnswerContactShareOperation) {
+            AnswerContactShareOperation answerContactShareOperation = (AnswerContactShareOperation) operation;
+            ContactShareDescriptorImpl contactShareDescriptorImpl = answerContactShareOperation.getContactShareDescriptorImpl();
+
+            // Update the received timestamp only the first time.
+            if (contactShareDescriptorImpl != null) {
+                contactShareDescriptorImpl.setUpdatedTimestamp(connection.getAdjustedTime(onAnswerContactShareIQ.receivedTimestamp));
+                updateDescriptor(contactShareDescriptorImpl, conversationImpl);
+            }
+        }
+
+        mScheduler.finishOperation(operation, connection);
+    }
+
     private void processOnUpdateAnnotationIQ(@NonNull ConversationConnection connection, @NonNull BinaryPacketIQ iq) {
         if (DEBUG) {
             Log.d(LOG_TAG, "processOnUpdateAnnotationIQ: connection=" + connection + " iq=" + iq);
@@ -6898,7 +7239,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
         } catch (Exception exception) {
 
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Cannot save thumbnail: ", thumbnailFile, exception);
+                Logger.exception(LOG_TAG, exception, "Cannot save thumbnail: ", thumbnailFile, exception.getMessage());
             }
             Utils.deleteFile(LOG_TAG, thumbnailFile);
 
@@ -6943,7 +7284,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             } catch (Exception exception) {
 
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "Cannot save thumbnail: ", thumbnailFile, exception);
+                    Logger.exception(LOG_TAG, exception, "Cannot save thumbnail: ", thumbnailFile, exception.getMessage());
                 }
                 Utils.deleteFile(LOG_TAG, thumbnailFile);
 
@@ -6965,7 +7306,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                 created = file.createNewFile();
             } catch (IOException exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "Cannot create file: ", file, exception);
+                    Logger.exception(LOG_TAG, exception, "Cannot create file: ", file, exception.getMessage());
                 }
             }
             if (!created) {
@@ -7212,7 +7553,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                             expireTimeout, sendTo, replyTo, toPath.getPath(), extension, length, length, duration, copyAllowed, false);
                 } catch (Exception ex) {
                     if (Logger.ERROR) {
-                        Logger.error(LOG_TAG, "Cannot save audio: ", ex);
+                        Logger.exception(LOG_TAG, ex, "Cannot save audio: ", ex.getMessage());
                     }
                     if (retriever != null) {
                         try {
@@ -7272,7 +7613,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                             } catch (Throwable exception) {
                                 // Catch a possible out of memory exception but also a failure to write on disk.
                                 if (Logger.ERROR) {
-                                    Logger.error(LOG_TAG, "Video thumbnail", exception);
+                                    Logger.exception(LOG_TAG, exception, "Video thumbnail", exception.getMessage());
                                 }
                                 Utils.deleteFile(LOG_TAG, thumbnailFile);
                                 thumbnailFile = null;
@@ -7288,7 +7629,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                             expireTimeout, sendTo, replyTo, toPath.getPath(), extension, length, width, height, duration, copyAllowed, thumbnailFile != null);
                 } catch (Exception ex) {
                     if (Logger.ERROR) {
-                        Logger.error(LOG_TAG, "Cannot save video: ", ex);
+                        Logger.exception(LOG_TAG, ex, "Cannot save video: ", ex.getMessage());
                     }
                     if (retriever != null) {
                         try {
@@ -7359,7 +7700,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             return mImageTools.copyImage(imageFile, thumbnailFile, 640, 640, false);
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "copyImage", exception);
+                Logger.exception(LOG_TAG, exception, "copyImage", exception.getMessage());
             }
             Utils.deleteFile(LOG_TAG, thumbnailFile);
             return false;
@@ -7454,9 +7795,8 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
                                 }
                             } catch (Exception exception) {
                                 if (Logger.ERROR) {
-                                    Logger.error(LOG_TAG, " deleteDescriptorFiles failed:\n" +
-                                            " file=" + file + "\n" +
-                                            " exception=" + exception + "\n");
+                                    Logger.exception(LOG_TAG, exception, " deleteDescriptorFiles failed: ",
+                                            file + ":", exception.getMessage());
                                 }
                             }
                         }

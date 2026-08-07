@@ -44,7 +44,7 @@ import org.twinlife.twinlife.SerializerFactory;
 
 import java.util.UUID;
 
-public class ClearDescriptorImpl extends DescriptorImpl implements ConversationService.ClearDescriptor {
+class ClearDescriptorImpl extends DescriptorImpl implements ConversationService.ClearDescriptor {
     private static final String LOG_TAG = "ClearDescriptorImpl...";
     private static final boolean DEBUG = false;
 
@@ -126,6 +126,7 @@ public class ClearDescriptorImpl extends DescriptorImpl implements ConversationS
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

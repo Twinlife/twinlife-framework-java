@@ -81,7 +81,7 @@ import org.twinlife.twinlife.SerializerFactory;
 
 import java.util.UUID;
 
-public class NamedFileDescriptorImpl extends FileDescriptorImpl implements ConversationService.NamedFileDescriptor {
+class NamedFileDescriptorImpl extends FileDescriptorImpl implements ConversationService.NamedFileDescriptor {
     private static final String LOG_TAG = "NamedFileDescriptorImpl";
     private static final boolean DEBUG = false;
 
@@ -233,6 +233,7 @@ public class NamedFileDescriptorImpl extends FileDescriptorImpl implements Conve
     // Override Descriptor methods
     //
 
+    @NonNull
     @Override
     public Type getType() {
 

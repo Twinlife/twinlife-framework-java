@@ -15,8 +15,8 @@ import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BackupService;
 import org.twinlife.twinlife.BackupService.BackupState;
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BuildConfig;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.TwinlifeImpl;
 import org.twinlife.twinlife.account.DerivedServerKeyInfo;
 import org.twinlife.twinlife.backup.handlers.AccountSecuredConfigurationHandler;
@@ -119,12 +119,12 @@ public class BackupExecutor {
                                 mExecutor.execute(() -> BackupExecutor.this.onGenerateKey(errorCode, derivedServerKey))));
     }
 
-    private void onGenerateKey(@NonNull BaseService.ErrorCode errorCode, @Nullable DerivedServerKeyInfo derivedServerKey) {
+    private void onGenerateKey(@NonNull ErrorCode errorCode, @Nullable DerivedServerKeyInfo derivedServerKey) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onGeneratePassword: errorCode=" + errorCode + " derivedServerKey=" + derivedServerKey);
         }
 
-        if (errorCode != BaseService.ErrorCode.SUCCESS || derivedServerKey == null) {
+        if (errorCode != ErrorCode.SUCCESS || derivedServerKey == null) {
             handleError(BackupService.ErrorCode.KEY_GEN_FAILED, errorCode);
             return;
         }
@@ -133,7 +133,7 @@ public class BackupExecutor {
         mBackupService.onBackupStateChange(mBackupId, mBackupState);
 
         if (mBackupFile == null) {
-            handleError(BackupService.ErrorCode.INVALID_FILE, BaseService.ErrorCode.FILE_NOT_FOUND);
+            handleError(BackupService.ErrorCode.INVALID_FILE, ErrorCode.FILE_NOT_FOUND);
             return;
         }
 
@@ -149,7 +149,7 @@ public class BackupExecutor {
 
                 if (encryptedOutputStream == null) {
                     Log.e(LOG_TAG, "CryptoOutputStream creation failed");
-                    handleError(BackupService.ErrorCode.KEY_GEN_FAILED, BaseService.ErrorCode.ENCRYPT_ERROR);
+                    handleError(BackupService.ErrorCode.KEY_GEN_FAILED, ErrorCode.ENCRYPT_ERROR);
                     return;
                 }
 
@@ -164,7 +164,7 @@ public class BackupExecutor {
             }
         } catch (Throwable t) {
             Log.e(LOG_TAG, "Encrypted file creation failed", t);
-            handleError(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            handleError(BackupService.ErrorCode.IO_ERROR, ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -220,7 +220,7 @@ public class BackupExecutor {
         return created;
     }
 
-    private void handleError(@NonNull BackupService.ErrorCode backupError, @NonNull BaseService.ErrorCode baseError) {
+    private void handleError(@NonNull BackupService.ErrorCode backupError, @NonNull ErrorCode baseError) {
         Log.e(LOG_TAG, "handleError: backupError=" + backupError + " baseError=" + baseError);
 
         if (mBackupFile != null) {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2023 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -81,7 +81,8 @@ public class BinaryPacketIQ {
         return new BinaryPacketIQSerializer(schemaId, schemaVersion, BinaryPacketIQ.class);
     }
 
-    protected final long mRequestId;
+    // Note: the server must be able to change the requestId when it forwards it.
+    protected long mRequestId;
     @NonNull
     protected final BinaryPacketIQSerializer mSerializer;
 
@@ -100,6 +101,16 @@ public class BinaryPacketIQ {
     public long getRequestId() {
 
         return mRequestId;
+    }
+
+    public void setRequestId(long requestId) {
+
+        mRequestId = requestId;
+    }
+
+    public int getVersion() {
+
+        return mSerializer.schemaVersion;
     }
 
     protected int getBufferSize() {

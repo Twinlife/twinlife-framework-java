@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2020-2024 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -27,6 +27,10 @@ import java.util.UUID;
  * <p>
  * On Android, we must use the `ConfigurationService` to load and save values buy on iOS we don't have
  * the constraint of Android application Context and we can get/set on the configuration instance directly.
+ * <p>
+ * To save and restore an Enum from the configuration, we must use the `toInteger` and `fromInteger` pattern
+ * to make sure we don't rely on the `ordinal()` and enum order, and, the final mapping is identical between
+ * Android and iOS.  The `ConfigIdentifier.Enum` interface is used to enforce that rule.
  */
 @SuppressWarnings("rawtypes")
 public class ConfigIdentifier {
@@ -40,6 +44,17 @@ public class ConfigIdentifier {
     private final UUID mIdentifier;
     @Nullable
     private final Class mClass;
+
+    /**
+     * Interface that should be implemented by an Enum which must be saved in the configuration.
+     * @param <T> the enum to save/restore.
+     */
+    public interface Enum<T> {
+        int toInteger();
+
+        @NonNull
+        T fromInteger(int value);
+    }
 
     /**
      * Get the list of configuration identifiers indexed by their UUIDs.

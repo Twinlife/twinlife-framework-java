@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2014-2025 twinlife SA.
+ *  Copyright (c) 2014-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -10,13 +10,8 @@
 
 package org.twinlife.twinlife;
 
-import android.content.ComponentName;
 import android.content.Context;
-import android.content.Intent;
-import android.content.ServiceConnection;
-import android.os.IBinder;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 
 import android.util.Log;
 
@@ -26,16 +21,12 @@ import org.twinlife.twinlife.util.Logger;
 /**
  * Android twinlife context with management of Android twinlife service.
  */
-public class TwinlifeServiceConnectionImpl implements ServiceConnection {
+public class TwinlifeServiceConnectionImpl {
     private static final String LOG_TAG = "TwinlifeServiceConnImpl";
     private static final boolean DEBUG = false;
 
     @NonNull
     private final TwinlifeContextImpl mTwinlifeContext;
-    @NonNull
-    private final Context mContext;
-    @Nullable
-    private TwinlifeService mTwinlifeService;
     @NonNull
     private final AndroidTwinlifeImpl mTwinlifeImpl;
 
@@ -46,8 +37,7 @@ public class TwinlifeServiceConnectionImpl implements ServiceConnection {
         }
 
         mTwinlifeContext = twinlifeContext;
-        mContext = context;
-        mTwinlifeImpl = new AndroidTwinlifeImpl(twinlifeContext, mContext);
+        mTwinlifeImpl = new AndroidTwinlifeImpl(twinlifeContext, context);
         configurationService.initialize(mTwinlifeImpl);
         mTwinlifeImpl.onCreate();
     }
@@ -67,7 +57,7 @@ public class TwinlifeServiceConnectionImpl implements ServiceConnection {
             }
 
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "uncaught exception", exception);
+                Logger.exception(LOG_TAG, exception, "uncaught exception", exception.getMessage());
             }
 
             ManagementService managementService = mTwinlifeImpl.getManagementService();
@@ -80,7 +70,7 @@ public class TwinlifeServiceConnectionImpl implements ServiceConnection {
                 Thread.sleep(100);
             } catch (Exception ex) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "Exception in sleep", ex);
+                    Logger.exception(LOG_TAG, ex, "Exception in sleep", ex.getMessage());
                 }
             }
             System.exit(2);
@@ -94,72 +84,10 @@ public class TwinlifeServiceConnectionImpl implements ServiceConnection {
             Log.d(LOG_TAG, "stop");
         }
 
-        if (mTwinlifeService != null) {
-            mTwinlifeService.stop();
-            mTwinlifeService = null;
-        }
+        mTwinlifeImpl.stop();
 
         // We must now exit because the UI must not access the Twinlife services anymore.
         // stop() is called after DeleteAccount() in the final UI step after the account is deleted.
         System.exit(0);
-    }
-
-    //
-    // Implementation of ServiceConnection class
-    //
-
-    @Override
-    public void onServiceConnected(ComponentName name, IBinder service) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "onServiceConnected: name=" + name + " service=" + service);
-        }
-
-        mTwinlifeService = ((TwinlifeService.LocalBinder) service).getService();
-     }
-
-    @Override
-    public void onServiceDisconnected(ComponentName name) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "onServiceDisconnected: name=" + name);
-        }
-
-        mTwinlifeContext.onServiceDisconnected();
-    }
-
-    @Nullable
-    public static byte[] decrypt(@NonNull byte[] ivEncryptedData, int length) {
-
-        return KeyChain.decrypt(KeyChain.getDefaultSecretKey(), ivEncryptedData, length, false);
-    }
-    //
-    // Private Methods
-    //
-
-    private void restart() {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "restart");
-        }
-
-        mTwinlifeContext.getJobService().scheduleJob("Twinlife", this::restartInternal, JobService.Priority.FOREGROUND);
-    }
-
-    private void restartInternal() {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "restartInternal");
-        }
-
-        try {
-            if (mTwinlifeService == null) {
-                mContext.startService(new Intent(mContext, TwinlifeService.class));
-            }
-
-            if (!mContext.bindService(new Intent(mContext, TwinlifeService.class), this, Context.BIND_AUTO_CREATE)) {
-
-                Log.e(LOG_TAG, "bindService: bindService failed");
-            }
-        } catch (IllegalStateException exception) {
-            Log.d(LOG_TAG, "Exception " + exception);
-            restart();
-        }
     }
 }

@@ -83,7 +83,7 @@ import org.twinlife.twinlife.SerializerFactory;
 
 import java.util.UUID;
 
-public class ObjectDescriptorImpl extends DescriptorImpl implements ConversationService.ObjectDescriptor {
+class ObjectDescriptorImpl extends DescriptorImpl implements ConversationService.ObjectDescriptor {
     private static final String LOG_TAG = "ObjectDescriptorImpl";
     private static final boolean DEBUG = false;
 
@@ -226,6 +226,7 @@ public class ObjectDescriptorImpl extends DescriptorImpl implements Conversation
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

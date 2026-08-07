@@ -51,7 +51,7 @@ import org.twinlife.twinlife.TerminateReason;
 
 import java.util.UUID;
 
-public class CallDescriptorImpl extends DescriptorImpl implements ConversationService.CallDescriptor {
+class CallDescriptorImpl extends DescriptorImpl implements ConversationService.CallDescriptor {
     private static final String LOG_TAG = "CallDescriptorImpl...";
     private static final boolean DEBUG = false;
 
@@ -212,6 +212,7 @@ public class CallDescriptorImpl extends DescriptorImpl implements ConversationSe
      * Override Descriptor methods
      */
 
+    @NonNull
     @Override
     public Type getType() {
 

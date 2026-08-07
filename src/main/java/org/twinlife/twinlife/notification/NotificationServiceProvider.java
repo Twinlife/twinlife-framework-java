@@ -575,6 +575,9 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
             case 18:
                 return NotificationService.NotificationType.NEW_POLL_MESSAGE;
 
+            case 19:
+                return NotificationService.NotificationType.NEW_CONTACT_SHARE;
+
             default:
                 return null;
         }
@@ -639,6 +642,9 @@ public class NotificationServiceProvider extends DatabaseServiceProvider impleme
 
             case NEW_POLL_MESSAGE:
                 return 18;
+
+            case NEW_CONTACT_SHARE:
+                return 19;
         }
 
         return 0;

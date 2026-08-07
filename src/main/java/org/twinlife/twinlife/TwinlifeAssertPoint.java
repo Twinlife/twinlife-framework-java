@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 twinlife SA.
+ *  Copyright (c) 2025-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -12,7 +12,8 @@ public enum TwinlifeAssertPoint implements AssertPoint {
     SERVICE,
     SERIALIZER_EXCEPTION,
     UNEXPECTED_EXCEPTION,
-    ENVIRONMENT_ID;
+    ENVIRONMENT_ID,
+    UNKNOWN_VERSION;
 
     public int getIdentifier() {
 

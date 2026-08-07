@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2013-2025 twinlife SA.
+ *  Copyright (c) 2013-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -28,9 +28,9 @@ import java.util.UUID;
 public interface PeerConnectionService extends BaseService<PeerConnectionService.ServiceObserver> {
 
     int MAJOR_VERSION = 2;
-    int MINOR_VERSION = 2;
+    int MINOR_VERSION = 3;
 
-    String VERSION = "2.3.0";
+    String VERSION = "2.5.0";
 
     byte[] LEADING_PADDING = new byte[1];
 
@@ -43,6 +43,56 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
             super(BaseServiceId.PEER_CONNECTION_SERVICE_ID, VERSION, false);
 
             acceptIncomingCalls = false;
+        }
+    }
+
+    enum IceTransportMode implements ConfigIdentifier.Enum<IceTransportMode> {
+        // Configure WebRTC to maximize connectivity setup by using (Optimize):
+        // - STUN if available (faster than TURNS),
+        // - Direct WebRTC connection (or relayed through TURN router)
+        // The IP address of the device may be exposed but this provides
+        // a faster WebRTC connection set up.
+        ALL,
+
+        // Same as ALL but restrict to TURNS for port negotiation:
+        // - use TURNS for port allocation,
+        // - Direct WebRTC connection (or relayed through TURN router)
+        TURNS,
+
+        // Hide as much as possible the IP address of the device:
+        // - use TURNS for port allocation,
+        // - force to relay the traffic to the TURN router.
+        // Due to TURN router relay, this may impact latency.
+        RELAY;
+
+        @Override
+        public int toInteger() {
+            // Do not use ordinal(), Enum <-> integer mapping is frozen
+            // and must not be changed if new values are added or values are re-ordered.
+            // Mapping must be compatible with iOS because this configuration is saved.
+            switch (this) {
+                case ALL:
+                    return 0;
+                case TURNS:
+                    return 1;
+                case RELAY:
+                    return 2;
+            }
+            return 0;
+        }
+
+        @Override
+        @NonNull
+        public IceTransportMode fromInteger(int value) {
+            switch (value) {
+                case 1:
+                    return TURNS;
+                case 2:
+                    return RELAY;
+                case 0:
+                default:
+                    return ALL;
+            }
         }
     }
 
@@ -81,8 +131,12 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
         IQ_SET_PUSH_GEOLOCATION,
         IQ_SET_PUSH_TWINCODE,
         IQ_SET_PUSH_POLL,
+        IQ_SET_PUSH_CONTACT_SHARE,
+        IQ_SET_ANSWER_CONTACT_SHARE,
         IQ_SET_SYNCHRONIZE,
         IQ_SET_SIGNATURE_INFO,
+        IQ_SET_SDP_TRANSPORT_INFO,
+        IQ_SET_SDP_UPDATE,
         IQ_ERROR,
 
         IQ_RESULT_PUSH_OBJECT,
@@ -99,8 +153,12 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
         IQ_RESULT_PUSH_GEOLOCATION,
         IQ_RESULT_PUSH_TWINCODE,
         IQ_RESULT_PUSH_POLL,
+        IQ_RESULT_PUSH_CONTACT_SHARE,
+        IQ_RESULT_ANSWER_CONTACT_SHARE,
         IQ_RESULT_SYNCHRONIZE,
         IQ_RESULT_SIGNATURE_INFO,
+        IQ_RESULT_SDP_TRANSPORT_INFO,
+        IQ_RESULT_SDP_UPDATE,
 
         IQ_RECEIVE_COUNT,
         IQ_RECEIVE_SET_COUNT,
@@ -202,6 +260,12 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
     }
 
     /**
+     * Set the ICE transport configuration when creating a WebRTC connection.
+     * @param mode the ice transport mode selecting which ICEs are allowed.
+     */
+    void setIceTransportMode(@NonNull IceTransportMode mode);
+
+    /**
      * Check if there are some P2P connections which are either in progress or active.
      *
      * @return true if the service has some P2P connections.
@@ -232,6 +296,14 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
                                       @Nullable DataChannelObserver consumer,
                                       @NonNull PeerConnectionObserver observer, @NonNull Consumer<UUID> complete);
 
+    /**
+     * Inform the peer connection service that secrets used to encrypt/decrypt the SDP between the given twincode associations
+     * have been changed and must be refreshed for existing P2P connections.
+     * @param twincodeOutbound the local twincode.
+     * @param peerTwincodeOutbound the peer twincode.
+     */
+    void refreshSecrets(@NonNull TwincodeOutbound twincodeOutbound, @NonNull TwincodeOutbound peerTwincodeOutbound);
+
     void initSources(@NonNull UUID peerConnectionId, boolean audioOn, boolean videoOn);
 
     /**
@@ -258,7 +330,7 @@ public interface PeerConnectionService extends BaseService<PeerConnectionService
      * Whether the SDP are encrypted when they are received or sent from the signaling server.
      *
      * @param peerConnectionId the P2P connection id.
-     * @return true when SDP are encrypted.
+     * @return the SDP encryption status.
      */
     @Nullable
     SdpEncryptionStatus getSdpEncryptionStatus(@NonNull UUID peerConnectionId);

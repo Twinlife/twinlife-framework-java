@@ -18,6 +18,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.DatabaseCursor;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.TwincodeFactory;
 import org.twinlife.twinlife.TwincodeFactoryService;
 import org.twinlife.twinlife.TwincodeInbound;

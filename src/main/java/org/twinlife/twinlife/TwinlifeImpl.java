@@ -25,7 +25,6 @@ import org.libwebsockets.ErrorCategory;
 import org.twinlife.twinlife.AccountMigrationService.AccountMigrationServiceConfiguration;
 import org.twinlife.twinlife.AccountService.AccountServiceConfiguration;
 import org.twinlife.twinlife.BaseService.BaseServiceId;
-import org.twinlife.twinlife.BaseService.ErrorCode;
 import org.twinlife.twinlife.ConversationService.ConversationServiceConfiguration;
 import org.twinlife.twinlife.ImageService.ImageServiceConfiguration;
 import org.twinlife.twinlife.ManagementService.ManagementServiceConfiguration;
@@ -384,7 +383,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         }
 
         for (BaseServiceImpl<?> baseService : mBaseServiceImpls) {
-            if (baseService.isServiceOn()) {
+            if (baseService.isServiceReady()) {
                 baseService.onDestroy();
             }
         }
@@ -498,7 +497,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
                 Logger.error(LOG_TAG, "invalid server URL");
             }
 
-            return BaseService.ErrorCode.WRONG_LIBRARY_CONFIGURATION;
+            return ErrorCode.WRONG_LIBRARY_CONFIGURATION;
         }
 
         String accessToken = getFingerprint(twinlifeConfiguration.certificateSerialNumber);
@@ -655,7 +654,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
 
         } catch (DatabaseException dbException) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Cannot open the database: ", dbException);
+                Logger.exception(LOG_TAG, dbException,  "Cannot open the database: ", dbException);
             }
             if (dbException.isDatabaseFull()) {
                 return ErrorCode.NO_STORAGE_SPACE;
@@ -664,7 +663,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
             }
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Cannot open the database: ", exception);
+                Logger.exception(LOG_TAG, exception, "Cannot open the database: ", exception);
             }
             return ErrorCode.DATABASE_ERROR;
         }
@@ -940,7 +939,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
                 mWebSocketConnection.disconnect();
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "disconnect", exception);
+                    Logger.exception(LOG_TAG, exception, "disconnect", exception);
                 }
             }
         }
@@ -1020,7 +1019,7 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
             openDatabase();
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Cannot open the database: ", exception);
+                Logger.exception(LOG_TAG, exception,"Cannot open the database: ", exception);
             }
 
         }
@@ -1046,12 +1045,20 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
         }
 
         mRunning = false;
-        mRemoveDatabaseOnDestroy = true;
-
-        ConfigurationService configurationService = getConfigurationService();
-        mTwinlifeSecuredConfiguration.erase(configurationService);
-
         suspend();
+    }
+
+    public void finishDeleteAccount() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "finishDeleteAccount");
+        }
+
+        final ConfigurationService configurationService = getConfigurationService();
+        mTwinlifeSecuredConfiguration.erase(configurationService);
+        configurationService.eraseAllSecuredConfiguration();
+
+        mRemoveDatabaseOnDestroy = true;
+        onSignOut();
     }
 
     void onNetworkDisconnect() {

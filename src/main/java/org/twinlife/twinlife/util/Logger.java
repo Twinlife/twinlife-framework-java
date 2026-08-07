@@ -108,4 +108,11 @@ public class Logger {
             Log.e(tag, format(title, args));
         }
     }
+
+    public static void exception(final String tag, final Throwable exception, final String title, final Object... args) {
+
+        if (ERROR) {
+            Log.e(tag, format(title, args), exception);
+        }
+    }
 }

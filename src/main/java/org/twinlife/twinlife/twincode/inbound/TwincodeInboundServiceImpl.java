@@ -18,6 +18,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.RepositoryService;

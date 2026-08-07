@@ -14,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BaseService;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.ExportedImageId;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.Twincode;
@@ -170,9 +171,9 @@ public class TwincodeOutboundHandler extends BackupHandler<TwincodeOutbound> {
                 int keyFlags = decoder.readInt();
 
                 RawKeyInfo keyInfo = new RawKeyInfo(keyCreationDate, keyModificationDate, signingKey, encryptionKey, keyFlags);
-                BaseService.ErrorCode errorCode = mCryptoService.restoreKeyInfo(twincodeOutbound, keyInfo);
+                ErrorCode errorCode = mCryptoService.restoreKeyInfo(twincodeOutbound, keyInfo);
 
-                if (errorCode != BaseService.ErrorCode.SUCCESS) {
+                if (errorCode != ErrorCode.SUCCESS) {
                     throw new SerializerException("Could not restore key for twincode " + twincodeId + ": " + errorCode);
                 }
 

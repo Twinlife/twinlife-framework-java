@@ -18,6 +18,7 @@ import java.io.ByteArrayInputStream;
 
 public class TwinlifeConfiguration {
 
+    protected long serial;
     protected String serviceId;
     protected String applicationId;
     protected String applicationName;
@@ -48,6 +49,7 @@ public class TwinlifeConfiguration {
 
     protected TwinlifeConfiguration() {
 
+        serial = 539107351;
         accountServiceConfiguration = new AccountService.AccountServiceConfiguration();
         conversationServiceConfiguration = new ConversationService.ConversationServiceConfiguration();
         connectivityServiceConfiguration = new ConnectivityService.ConnectivityServiceConfiguration();
@@ -93,6 +95,11 @@ public class TwinlifeConfiguration {
         for (int i = 0; i < tokenCount; i++) {
             tokens[i] = reader.readString();
         }
+    }
+
+    public long getSerial() {
+
+        return serial;
     }
 
     private static String readIP(@NonNull BinaryCompactDecoder decoder) throws SerializerException {

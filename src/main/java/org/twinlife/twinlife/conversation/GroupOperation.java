@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2018-2025 twinlife SA.
+ *  Copyright (c) 2018-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -141,7 +141,7 @@ abstract class GroupOperation extends Operation {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error("serializeOperation", "serialize", exception);
+                Logger.exception("serializeOperation", exception, "serialize", exception.getMessage());
             }
             return null;
         }

@@ -68,6 +68,7 @@ class SessionInitiateIQ extends BinaryPacketIQ {
     static final int OFFER_TRANSFER = 0x80;        // The SDP is a session transfer (added in 1.3.0)
     static final int OFFER_ENCRYPT_MASK = 0x0ff00; // The encryption key index.
     static final int OFFER_ENCRYPT_SHIFT = 8;
+    static final int OFFER_SEQUENCE_SHIFT = 16;
     static final int OFFER_VOIP  = OFFER_AUDIO | OFFER_VIDEO;
 
     private static class SessionInitiateIQSerializer extends BinaryPacketIQSerializer {

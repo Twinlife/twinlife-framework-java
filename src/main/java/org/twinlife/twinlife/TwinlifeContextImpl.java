@@ -15,7 +15,6 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import android.util.Log;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
 import org.twinlife.twinlife.BaseService.ServiceStats;
 import org.twinlife.twinlife.management.ManagementServiceImpl;
 import org.twinlife.twinlife.util.Utils;

@@ -15,21 +15,14 @@ import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BackupInfo;
 import org.twinlife.twinlife.BackupService;
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.TwinlifeContext;
 import org.twinlife.twinlife.TwinlifeImpl;
-import org.twinlife.twinlife.backup.handlers.BackupHeaderHandler;
-import org.twinlife.twinlife.util.BinaryDecoder;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +89,7 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
 
         if (!isServiceOn()) {
             Log.e(LOG_TAG, "service is not configured");
-            onBackupError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            onBackupError(BackupService.ErrorCode.INTERNAL_ERROR, org.twinlife.twinlife.ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -104,7 +97,7 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
             mCurrentBackup = new BackupExecutor(this, password, supportedSchemaIds);
         } catch (IOException e) {
             Log.e(LOG_TAG, "Could not instantiate BackupExecutor", e);
-            onBackupError(BackupService.ErrorCode.IO_ERROR, BaseService.ErrorCode.FILE_NOT_FOUND);
+            onBackupError(BackupService.ErrorCode.IO_ERROR, org.twinlife.twinlife.ErrorCode.FILE_NOT_FOUND);
 
             return;
         }
@@ -119,7 +112,7 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
 
         if (!isServiceOn()) {
             Log.e(LOG_TAG, "service is not configured");
-            onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, org.twinlife.twinlife.ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -135,7 +128,7 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
 
         if (mCurrentRestore == null) {
             Log.e(LOG_TAG, "No current restore, can't commit");
-            onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, org.twinlife.twinlife.ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -151,7 +144,7 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
 
         if (mCurrentRestore == null) {
             Log.e(LOG_TAG, "No current restore, can't cancel");
-            onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, BaseService.ErrorCode.LIBRARY_ERROR);
+            onRestoreError(BackupService.ErrorCode.INTERNAL_ERROR, org.twinlife.twinlife.ErrorCode.LIBRARY_ERROR);
             return;
         }
 
@@ -226,7 +219,7 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
         }
     }
 
-    void onBackupError(@NonNull BackupService.ErrorCode backupErrorCode, @NonNull BaseService.ErrorCode baseErrorCode) {
+    void onBackupError(@NonNull BackupService.ErrorCode backupErrorCode, @NonNull org.twinlife.twinlife.ErrorCode baseErrorCode) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onBackupError: backupErrorCode=" + backupErrorCode + " baseErrorCode=" + baseErrorCode);
         }
@@ -236,7 +229,7 @@ public class BackupServiceImpl extends BaseServiceImpl<BackupService.ServiceObse
         }
     }
 
-    void onRestoreError(@NonNull BackupService.ErrorCode backupErrorCode, @NonNull BaseService.ErrorCode baseErrorCode) {
+    void onRestoreError(@NonNull BackupService.ErrorCode backupErrorCode, @NonNull org.twinlife.twinlife.ErrorCode baseErrorCode) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onRestoreError: backupErrorCode=" + backupErrorCode + " baseErrorCode=" + baseErrorCode);
         }

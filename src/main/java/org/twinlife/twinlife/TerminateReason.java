@@ -154,7 +154,7 @@ public enum TerminateReason {
     }
 
     @NonNull
-    public static TerminateReason fromErrorCode(@NonNull BaseService.ErrorCode errorCode) {
+    public static TerminateReason fromErrorCode(@NonNull ErrorCode errorCode) {
 
         /*
          * Errors returned by createIncomingPeerConnection():

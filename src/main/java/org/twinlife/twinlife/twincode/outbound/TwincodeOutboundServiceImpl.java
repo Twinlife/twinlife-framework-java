@@ -21,6 +21,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.CryptoService;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.InvitationCode;
 import org.twinlife.twinlife.JobService;
 import org.twinlife.twinlife.SNIProxyDescriptor;

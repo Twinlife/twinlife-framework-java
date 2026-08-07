@@ -583,8 +583,8 @@ public abstract class AndroidJobServiceImpl implements JobService {
 
     /**
      * Schedule a job to be executed sometimes in the future and after the specified delay repeatedly.
-     *
-     * Times are in MILLISECONDS.
+     * <p>
+     * Times are in seconds.
      *
      * @param work         the work to execute.
      * @param initialDelay the delay to wait before executing the work.
@@ -1105,8 +1105,16 @@ public abstract class AndroidJobServiceImpl implements JobService {
 
         // Disconnect from Twinlife server if there is no need to be connected.
         if (mustDisconnect) {
+            if (INFO) {
+                Log.i(LOG_TAG, "stopForegroundService decide to disconnect in state=" + mApplicationState + " voipLock=" + mVoIPLockCount);
+            }
+
             disconnect();
         } else if (stopJob != null) {
+            if (INFO) {
+                Log.i(LOG_TAG, "stopForegroundService executes stop foreground job in state=" + mApplicationState + " voipLock=" + mVoIPLockCount);
+            }
+
             // We can stop the foreground service.
             stopJob.run();
         }

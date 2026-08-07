@@ -23,49 +23,6 @@ public class SerializerFactoryImpl implements SerializerFactory {
     private static final String LOG_TAG = "SerializerFactoryImpl";
     private static final boolean DEBUG = false;
 
-    private static class SerializerKey {
-        @NonNull
-        private final UUID schemaId;
-        private final int schemaVersion;
-
-        SerializerKey(@NonNull UUID schemaId, int schemaVersion) {
-
-            this.schemaId = schemaId;
-            this.schemaVersion = schemaVersion;
-        }
-
-        //
-        // Override Object methods
-        //
-
-        @Override
-        public boolean equals(Object object) {
-
-            if (this == object) {
-
-                return true;
-            }
-            if (!(object instanceof SerializerKey)) {
-
-                return false;
-            }
-
-            SerializerKey serializerKey = (SerializerKey) object;
-
-            return serializerKey.schemaId.equals(schemaId) && serializerKey.schemaVersion == schemaVersion;
-        }
-
-        @Override
-        public int hashCode() {
-
-            int result = 17;
-            result = 31 * result + schemaId.hashCode();
-            result = 31 * result + schemaVersion;
-
-            return result;
-        }
-    }
-
     private final Object mSerializersLock = new Object();
     private final HashMap<Class<?>, Serializer> mClass2Serializers = new HashMap<>();
     private final HashMap<SerializerKey, Serializer> mSerializers = new HashMap<>();

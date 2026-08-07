@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024-2025 twinlife SA.
+ *  Copyright (c) 2024-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Stephane Carrez (Stephane.Carrez@twin.life)
@@ -13,8 +13,8 @@ import android.util.Pair;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService;
 import org.twinlife.twinlife.BuildConfig;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Sdp;
 import org.twinlife.twinlife.SerializerException;
 import org.twinlife.twinlife.SessionKeyPair;
@@ -141,14 +141,14 @@ class SessionSecretKeyPair implements SessionKeyPair {
 
     @Override
     @NonNull
-    public Pair<BaseService.ErrorCode, Sdp> encrypt(@NonNull Sdp sdp) {
+    public Pair<ErrorCode, Sdp> encrypt(@NonNull Sdp sdp) {
         if (DEBUG) {
             Log.d(LOG_TAG, "encrypt: sdp=" + sdp);
         }
 
         final long nonceSequence = allocateNonce();
         if (nonceSequence == 0) {
-            return new Pair<>(BaseService.ErrorCode.NO_PRIVATE_KEY, null);
+            return new Pair<>(ErrorCode.NO_PRIVATE_KEY, null);
         }
 
         CryptoBox cipher = null;
@@ -170,7 +170,7 @@ class SessionSecretKeyPair implements SessionKeyPair {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "bind failed with error " + status);
                 }
-                return new Pair<>(BaseService.ErrorCode.INVALID_PRIVATE_KEY, null);
+                return new Pair<>(ErrorCode.INVALID_PRIVATE_KEY, null);
             }
             byte[] result = new byte[auth.length + sdp.getLength() + 64];
             int len = cipher.encryptAEAD(nonceSequence, sdp.getData(), sdp.getLength(), auth, result);
@@ -178,15 +178,15 @@ class SessionSecretKeyPair implements SessionKeyPair {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "encrypt failed with error " + len);
                 }
-                return new Pair<>(BaseService.ErrorCode.ENCRYPT_ERROR, null);
+                return new Pair<>(ErrorCode.ENCRYPT_ERROR, null);
             }
-            return new Pair<>(BaseService.ErrorCode.SUCCESS, new Sdp(result, len, sdp.isCompressed(), getKeyIndex()));
+            return new Pair<>(ErrorCode.SUCCESS, new Sdp(result, len, sdp.isCompressed(), getKeyIndex()));
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
                 Log.e(LOG_TAG, "encrypt exception", exception);
             }
-            return new Pair<>(BaseService.ErrorCode.LIBRARY_ERROR, null);
+            return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
 
         } finally {
             if (cipher != null) {
@@ -196,13 +196,13 @@ class SessionSecretKeyPair implements SessionKeyPair {
     }
 
     @NonNull
-    public Pair<BaseService.ErrorCode, Sdp> decrypt(@NonNull Sdp sdp) {
+    public Pair<ErrorCode, Sdp> decrypt(@NonNull Sdp sdp) {
         if (DEBUG) {
             Log.d(LOG_TAG, "decrypt: sdp=" + sdp);
         }
 
         if (!sdp.isEncrypted()) {
-            return new Pair<>(BaseService.ErrorCode.NO_PUBLIC_KEY, sdp);
+            return new Pair<>(ErrorCode.NO_PUBLIC_KEY, sdp);
         }
 
         CryptoBox cipher = null;
@@ -216,7 +216,7 @@ class SessionSecretKeyPair implements SessionKeyPair {
             // - nonce sequence
             final UUID peerSessionId = decoder.readUUID();
             if (!peerSessionId.equals(getSessionId())) {
-                return new Pair<>(BaseService.ErrorCode.BAD_SIGNATURE, null);
+                return new Pair<>(ErrorCode.BAD_SIGNATURE, null);
             }
             final long nonceSequence = decoder.readLong();
 
@@ -226,7 +226,7 @@ class SessionSecretKeyPair implements SessionKeyPair {
             final int keyIndex = sdp.getKeyIndex();
             final byte[] key = getSecret(keyIndex);
             if (key == null) {
-                return new Pair<>(BaseService.ErrorCode.NO_SECRET_KEY, null);
+                return new Pair<>(ErrorCode.NO_SECRET_KEY, null);
             }
 
             int status = cipher.bind(key);
@@ -234,7 +234,7 @@ class SessionSecretKeyPair implements SessionKeyPair {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "bind failed with error " + status);
                 }
-                return new Pair<>(BaseService.ErrorCode.DECRYPT_ERROR, null);
+                return new Pair<>(ErrorCode.DECRYPT_ERROR, null);
             }
 
             final byte[] data = new byte[encrypted.length];
@@ -243,25 +243,34 @@ class SessionSecretKeyPair implements SessionKeyPair {
                 if (Logger.ERROR) {
                     Log.e(LOG_TAG, "decrypt failed with error " + len);
                 }
-                return new Pair<>(BaseService.ErrorCode.DECRYPT_ERROR, null);
+                return new Pair<>(ErrorCode.DECRYPT_ERROR, null);
             }
 
-            return new Pair<>(BaseService.ErrorCode.SUCCESS, new Sdp(data, len, sdp.isCompressed(), 0));
+            return new Pair<>(ErrorCode.SUCCESS, new Sdp(data, len, sdp.isCompressed(), 0));
 
         } catch (SerializerException serializerException) {
-            return new Pair<>(BaseService.ErrorCode.BAD_ENCRYPTION_FORMAT, null);
+            return new Pair<>(ErrorCode.BAD_ENCRYPTION_FORMAT, null);
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
                 Log.e(LOG_TAG, "decrypt exception", exception);
             }
-            return new Pair<>(BaseService.ErrorCode.LIBRARY_ERROR, null);
+            return new Pair<>(ErrorCode.LIBRARY_ERROR, null);
 
         } finally {
             if (cipher != null) {
                 cipher.dispose();
             }
         }
+    }
+
+    @Override
+    public boolean isAssociation(@NonNull TwincodeOutbound twincodeOutbound, @NonNull TwincodeOutbound peerTwincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "isAssociation: twincodeOutbound=" + twincodeOutbound + " peerTwincodeOutbound=" + peerTwincodeOutbound);
+        }
+
+        return mTwincodeOutbound.getId().equals(twincodeOutbound.getId()) && mPeerTwincodeOutbound.getId().equals(peerTwincodeOutbound.getId());
     }
 
     @Override

@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012-2025 twinlife SA.
+ *  Copyright (c) 2012-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -26,6 +26,7 @@ import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.Consumer;
 import org.twinlife.twinlife.AssertPoint;
 import org.twinlife.twinlife.CryptoService;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Hostname;
 import org.twinlife.twinlife.JobService;
 import org.twinlife.twinlife.ProxyDescriptor;
@@ -45,6 +46,8 @@ import org.twinlife.twinlife.TurnServer;
 import org.twinlife.twinlife.TwincodeOutbound;
 import org.twinlife.twinlife.TwinlifeImpl;
 import org.twinlife.twinlife.calls.PeerCallServiceImpl;
+import org.twinlife.twinlife.calls.SessionUpdateIQ;
+import org.twinlife.twinlife.calls.TransportInfoIQ;
 import org.twinlife.twinlife.util.BinaryPacketIQ;
 import org.twinlife.twinlife.util.Logger;
 import org.twinlife.twinlife.util.Utils;
@@ -81,7 +84,9 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 
 public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionService.ServiceObserver> implements PeerConnectionService, CameraEventsHandler, PeerSignalingListener {
     private static final String LOG_TAG = "PeerConnectionServic...";
@@ -99,6 +104,12 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
     private static final int MAX_VIDEO_FRAME_RATE = 30;
     private static final int MIN_VIDEO_FRAME_RATE = 10;
 
+    // Timeout in ms to wait for the ack after sending the session-update or transport-info
+    // in the WebRTC data channel.  If the ack is not received within that timeframe, the
+    // session-update or transport-info are sent again but through the signaling server.
+    // Average RTT for WebRTC data channel is 150ms in direct device-to-device communication.
+    private static final int SDP_RESEND_TIMEOUT = 300;
+
     private static class PeerConnectionThreadFactory implements ThreadFactory {
 
         public Thread newThread(@NonNull Runnable runnable) {
@@ -107,10 +118,29 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
         }
     }
 
+    private static class SdpPendingRequest {
+        final UUID sessionId;
+        final BinaryPacketIQ iq;
+        final Consumer<Long> onComplete;
+        final long resendDeadline;
+
+        SdpPendingRequest(UUID sessionId, BinaryPacketIQ iq, Consumer<Long> onComplete) {
+            this.sessionId = sessionId;
+            this.iq = iq;
+            this.onComplete = onComplete;
+            this.resendDeadline = System.currentTimeMillis() + SDP_RESEND_TIMEOUT;
+        }
+
+        public boolean needResend(long now) {
+            return resendDeadline <= now;
+        }
+    }
+
     private final ScheduledExecutorService mPeerConnectionExecutor;
     private final ConcurrentHashMap<UUID, PeerConnectionImpl> mPeerConnectionImpls = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, ConnectionState> mPeerStates = new ConcurrentHashMap<>();
-    private final PeerConnection.RTCConfiguration mPeerConnectionConfiguration;
+    private final PeerConnection.RTCConfiguration mPeerDataConnectionConfiguration;
+    private final PeerConnection.RTCConfiguration mPeerMediaConnectionConfiguration;
     private final CryptoService mCryptoService;
     private final PeerCallServiceImpl mPeerCallServiceImpl;
 
@@ -146,6 +176,37 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
     private EglBase.Context mEglBaseContext;
     private boolean mCanUseHWAccousticEchoCanceler = false;
     private boolean mCanUseHWNoiseSuppressor = false;
+    @NonNull
+    private IceTransportMode mTransportMode;
+    @Nullable
+    private TurnServer[] mTurnServers;
+    private final Map<Long, SdpPendingRequest> mPendingRequests = new HashMap<>();
+    @Nullable
+    private ScheduledFuture<?> mResendTimer = null;
+
+    @NonNull
+    private static PeerConnection.RTCConfiguration createConfiguration(boolean withMedia) {
+
+        List<IceServer> iceServers = new ArrayList<>(0);
+        PeerConnection.RTCConfiguration configuration = new PeerConnection.RTCConfiguration(iceServers);
+        configuration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
+        configuration.enableImplicitRollback = true;
+        configuration.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;
+
+        // Prune relay ports to drop duplicates and keep the highest priority.
+        configuration.turnPortPrunePolicy = PeerConnection.PortPrunePolicy.PRUNE_BASED_ON_PRIORITY;
+        configuration.bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE;
+        configuration.tcpCandidatePolicy = withMedia ? PeerConnection.TcpCandidatePolicy.DISABLED : PeerConnection.TcpCandidatePolicy.ENABLED;
+
+        // Disable SRTP_AES128_CM_SHA1_32 and enable SRTP_AEAD_AES_256_GCM.
+        CryptoOptions.Builder cryptoBuilder = CryptoOptions.builder();
+        cryptoBuilder.setEnableAes128Sha1_32CryptoCipher(false);
+        cryptoBuilder.setEnableGcmCryptoSuites(true);
+        cryptoBuilder.setRequireFrameEncryption(false);
+        cryptoBuilder.setEnableEncryptedRtpHeaderExtensions(false);
+        configuration.cryptoOptions = cryptoBuilder.createCryptoOptions();
+        return configuration;
+    }
 
     public PeerConnectionServiceImpl(@NonNull TwinlifeImpl twinlifeImpl, @NonNull Connection connection) {
 
@@ -157,24 +218,10 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
         mPeerConnectionExecutor = Executors.newSingleThreadScheduledExecutor(new PeerConnectionThreadFactory());
         mCryptoService = twinlifeImpl.getCryptoService();
         mPeerCallServiceImpl = mTwinlifeImpl.getPeerCallServiceImpl();
+        mTransportMode = IceTransportMode.ALL;
 
-        List<IceServer> iceServers = new ArrayList<>(0);
-        mPeerConnectionConfiguration = new PeerConnection.RTCConfiguration(iceServers);
-        mPeerConnectionConfiguration.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
-        mPeerConnectionConfiguration.enableImplicitRollback = true;
-        mPeerConnectionConfiguration.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY;
-
-        // Prune relay ports to drop duplicates and keep highest priority.
-        mPeerConnectionConfiguration.turnPortPrunePolicy = PeerConnection.PortPrunePolicy.PRUNE_BASED_ON_PRIORITY;
-        mPeerConnectionConfiguration.bundlePolicy = PeerConnection.BundlePolicy.MAXBUNDLE;
-
-        // Disable SRTP_AES128_CM_SHA1_32 and enable SRTP_AEAD_AES_256_GCM.
-        CryptoOptions.Builder cryptoBuilder = CryptoOptions.builder();
-        cryptoBuilder.setEnableAes128Sha1_32CryptoCipher(false);
-        cryptoBuilder.setEnableGcmCryptoSuites(true);
-        cryptoBuilder.setRequireFrameEncryption(false);
-        cryptoBuilder.setEnableEncryptedRtpHeaderExtensions(false);
-        mPeerConnectionConfiguration.cryptoOptions = cryptoBuilder.createCryptoOptions();
+        mPeerDataConnectionConfiguration = createConfiguration(false);
+        mPeerMediaConnectionConfiguration = createConfiguration(true);
     }
 
     //
@@ -251,26 +298,8 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
 
         super.onUpdateConfiguration(configuration);
 
-        final List<IceServer> iceServers = new ArrayList<>(configuration.turnServers.length);
-
-        // If a proxy is used for the connection to the signaling server, look for a possible STUN
-        // port and configure the ICE server.  We can only do this for stun and not turn/turns.
-        final ProxyDescriptor activeProxyDescriptor = mConnection.getActiveProxyDescriptor();
-        if (activeProxyDescriptor != null && activeProxyDescriptor.getSTUNPort() > 0) {
-            IceServer.Builder serverBuilder = IceServer.builder("stun:" + activeProxyDescriptor.getAddress() + ":" + activeProxyDescriptor.getSTUNPort());
-            serverBuilder.setTlsCertPolicy(PeerConnection.TlsCertPolicy.TLS_CERT_POLICY_INSECURE_NO_CHECK);
-            iceServers.add(serverBuilder.createIceServer());
-        }
-        for (TurnServer turnServer : configuration.turnServers) {
-            IceServer.Builder serverBuilder = IceServer.builder(turnServer.url);
-            if (turnServer.url.startsWith("turns")) {
-                serverBuilder.setTlsCertPolicy(PeerConnection.TlsCertPolicy.TLS_CERT_POLICY_SECURE);
-            }
-            serverBuilder.setUsername(turnServer.username);
-            serverBuilder.setPassword(turnServer.password);
-            iceServers.add(serverBuilder.createIceServer());
-        }
-        mPeerConnectionConfiguration.iceServers = iceServers;
+        mTurnServers = configuration.turnServers;
+        updateConfiguration();
 
         // Convert our Hostname class to the WebRTC ServerAddr (we must not use WebRTC ServerAddr in ManagementService
         // due to the transpiler and webapp proxy)
@@ -278,7 +307,44 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
         for (Hostname hostname : configuration.hostnames) {
             hostnames.add(new PeerConnection.ServerAddr(hostname.hostname, hostname.ipv4, hostname.ipv6));
         }
-        mPeerConnectionConfiguration.hostAddresses = hostnames;
+        mPeerDataConnectionConfiguration.hostAddresses = hostnames;
+        mPeerMediaConnectionConfiguration.hostAddresses = hostnames;
+    }
+
+    private void updateConfiguration() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "updateConfiguration mode=" + mTransportMode);
+        }
+
+        if (mTurnServers == null) {
+            return;
+        }
+
+        final List<IceServer> iceServers = new ArrayList<>(mTurnServers.length);
+
+        // If a proxy is used for the connection to the signaling server, look for a possible STUN
+        // port and configure the ICE server.  We can only do this for stun and not turn/turns.
+        final ProxyDescriptor activeProxyDescriptor = mConnection.getActiveProxyDescriptor();
+        if (activeProxyDescriptor != null && activeProxyDescriptor.getSTUNPort() > 0 && mTransportMode == IceTransportMode.ALL) {
+            IceServer.Builder serverBuilder = IceServer.builder("stun:" + activeProxyDescriptor.getAddress() + ":" + activeProxyDescriptor.getSTUNPort());
+            serverBuilder.setTlsCertPolicy(PeerConnection.TlsCertPolicy.TLS_CERT_POLICY_INSECURE_NO_CHECK);
+            iceServers.add(serverBuilder.createIceServer());
+        }
+        for (TurnServer turnServer : mTurnServers) {
+            IceServer.Builder serverBuilder = IceServer.builder(turnServer.url);
+            if (turnServer.url.startsWith("turns")) {
+                serverBuilder.setTlsCertPolicy(PeerConnection.TlsCertPolicy.TLS_CERT_POLICY_SECURE);
+            } else if (mTransportMode != IceTransportMode.ALL) {
+                continue;
+            }
+            serverBuilder.setUsername(turnServer.username);
+            serverBuilder.setPassword(turnServer.password);
+            iceServers.add(serverBuilder.createIceServer());
+        }
+        mPeerDataConnectionConfiguration.iceServers = iceServers;
+        mPeerMediaConnectionConfiguration.iceServers = iceServers;
+        mPeerDataConnectionConfiguration.iceTransportsType = mTransportMode == IceTransportMode.RELAY ? PeerConnection.IceTransportsType.RELAY : PeerConnection.IceTransportsType.ALL;
+        mPeerMediaConnectionConfiguration.iceTransportsType = mPeerDataConnectionConfiguration.iceTransportsType;
     }
 
     //
@@ -294,6 +360,22 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
         final List<PeerConnectionImpl> activeList = new ArrayList<>(mPeerConnectionImpls.values());
         for (PeerConnectionImpl peerConnection : activeList) {
             peerConnection.sessionPing();
+        }
+    }
+
+    /**
+     * Set the ICE transport configuration when creating a WebRTC connection.
+     * @param mode the ice transport mode selecting which ICEs are allowed.
+     */
+    @Override
+    public void setIceTransportMode(@NonNull IceTransportMode mode) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "setIceTransportMode mode=" + mode);
+        }
+
+        if (mTransportMode != mode) {
+            mTransportMode = mode;
+            updateConfiguration();
         }
     }
 
@@ -489,7 +571,7 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
             return ErrorCode.NO_PUBLIC_KEY;
         }
 
-        peerConnectionImpl.createIncomingPeerConnection(mPeerConnectionConfiguration, sessionDescription, offer, offerToReceive,
+        peerConnectionImpl.createIncomingPeerConnection(sessionDescription, offer, offerToReceive,
                 consumer, observer, complete);
         return ErrorCode.QUEUED;
     }
@@ -591,7 +673,32 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
             }
         }
 
-        peerConnectionImpl.createOutgoingPeerConnection(mPeerConnectionConfiguration, consumer, complete);
+        peerConnectionImpl.createOutgoingPeerConnection(consumer, complete);
+    }
+
+    @Override
+    public void refreshSecrets(@NonNull TwincodeOutbound twincodeOutbound, @NonNull TwincodeOutbound peerTwincodeOutbound) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "refreshSecrets: twincodeOutbound=" + twincodeOutbound + " peerTwincodeOutbound=" + peerTwincodeOutbound);
+        }
+
+        if (!isServiceReady()) {
+
+            return;
+        }
+
+        for (Map.Entry<UUID, PeerConnectionImpl> peerConnectionEntry : mPeerConnectionImpls.entrySet()) {
+            PeerConnectionImpl peerConnection = peerConnectionEntry.getValue();
+            SessionKeyPair sessionKeyPair = peerConnection.getKeyPair();
+            if (sessionKeyPair != null && sessionKeyPair.isAssociation(twincodeOutbound, peerTwincodeOutbound)) {
+                Pair<ErrorCode, SessionKeyPair> result = mCryptoService.createSession(peerConnectionEntry.getKey(), twincodeOutbound, peerTwincodeOutbound, true);
+                if (result.first == ErrorCode.SUCCESS) {
+                    peerConnection.setKeyPair(result.second);
+                }
+                // Note: we must continue checking other P2P session because we may have one P2P session for the ConversationService
+                // (that one that triggers the secret refresh), and another P2P session for a pending (or active) audio/video call.
+            }
+        }
     }
 
     @Override
@@ -1016,13 +1123,14 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
      * @param sessionId the P2P session id.
      * @param updateType whether this is an offer or an answer.
      * @param sdp the sdp content (clear text | compressed | encrypted).
+     * @param sequenceId a sequence ID for the session-update SDP.
      * @return SUCCESS or ITEM_NOT_FOUND if the session id is not known.
      */
     @Override
     @NonNull
-    public ErrorCode onSessionUpdate(@NonNull UUID sessionId, @NonNull SdpType updateType, @NonNull Sdp sdp) {
+    public ErrorCode onSessionUpdate(@NonNull UUID sessionId, @NonNull SdpType updateType, @NonNull Sdp sdp, long sequenceId) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "onSessionUpdate: sessionId=" + sessionId + " type=" + updateType + " sdp=" + sdp);
+            Log.d(LOG_TAG, "onSessionUpdate: sessionId=" + sessionId + " type=" + updateType + " sdp=" + sdp + " sequenceId=" + sequenceId);
         }
 
         final PeerConnectionImpl peerConnectionImpl = mPeerConnectionImpls.get(sessionId);
@@ -1031,6 +1139,10 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
             return ErrorCode.ITEM_NOT_FOUND;
         }
 
+        // Ignore this SDP if it was already received (we can receive it from the signaling server or from the data channel).
+        if (peerConnectionImpl.wasReceived(sequenceId)) {
+            return ErrorCode.SUCCESS;
+        }
         final Pair<ErrorCode, Sdp> result = decrypt(peerConnectionImpl, sdp);
         if (result.first != ErrorCode.SUCCESS) {
             return result.first;
@@ -1169,7 +1281,16 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
             return;
         }
 
-        mPeerCallServiceImpl.sessionUpdate(peerConnection.getId(), peerConnection.getPeerId(), result.second, type, onComplete);
+        // For session-update, we need a sequence ID to handle duplicates.
+        final int sequenceId = peerConnection.allocateSequenceId();
+        if (!peerConnection.isSignalingSupported()) {
+            mPeerCallServiceImpl.sessionUpdate(peerConnection.getId(), peerConnection.getPeerId(), result.second, type, sequenceId, onComplete);
+            return;
+        }
+
+        // Send the session-update through the WebRTC data-channel when it is opened and supported by the peer.
+        final SessionUpdateIQ iq = mPeerCallServiceImpl.createSessionUpdate(peerConnection.getId(), peerConnection.getPeerId(), result.second, type, sequenceId);
+        sendSdpDataChannel(peerConnection,StatType.IQ_SET_SDP_UPDATE, iq, onComplete);
     }
 
     void transportInfo(@NonNull PeerConnectionImpl peerConnection, @NonNull TransportCandidateList candidates,
@@ -1193,7 +1314,87 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
             return;
         }
 
-        mPeerCallServiceImpl.transportInfo(requestId, peerConnection.getId(), peerConnection.getPeerId(), result.second, onComplete);
+        if (!peerConnection.isSignalingSupported()) {
+            mPeerCallServiceImpl.transportInfo(requestId, peerConnection.getId(), peerConnection.getPeerId(), result.second, onComplete);
+            return;
+        }
+
+        // Send the transport-info through the WebRTC data-channel when it is opened and supported by the peer.
+        final TransportInfoIQ iq = mPeerCallServiceImpl.createTransportInfo(requestId, peerConnection.getId(), peerConnection.getPeerId(), result.second);
+        sendSdpDataChannel(peerConnection, StatType.IQ_SET_SDP_TRANSPORT_INFO, iq, onComplete);
+    }
+
+    private void sendSdpDataChannel(@NonNull PeerConnectionImpl peerConnection, @NonNull StatType statType,
+                                    @NonNull BinaryPacketIQ iq, @NonNull Consumer<Long> onComplete) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "sendSdpDataChannel: statType=" + statType + " request=" + iq.getRequestId());
+        }
+
+        synchronized (mPendingRequests) {
+            mPendingRequests.put(iq.getRequestId(), new SdpPendingRequest(peerConnection.getId(), iq, onComplete));
+            if (mResendTimer == null) {
+                mResendTimer = mPeerConnectionExecutor.schedule(this::onResendTimeout, SDP_RESEND_TIMEOUT, TimeUnit.MILLISECONDS);
+            }
+        }
+        peerConnection.sendPacket(statType, iq);
+    }
+
+    private void onResendTimeout() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onResendTimeout");
+        }
+
+        final long now = System.currentTimeMillis();
+        List<SdpPendingRequest> resendList = null;
+        long nextDeadline = now + SDP_RESEND_TIMEOUT;
+        synchronized (mPendingRequests) {
+            mResendTimer = null;
+            for (SdpPendingRequest pendingRequest : mPendingRequests.values()) {
+                if (pendingRequest.needResend(now)) {
+                    if (mPeerConnectionImpls.get(pendingRequest.sessionId) != null) {
+                        if (resendList == null) {
+                            resendList = new ArrayList<>();
+                        }
+                        resendList.add(pendingRequest);
+                    }
+                } else if (nextDeadline > pendingRequest.resendDeadline) {
+                    nextDeadline = pendingRequest.resendDeadline;
+                }
+            }
+            if (resendList != null) {
+                for (SdpPendingRequest pendingRequest : resendList) {
+                    mPendingRequests.remove(pendingRequest.iq.getRequestId());
+                }
+            }
+            if (!mPendingRequests.isEmpty()) {
+                long delay = nextDeadline - now;
+                if (delay <= 50) {
+                    delay = 50;
+                }
+                mResendTimer = mPeerConnectionExecutor.schedule(this::onResendTimeout, delay, TimeUnit.MILLISECONDS);
+            }
+        }
+        if (resendList != null) {
+            for (SdpPendingRequest pendingRequest : resendList) {
+                mPeerCallServiceImpl.sendPacket(pendingRequest.sessionId, pendingRequest.iq, pendingRequest.onComplete);
+            }
+        }
+    }
+
+    public void ackPacket(@Nullable UUID sessionId, long requestId) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "ackPacket sessionId=" + sessionId + " requestId=" + requestId);
+        }
+
+        synchronized (mPendingRequests) {
+            mPendingRequests.remove(requestId);
+        }
+        if (sessionId != null) {
+            final PeerConnectionImpl peerConnectionImpl = mPeerConnectionImpls.get(sessionId);
+            if (peerConnectionImpl != null) {
+                peerConnectionImpl.ackTransportInfo(requestId);
+            }
+        }
     }
 
     @Nullable
@@ -1434,7 +1635,7 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
     }
 
     @NonNull
-    PeerConnectionFactory getPeerConnectionFactory(boolean withMedia) {
+    Pair<PeerConnectionFactory, PeerConnection.RTCConfiguration> getPeerConnectionFactory(boolean withMedia) {
         if (DEBUG) {
             Log.d(LOG_TAG, "getPeerConnectionFactory");
         }
@@ -1450,7 +1651,7 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
                 PeerConnectionFactory.Builder builder = PeerConnectionFactory.builder();
                 builder.setVideoEncoderFactory(mVideoEncoderFactory);
                 builder.setVideoDecoderFactory(mVideoDecoderFactory);
-                builder.setHostnames(mPeerConnectionConfiguration.hostAddresses);
+                builder.setHostnames(mPeerDataConnectionConfiguration.hostAddresses);
                 Logging.enableLogToDebugOutput(Logging.Severity.LS_NONE);
 
                 final Context context = mPeerCallServiceImpl.getTwinlifeImpl().getContext();
@@ -1461,17 +1662,17 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
                 mMediaConnectionFactory = builder.createPeerConnectionFactory();
             }
 
-            return mMediaConnectionFactory;
+            return new Pair<>(mMediaConnectionFactory, mPeerMediaConnectionConfiguration);
         } else {
 
             if (mDataConnectionFactory == null) {
                 Logging.enableLogToDebugOutput(Logging.Severity.LS_NONE);
 
                 PeerConnectionFactory.Builder builder = PeerConnectionFactory.builder();
-                builder.setHostnames(mPeerConnectionConfiguration.hostAddresses);
+                builder.setHostnames(mPeerDataConnectionConfiguration.hostAddresses);
                 mDataConnectionFactory = builder.createPeerConnectionFactory();
             }
-            return mDataConnectionFactory;
+            return new Pair<>(mDataConnectionFactory, mPeerDataConnectionConfiguration);
         }
     }
 
@@ -1484,7 +1685,7 @@ public class PeerConnectionServiceImpl extends BaseServiceImpl<PeerConnectionSer
     @Nullable
     List<PeerConnection.ServerAddr> getHostnames() {
 
-        return mPeerConnectionConfiguration.hostAddresses;
+        return mPeerDataConnectionConfiguration.hostAddresses;
     }
 
     void onChangeConnectionState(@NonNull UUID peerConnectionId, ConnectionState state) {

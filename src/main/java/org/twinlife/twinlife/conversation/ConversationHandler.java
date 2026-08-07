@@ -12,72 +12,54 @@
 package org.twinlife.twinlife.conversation;
 
 import android.util.Log;
-import android.util.Pair;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BinaryPacketListener;
 import org.twinlife.twinlife.ConversationService;
 import org.twinlife.twinlife.ConversationService.Descriptor;
 import org.twinlife.twinlife.ConversationService.GeolocationDescriptor;
 import org.twinlife.twinlife.conversation.UpdateDescriptorTimestampOperation.UpdateDescriptorTimestampType;
 import org.twinlife.twinlife.PeerConnectionService;
 import org.twinlife.twinlife.PeerConnectionService.StatType;
-import org.twinlife.twinlife.Serializer;
 import org.twinlife.twinlife.SerializerFactory;
-import org.twinlife.twinlife.util.BinaryCompactDecoder;
-import org.twinlife.twinlife.util.BinaryDecoder;
+import org.twinlife.twinlife.peerconnection.DataChannelHandler;
 import org.twinlife.twinlife.util.BinaryPacketIQ;
-import org.twinlife.twinlife.util.ByteBufferInputStream;
-import org.twinlife.twinlife.util.Logger;
-import org.twinlife.twinlife.util.SchemaKey;
 
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Small conversation handler to handle sending/receiving some IQs within a WebRTC data channel.
  *
  * @todo may be try to use it from the ConversationImpl class to handle IQs.
  */
-public abstract class ConversationHandler implements PeerConnectionService.DataChannelObserver{
+public abstract class ConversationHandler extends DataChannelHandler {
     private static final String LOG_TAG = "ConversationHandler";
     private static final boolean DEBUG = false;
 
-    @NonNull
-    protected final PeerConnectionService mPeerConnectionService;
-    @NonNull
-    private final SerializerFactory mSerializerFactory;
-    private final Map<SchemaKey, Pair<Serializer, BinaryPacketListener>> mBinaryListeners = new HashMap<>();
     private final Map<Long, DescriptorImpl> mRequests = new HashMap<>();
     @Nullable
     private GeolocationDescriptorImpl mPeerGeolocationDescriptor;
 
-    @Nullable
-    protected UUID mPeerConnectionId;
-
     public ConversationHandler(@NonNull PeerConnectionService peerConnectionService,
                                @NonNull SerializerFactory serializerFactory) {
+        super(peerConnectionService, serializerFactory);
 
-        mPeerConnectionService = peerConnectionService;
-        mSerializerFactory = serializerFactory;
-        addListener(PushObjectIQ.IQ_PUSH_OBJECT_SERIALIZER, this::onPushObjectIQ);
-        addListener(OnPushObjectIQ.IQ_ON_PUSH_OBJECT_SERIALIZER, this::onOnPushObjectIQ);
-        addListener(PushTwincodeIQ.IQ_PUSH_TWINCODE_SERIALIZER_3, this::onPushTwincodeIQ);
-        addListener(PushTwincodeIQ.IQ_PUSH_TWINCODE_SERIALIZER_2, this::onPushTwincodeIQ);
-        addListener(OnPushTwincodeIQ.IQ_ON_PUSH_TWINCODE_SERIALIZER, this::onOnPushObjectIQ);
-        addListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_2, this::onPushGeolocationIQ);
-        addListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_3, this::onPushGeolocationIQ);
-        addListener(OnPushGeolocationIQ.IQ_ON_PUSH_GEOLOCATION_SERIALIZER, this::onOnPushObjectIQ);
-        addListener(PushPollIQ.IQ_PUSH_POLL_SERIALIZER, this::onPushPollIQ);
-        addListener(OnPushPollIQ.IQ_ON_PUSH_POLL_SERIALIZER, this::onOnPushObjectIQ);
-        addListener(UpdateGeolocationIQ.IQ_UPDATE_GEOLOCATION_SERIALIZER, this::onUpdateGeolocationIQ);
-        addListener(OnUpdateGeolocationIQ.IQ_ON_UPDATE_GEOLOCATION_SERIALIZER, this::onOnPushObjectIQ);
-        addListener(UpdateTimestampIQ.IQ_UPDATE_TIMESTAMPS_SERIALIZER, this::onUpdateTimestampIQ);
-        addListener(OnUpdateTimestampIQ.IQ_ON_UPDATE_TIMESTAMP_SERIALIZER, this::onOnPushObjectIQ);
+        addPacketListener(PushObjectIQ.IQ_PUSH_OBJECT_SERIALIZER, this::onPushObjectIQ);
+        addPacketListener(OnPushObjectIQ.IQ_ON_PUSH_OBJECT_SERIALIZER, this::onOnPushObjectIQ);
+        addPacketListener(PushTwincodeIQ.IQ_PUSH_TWINCODE_SERIALIZER_3, this::onPushTwincodeIQ);
+        addPacketListener(PushTwincodeIQ.IQ_PUSH_TWINCODE_SERIALIZER_2, this::onPushTwincodeIQ);
+        addPacketListener(OnPushTwincodeIQ.IQ_ON_PUSH_TWINCODE_SERIALIZER, this::onOnPushObjectIQ);
+        addPacketListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_2, this::onPushGeolocationIQ);
+        addPacketListener(PushGeolocationIQ.IQ_PUSH_GEOLOCATION_SERIALIZER_3, this::onPushGeolocationIQ);
+        addPacketListener(OnPushGeolocationIQ.IQ_ON_PUSH_GEOLOCATION_SERIALIZER, this::onOnPushObjectIQ);
+        addPacketListener(PushPollIQ.IQ_PUSH_POLL_SERIALIZER, this::onPushPollIQ);
+        addPacketListener(OnPushPollIQ.IQ_ON_PUSH_POLL_SERIALIZER, this::onOnPushObjectIQ);
+        addPacketListener(UpdateGeolocationIQ.IQ_UPDATE_GEOLOCATION_SERIALIZER, this::onUpdateGeolocationIQ);
+        addPacketListener(OnUpdateGeolocationIQ.IQ_ON_UPDATE_GEOLOCATION_SERIALIZER, this::onOnPushObjectIQ);
+        addPacketListener(UpdateTimestampIQ.IQ_UPDATE_TIMESTAMPS_SERIALIZER, this::onUpdateTimestampIQ);
+        addPacketListener(OnUpdateTimestampIQ.IQ_ON_UPDATE_TIMESTAMP_SERIALIZER, this::onOnPushObjectIQ);
     }
 
     public abstract void onPopDescriptor(@NonNull Descriptor descriptor);
@@ -85,17 +67,6 @@ public abstract class ConversationHandler implements PeerConnectionService.DataC
     public abstract void onReadDescriptor(@NonNull ConversationService.DescriptorId descriptorId, long timestamp);
     public abstract void onDeleteDescriptor(@NonNull ConversationService.DescriptorId descriptorId);
     public abstract long newRequestId();
-
-    /**
-     * Get the peer connection id or null.
-     *
-     * @return the peer connectin id or null.
-     */
-    @Nullable
-    public UUID getPeerConnectionId() {
-
-        return mPeerConnectionId;
-    }
 
     /**
      * Get the current peer geolocation descriptor.
@@ -112,106 +83,9 @@ public abstract class ConversationHandler implements PeerConnectionService.DataC
      * Internal methods.
      */
 
-    @Override
-    public void onDataChannelOpen(@NonNull UUID peerConnectionId, @Nullable String peerVersion, boolean leadingPadding) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "Data channel opened " + peerConnectionId + " v=" + peerVersion);
-        }
-    }
-
-    @Override
-    public void onDataChannelClosed(@NonNull UUID peerConnectionId) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "Data channel closed " + peerConnectionId);
-        }
-    }
-
-    @Override
-    public void onDataChannelMessage(@NonNull UUID peerConnectionId, @NonNull ByteBuffer buffer, boolean leadingPadding) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "Data channel message " + peerConnectionId + " len=" + buffer);
-        }
-
-        UUID schemaId;
-        int schemaVersion;
-        try {
-            mPeerConnectionService.incrementStat(peerConnectionId, StatType.IQ_RECEIVE_SET_COUNT);
-
-            final ByteBufferInputStream inputStream = new ByteBufferInputStream(buffer);
-            final BinaryDecoder binaryDecoder;
-            if (leadingPadding) {
-                binaryDecoder = new BinaryDecoder(inputStream);
-            } else {
-                binaryDecoder = new BinaryCompactDecoder(inputStream);
-            }
-            schemaId = binaryDecoder.readUUID();
-            schemaVersion = binaryDecoder.readInt();
-            SchemaKey key = new SchemaKey(schemaId, schemaVersion);
-            Pair<Serializer, BinaryPacketListener> listener = mBinaryListeners.get(key);
-            if (listener != null) {
-                BinaryPacketIQ iq = (BinaryPacketIQ) listener.first.deserialize(mSerializerFactory, binaryDecoder);
-                listener.second.processPacket(iq);
-
-            } else {
-                if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "Schema key ", key, " not found");
-                }
-            }
-
-        } catch (Exception exception) {
-            if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Internal error ", exception);
-            }
-        } catch (OutOfMemoryError error) {
-            if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "Out of memory", error);
-            }
-        }
-    }
-
-    protected void addListener(@NonNull Serializer serializer, @NonNull BinaryPacketListener listener) {
-
-        SchemaKey key = new SchemaKey(serializer.schemaId, serializer.schemaVersion);
-        mBinaryListeners.put(key, new Pair<>(serializer, listener));
-    }
-
     public int getDeviceState() {
 
         return ConversationConnection.DEVICE_STATE_FOREGROUND | ConversationConnection.DEVICE_STATE_HAS_OPERATIONS;
-    }
-
-    /**
-     * Set the peer connection id for this peer connection.
-     *
-     * @param peerConnectionId the peer connection id.
-     */
-    public synchronized void setPeerConnectionId(@NonNull UUID peerConnectionId) {
-
-        if (mPeerConnectionId == null) {
-            mPeerConnectionId = peerConnectionId;
-        }
-    }
-
-    /**
-     * Serialize the IQ in binary form and send it to the peer connection.
-     * Increment the P2P connection stat corresponding to statType.
-     *
-     * @param packetIQ the packet to serialize and send.
-     * @param statType the stat type to increment.
-     * @return true if the packet was serialized and sent.
-     */
-    public boolean sendMessage(@NonNull BinaryPacketIQ packetIQ, @NonNull StatType statType) {
-        if (DEBUG) {
-            Log.d(LOG_TAG, "sendMessage packetIQ=" + packetIQ);
-        }
-
-        if (mPeerConnectionId == null) {
-
-            return false;
-        }
-
-        mPeerConnectionService.sendPacket(mPeerConnectionId, statType, packetIQ);
-        return true;
     }
 
     /**

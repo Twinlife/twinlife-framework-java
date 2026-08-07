@@ -14,7 +14,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.ConversationService.DescriptorId;
 import org.twinlife.twinlife.DatabaseIdentifier;
@@ -45,6 +45,8 @@ public class Operation implements Comparable<Operation> {
         PUSH_TWINCODE,
         PUSH_COMMAND,
         PUSH_POLL,
+        PUSH_CONTACT_SHARE,
+        ANSWER_CONTACT_SHARE,
         UPDATE_ANNOTATIONS,
         UPDATE_OBJECT,
 

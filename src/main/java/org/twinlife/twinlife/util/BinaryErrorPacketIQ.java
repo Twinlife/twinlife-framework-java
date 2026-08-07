@@ -11,7 +11,7 @@ package org.twinlife.twinlife.util;
 
 import androidx.annotation.NonNull;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.Decoder;
 import org.twinlife.twinlife.Encoder;
 import org.twinlife.twinlife.SerializerException;

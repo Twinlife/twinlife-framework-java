@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025 twinlife SA.
+ *  Copyright (c) 2025-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -19,7 +19,9 @@ public enum PeerConnectionAssertPoint implements AssertPoint {
     ENCRYPT_ERROR,
     DECRYPT_ERROR_1,
     DECRYPT_ERROR_2,
-    NOT_TERMINATED;
+    NOT_TERMINATED,
+    UNKNOWN_DATA_CHANNEL_IQ,
+    DATA_CHANNEL_EXCEPTION;
 
     public int getIdentifier() {
 

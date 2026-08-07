@@ -620,7 +620,7 @@ class AccountSecuredConfiguration {
                 }
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "init: deserialize", exception);
+                    Logger.exception(LOG_TAG, exception, "init: deserialize", exception.getMessage());
                 }
             }
         }
@@ -681,7 +681,7 @@ class AccountSecuredConfiguration {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "init: serialize", exception);
+                Logger.exception(LOG_TAG, exception, "init: serialize", exception.getMessage());
             }
         }
 
@@ -719,7 +719,7 @@ class AccountSecuredConfiguration {
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "init: serialize", exception);
+                Logger.exception(LOG_TAG, exception, "init: serialize", exception.getMessage());
             }
         }
     }

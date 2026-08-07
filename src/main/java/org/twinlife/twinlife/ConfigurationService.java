@@ -11,8 +11,6 @@ package org.twinlife.twinlife;
 
 import androidx.annotation.NonNull;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
-
 /**
  * Configuration service to load and store various configuration parameters.
  */
@@ -75,6 +73,19 @@ public interface ConfigurationService {
 
         void setData(byte[] data);
     }
+
+    enum SecuredMethod {
+        KEYSTORE_ERROR,
+        KEYSTORE_AES_GCM,
+        KEYSTORE_AES_CBC,
+        KEYSTORE_RSA_4096_AES_CBC,
+        KEYSTORE_RSA_3072_AES_CBC,
+        KEYSTORE_RSA_2048_AES_CBC,
+        KEYSTORE_RSA_1024_AES_CBC
+    }
+
+    @NonNull
+    SecuredMethod getSecuredMethod();
 
     Configuration getConfiguration(String name);
 

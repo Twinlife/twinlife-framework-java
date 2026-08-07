@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2015-2023 twinlife SA.
+ *  Copyright (c) 2015-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:

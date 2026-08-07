@@ -13,7 +13,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.PeerConnectionService;
 import org.twinlife.twinlife.SerializerException;

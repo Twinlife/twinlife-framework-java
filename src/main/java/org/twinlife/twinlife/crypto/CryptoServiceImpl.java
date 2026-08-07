@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2024-2025 twinlife SA.
+ *  Copyright (c) 2024-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
@@ -18,6 +18,7 @@ import org.twinlife.twinlife.Connection;
 import org.twinlife.twinlife.BaseServiceImpl;
 import org.twinlife.twinlife.CryptoService;
 import org.twinlife.twinlife.DatabaseException;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.ExportedImageId;
 import org.twinlife.twinlife.ImageId;
 import org.twinlife.twinlife.Sdp;
@@ -325,7 +326,7 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "sign exception", exception);
+                Logger.exception(LOG_TAG, exception, "sign exception", exception.getMessage());
             }
             return null;
 
@@ -448,7 +449,7 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "signContent", exception);
+                Logger.exception(LOG_TAG, exception, "signContent", exception.getMessage());
             }
             return null;
 
@@ -572,7 +573,7 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "verifyContent", exception);
+                Logger.exception(LOG_TAG, exception, "verifyContent", exception.getMessage());
             }
             return ErrorCode.LIBRARY_ERROR;
         }
@@ -1151,6 +1152,10 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         }
 
         mServiceProvider.saveSecretKey((TwincodeOutboundImpl) twincodeOutbound, (TwincodeOutboundImpl) peerTwincodeOutbound, secretKey, keyIndex);
+
+        // If we have existing P2P connections, we must refresh the session secrets so that when we receive an encrypted SDP
+        // we can decrypt it, if it is encrypted by using a new encryption key (same issue for validateSecrets()).
+        mTwinlifeImpl.getPeerConnectionService().refreshSecrets(twincodeOutbound, peerTwincodeOutbound);
     }
 
     public void validateSecrets(@NonNull TwincodeOutbound twincodeOutbound, @NonNull TwincodeOutbound peerTwincodeOutbound) {
@@ -1159,6 +1164,10 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
         }
 
         mServiceProvider.validateSecrets((TwincodeOutboundImpl) twincodeOutbound, (TwincodeOutboundImpl) peerTwincodeOutbound);
+
+        // If we have existing P2P connections, we must refresh the session secrets so that when we receive an encrypted SDP
+        // we can decrypt it, if it is encrypted by using a new encryption key (same issue for validateSecrets()).
+        mTwinlifeImpl.getPeerConnectionService().refreshSecrets(twincodeOutbound, peerTwincodeOutbound);
     }
 
 
@@ -1316,7 +1325,7 @@ public class CryptoServiceImpl extends BaseServiceImpl<CryptoService.ServiceObse
 
         } catch (Exception exception) {
             if (Logger.ERROR) {
-                Logger.error(LOG_TAG, "verify exception", exception);
+                Logger.exception(LOG_TAG, exception, "verify exception", exception.getMessage());
             }
             return VerifyResult.error(ErrorCode.LIBRARY_ERROR);
         }

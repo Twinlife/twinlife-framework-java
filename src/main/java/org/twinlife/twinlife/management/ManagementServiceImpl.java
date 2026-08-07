@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012-2023 twinlife SA.
+ *  Copyright (c) 2012-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributor: Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
@@ -8,6 +8,7 @@
  *  Contributor: Xiaobo Xie (Xiaobo.Xie@twinlife-systems.com)
  *  Contributor: Chedi Baccari (Chedi.Baccari@twinlife-systems.com)
  *  Stephane Carrez (Stephane.Carrez@twin.life)
+ *  Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.management;
@@ -22,6 +23,7 @@ import android.util.Log;
 import org.libwebsockets.ConnectionStats;
 import org.twinlife.twinlife.AssertPoint;
 import org.twinlife.twinlife.Consumer;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.ProxyDescriptor;
 import org.twinlife.twinlife.Configuration;
 import org.twinlife.twinlife.Connection;
@@ -52,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -101,6 +104,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
     private static final String PREFERENCES = "ManagementService";
     private static final String PREFERENCES_ENVIRONMENT_ID = "EnvironmentId";
     private static final String PREFERENCES_PUSH_NOTIFICATION_TOKEN = "PushNotificationToken";
+    private static final String PREFERENCES_PUSH_NOTIFICATION_VARIANT = "PushNotificationVariant";
 
     private static final int MAX_EVENTS = 16;
     private static final int MAX_ASSERTIONS = 16;
@@ -174,6 +178,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
     private volatile UUID mEnvironmentId;
     private volatile String mPushNotificationToken;
+    private volatile String mPushNotificationVariant;
     private volatile boolean mSetPushNotificationToken = true;
 
     private final AtomicReference<List<Event>> mEvents = new AtomicReference<>(new ArrayList<>(MAX_EVENTS));
@@ -228,7 +233,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "getNotificationKey", exception);
+                    Logger.exception(LOG_TAG, exception, "getNotificationKey", exception.getMessage());
                 }
             }
         }
@@ -282,6 +287,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
         mConfiguration = new Configuration(new TurnServer[]{}, new Hostname[]{});
 
         mPushNotificationToken = savedConfig.getString(PREFERENCES_PUSH_NOTIFICATION_TOKEN, null);
+        mPushNotificationVariant = savedConfig.getString(PREFERENCES_PUSH_NOTIFICATION_VARIANT, null);
     }
 
     @Override
@@ -584,10 +590,18 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
         ValidateConfigurationIQ iq = new ValidateConfigurationIQ(IQ_VALIDATE_CONFIGURATION_SERIALIZER, requestId,
                 mJobService.getState(), environmentId,
-                mPushNotificationToken == null ? null : ManagementService.PUSH_NOTIFICATION_FIREBASE_VARIANT,
+                getPushNotificationVariant(),
                 mPushNotificationToken, services, Build.BRAND, Build.MODEL, device.getOsName(), locale, "", configs);
 
         sendDataPacket(iq, DEFAULT_REQUEST_TIMEOUT);
+    }
+
+    private String getPushNotificationVariant() {
+        if (mPushNotificationToken == null) {
+            return null;
+        }
+
+        return mPushNotificationVariant;
     }
 
     @Override
@@ -611,22 +625,24 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
             Log.d(LOG_TAG, "setPushNotificationToken: pushNotificationVariant=" + pushNotificationVariant + " pushNotificationToken=" + pushNotificationToken);
         }
 
-        if (!pushNotificationVariant.isEmpty() && !ManagementService.PUSH_NOTIFICATION_FIREBASE_VARIANT.equals(pushNotificationVariant)) {
+        if (!pushNotificationVariant.isEmpty() && !ManagementService.PUSH_NOTIFICATION_FIREBASE_VARIANT.equals(pushNotificationVariant) && !ManagementService.PUSH_NOTIFICATION_HUAWEI_VARIANT.equals(pushNotificationVariant)) {
 
             return;
         }
-        if (pushNotificationToken.equals(mPushNotificationToken)) {
+        if (Objects.equals(pushNotificationToken, mPushNotificationToken) && Objects.equals(pushNotificationVariant, mPushNotificationVariant)) {
 
             return;
         }
 
         mPushNotificationToken = pushNotificationToken;
+        mPushNotificationVariant = pushNotificationVariant;
         mSetPushNotificationToken = false;
 
         ConfigurationService configurationService = mTwinlifeImpl.getConfigurationService();
         ConfigurationService.Configuration savedConfig = configurationService.getConfiguration(PREFERENCES);
 
         savedConfig.setString(PREFERENCES_PUSH_NOTIFICATION_TOKEN, mPushNotificationToken);
+        savedConfig.setString(PREFERENCES_PUSH_NOTIFICATION_VARIANT, mPushNotificationVariant);
         savedConfig.save();
 
         setPushNotificationTokenInternal();
@@ -690,6 +706,13 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
                           boolean stackTrace, @Nullable Throwable exception) {
         if (DEBUG) {
             Log.d(LOG_TAG, "assertion: controlPoint=" + assertPoint + " values=" + values + " exception=" + exception);
+        }
+        if (Logger.ERROR) {
+            if (exception != null) {
+                Logger.exception(LOG_TAG, exception, "assertion: controlPoint=" + assertPoint + " values=" + values);
+            } else {
+                Logger.error(LOG_TAG, "assertion: controlPoint=" + assertPoint + " values=" + values);
+            }
         }
 
         if (stackTrace && exception == null) {
@@ -883,7 +906,7 @@ public class ManagementServiceImpl extends BaseServiceImpl<ManagementService.Ser
 
         final long requestId = newRequestId();
         SetPushTokenIQ pushTokenIQ = new SetPushTokenIQ(IQ_SET_PUSH_TOKEN_SERIALIZER, requestId,
-                mEnvironmentId, ManagementService.PUSH_NOTIFICATION_FIREBASE_VARIANT, mPushNotificationToken);
+                mEnvironmentId, mPushNotificationVariant, mPushNotificationToken);
         sendDataPacket(pushTokenIQ, DEFAULT_REQUEST_TIMEOUT);
     }
 

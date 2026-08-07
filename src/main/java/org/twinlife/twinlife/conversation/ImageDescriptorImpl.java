@@ -80,7 +80,7 @@ import org.twinlife.twinlife.SerializerFactory;
 
 import java.util.UUID;
 
-public class ImageDescriptorImpl extends FileDescriptorImpl implements ConversationService.ImageDescriptor {
+class ImageDescriptorImpl extends FileDescriptorImpl implements ConversationService.ImageDescriptor {
     private static final String LOG_TAG = "ImageDescriptorImpl";
     private static final boolean DEBUG = false;
 
@@ -243,6 +243,7 @@ public class ImageDescriptorImpl extends FileDescriptorImpl implements Conversat
     // Override Descriptor methods
     //
 
+    @NonNull
     @Override
     public Type getType() {
 

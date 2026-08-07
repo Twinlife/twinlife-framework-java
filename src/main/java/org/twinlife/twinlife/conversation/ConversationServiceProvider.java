@@ -1480,7 +1480,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 }
             } catch (DatabaseException exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "exception", exception);
+                    Logger.exception(LOG_TAG, exception, "exception", exception.getMessage());
                 }
                 mService.onDatabaseException(exception);
             }
@@ -1687,6 +1687,10 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 return new PollDescriptorImpl(descriptorId, cid,
                         creationDate, sendDate, receiveDate, readDate, updateDate, peerDeleteDate, deleteDate,
                         expireTimeout, flags, content);
+
+            case 15: // Contact share descriptor
+                return new ContactShareDescriptorImpl(descriptorId, cid, creationDate, sendDate, receiveDate,
+                        readDate, updateDate, peerDeleteDate, deleteDate, expireTimeout, flags, content, value);
 
             default:
                 return null;
@@ -2045,6 +2049,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             values.put(Columns.READ_DATE, descriptorImpl.getReadTimestamp());
             values.put(Columns.DELETE_DATE, descriptorImpl.getDeletedTimestamp());
             values.put(Columns.PEER_DELETE_DATE, descriptorImpl.getPeerDeletedTimestamp());
+            values.put(Columns.UPDATE_DATE, descriptorImpl.getUpdatedTimestamp());
             transaction.updateWithId(Tables.DESCRIPTOR, values, descriptorImpl.getDatabaseId());
             transaction.commit();
 
@@ -2242,7 +2247,7 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
             mService.onDatabaseException(exception);
         }
 
-        //noinspection unchecked
+        @SuppressWarnings("unchecked")
         final List<DescriptorId>[] result = new List[3];
 
         result[0] = deleteList;
@@ -3023,6 +3028,14 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                                 descriptorId, cursor.getBlob(6));
                         break;
 
+                    case 21: // Added 2026-07-07
+                        operation = new PushContactShareOperation(operationId, conversationId, creationDate, descriptorId);
+                        break;
+
+                    case 22: // Added 2026-07-08
+                        operation = new AnswerContactShareOperation(operationId, conversationId, creationDate, descriptorId);
+                        break;
+
                     case 3:  // Transient operation should never be saved!
                     case 13: // Push command
                     default:
@@ -3202,6 +3215,9 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case POLL_DESCRIPTOR:
                 return 14;
+
+            case CONTACT_SHARE_DESCRIPTOR:
+                return 15;
         }
         return 0;
     }
@@ -3309,6 +3325,12 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
 
             case INVOKE_ROSTER_REMOVE: // Added 2026-04-09
                 return 20;
+
+            case PUSH_CONTACT_SHARE: // Added 2026-07-07
+                return 21;
+
+            case ANSWER_CONTACT_SHARE: // Added 2026-07-08
+                return 22;
         }
         return 0;
     }

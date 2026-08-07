@@ -58,7 +58,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.twinlife.twinlife.BaseService.ErrorCode;
+import org.twinlife.twinlife.ErrorCode;
 import org.twinlife.twinlife.BuildConfig;
 import org.twinlife.twinlife.DatabaseIdentifier;
 import org.twinlife.twinlife.PeerConnectionService;
@@ -107,7 +107,7 @@ class GroupUpdateOperation extends GroupOperation {
 
             } catch (Exception exception) {
                 if (Logger.ERROR) {
-                    Logger.error(LOG_TAG, "deserialize", exception);
+                    Logger.exception(LOG_TAG, exception, "deserialize", exception.getMessage());
                 }
             }
         }
