@@ -32,6 +32,7 @@ import org.twinlife.twinlife.DatabaseObject;
 import org.twinlife.twinlife.DatabaseTable;
 import org.twinlife.twinlife.DisplayCallsMode;
 import org.twinlife.twinlife.Filter;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.Twincode;
 import org.twinlife.twinlife.TwincodeOutbound;
@@ -639,12 +640,14 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
      * repository object.  It is loaded and used if necessary.
      *
      * @param group the group repository object to associated with the conversation.
+     * @param permissions the list of permissions to set for the current group member.
+     * @param joinPermissions the list of permissions after a join.
      * @return the group conversation instance (a new one or an existing one).
      */
     @Nullable
-    GroupConversationImpl createGroupConversation(@NonNull RepositoryObject group, boolean owner) {
+    GroupConversationImpl createGroupConversation(@NonNull RepositoryObject group, boolean owner, @NonNull Permission permissions, @NonNull Permission joinPermissions) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "createGroupConversation: group=" + group);
+            Log.d(LOG_TAG, "createGroupConversation: group=" + group + " permissions=" + permissions + " joinPermissions=" + joinPermissions);
         }
 
         final TwincodeOutbound groupTwincode = group.getPeerTwincodeOutbound();
@@ -672,9 +675,9 @@ public class ConversationServiceProvider extends DatabaseServiceProvider impleme
                 final UUID conversationId = UUID.randomUUID();
                 final UUID resourceId = UUID.randomUUID();
                 final GroupConversationImpl groupConversation = new GroupConversationImpl(identifier, conversationId, group,
-                        now, resourceId, -1L, -1L, 0);
+                        now, resourceId, permissions.value, joinPermissions.value, 0);
                 if (owner) {
-                    groupConversation.join(-1L);
+                    groupConversation.join(permissions.value, joinPermissions.value);
                 }
                 values.put(Columns.ID, id);
                 values.put(Columns.GROUP_ID, id);

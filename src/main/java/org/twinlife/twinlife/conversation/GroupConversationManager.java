@@ -314,9 +314,9 @@ class GroupConversationManager {
      * @return the group conversation instance or null.
      */
     @Nullable
-    GroupConversationImpl createGroup(@NonNull RepositoryObject group, boolean owner) {
+    GroupConversationImpl createGroup(@NonNull RepositoryObject group, boolean owner, @NonNull Permission permissions, @NonNull Permission joinPermissions) {
         if (DEBUG) {
-            Log.d(LOG_TAG, "createGroup: group=" + group + " owner=" + owner);
+            Log.d(LOG_TAG, "createGroup: group=" + group + " owner=" + owner + " permissions=" + permissions + " joinPermissions=" + joinPermissions);
         }
 
         final TwincodeOutbound groupTwincode = group.getPeerTwincodeOutbound();
@@ -334,7 +334,7 @@ class GroupConversationManager {
             }
             return groupConversationImpl;
         }
-        groupConversationImpl = mServiceProvider.createGroupConversation(group, owner);
+        groupConversationImpl = mServiceProvider.createGroupConversation(group, owner, permissions, joinPermissions);
         if (groupConversationImpl == null) {
             return null;
         }
@@ -451,9 +451,10 @@ class GroupConversationManager {
             if (!groupTwincodeOutbound.getId().equals(invitation.getGroupTwincodeId())) {
                 return ErrorCode.BAD_REQUEST;
             }
+            final Permission joinPermission = GroupProtocol.getJoinPermissions(groupTwincodeOutbound);
 
             // Create the local group conversation.
-            groupConversation = createGroup(group, false);
+            groupConversation = createGroup(group, false, joinPermission, joinPermission);
             if (groupConversation == null) {
                 return ErrorCode.BAD_REQUEST;
             }
@@ -674,7 +675,7 @@ class GroupConversationManager {
         }
 
         final GroupConversationImpl groupConversation = (GroupConversationImpl) conversation;
-        groupConversation.join(permissions);
+        groupConversation.join(permissions, permissions);
         mServiceProvider.updateGroupConversation(groupConversation);
 
         // Add the admin member.
@@ -793,13 +794,15 @@ class GroupConversationManager {
         }
 
         final GroupConversationImpl groupConversation = (GroupConversationImpl) conversation;
+        final TwincodeOutbound groupTwincode = groupConversation.getPeerTwincodeOutbound();
+        final long joinPermissions = GroupProtocol.getJoinPermissions(groupTwincode).value;
         final Map<UUID, GroupMemberConversationImpl> groupMembers = groupConversation.getMembers();
         for (RosterMember activeMember : members) {
             GroupMemberConversationImpl memberConversation = groupMembers.remove(activeMember.memberTwincodeId);
             if (memberConversation == null) {
                 if (activeMember.memberTwincodeId.equals(groupConversation.getTwincodeOutboundId())) {
-                    if (groupConversation.getPermissions() != activeMember.permissions) {
-                        groupConversation.join(activeMember.permissions);
+                    if (groupConversation.getPermissions() != activeMember.permissions || groupConversation.getJoinPermissionsAsLong() != joinPermissions) {
+                        groupConversation.join(activeMember.permissions, joinPermissions);
                         mServiceProvider.updateGroupConversation(groupConversation);
                     }
                 } else {
@@ -1498,7 +1501,7 @@ class GroupConversationManager {
         // scheduling the INVOKE_ADD_MEMBER operation (could be executed by another thread).
         final boolean joinStatus;
         if (invitation != null) {
-            joinStatus = groupConversation.join(permissions);
+            joinStatus = groupConversation.join(permissions, permissions);
             if (joinStatus) {
                 mServiceProvider.updateGroupConversation(groupConversation);
             }

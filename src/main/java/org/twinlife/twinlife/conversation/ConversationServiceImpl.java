@@ -3127,7 +3127,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
      */
     @Nullable
     @Override
-    public GroupConversation createGroup(@NonNull RepositoryObject group, boolean owner) {
+    public GroupConversation createGroup(@NonNull RepositoryObject group, boolean owner, @NonNull Permission permissions, @NonNull Permission joinPermissions) {
         if (DEBUG) {
             Log.d(LOG_TAG, "createGroup: group=" + group + " owner=" + owner);
         }
@@ -3136,7 +3136,7 @@ public class ConversationServiceImpl extends BaseServiceImpl<ConversationService
             return null;
         }
 
-        return mGroupManager.createGroup(group, owner);
+        return mGroupManager.createGroup(group, owner, permissions, joinPermissions);
     }
 
     @Nullable

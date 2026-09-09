@@ -38,6 +38,10 @@ public class Permission {
         this.value = bitmask;
     }
 
+    public Permission(@NonNull List<Permission> list) {
+        this.value = toLong(list);
+    }
+
     public final boolean hasPermission(long permissions) {
         return (permissions & value) != 0;
     }

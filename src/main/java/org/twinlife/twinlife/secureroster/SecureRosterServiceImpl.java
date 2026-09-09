@@ -52,6 +52,8 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
     private static final UUID ON_LIST_ROSTER_SCHEMA_ID = UUID.fromString("299b036c-2589-4367-8df3-3f61ef5b2268");
     private static final UUID ADD_ROSTER_MEMBER_SCHEMA_ID = UUID.fromString("abf52b69-e9d4-47c1-864c-9f94cbfa5096");
     private static final UUID ON_ADD_ROSTER_MEMBER_SCHEMA_ID = UUID.fromString("4ceec7bb-0ae9-462d-bd9f-cc84f33232b7");
+    private static final UUID UPDATE_ROSTER_MEMBER_SCHEMA_ID = UUID.fromString("9d8dc720-be8e-4fb7-a5f1-4b1ecd0f539f");
+    private static final UUID ON_UPDATE_ROSTER_MEMBER_SCHEMA_ID = UUID.fromString("6ec3a99c-6a5e-4554-812d-ed2791768383");
     private static final UUID DELETE_ROSTER_MEMBER_SCHEMA_ID = UUID.fromString("e10bbf8e-cab3-4817-9e22-2a8664135ab8");
     private static final UUID ON_DELETE_ROSTER_MEMBER_SCHEMA_ID = UUID.fromString("721ab261-9259-437e-bd2c-efe11b7eec8b");
     private static final UUID ADD_ROSTER_PUBLIC_KEY_SCHEMA_ID = UUID.fromString("a0c5183a-062e-412d-b31b-1a6c79b4c6f6");
@@ -64,11 +66,13 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
     public static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_LIST_ROSTER_SERIALIZER = ListRosterIQ.createSerializer(LIST_ROSTER_SCHEMA_ID, 1);
     public static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ON_LIST_ROSTER_SERIALIZER = OnListRosterIQ.createSerializer(ON_LIST_ROSTER_SCHEMA_ID, 1);
     public static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ADD_ROSTER_MEMBER_SERIALIZER = AddRosterMemberIQ.createSerializer(ADD_ROSTER_MEMBER_SCHEMA_ID, 1);
+    private static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_UPDATE_ROSTER_MEMBER_SERIALIZER = UpdateRosterMemberIQ.createSerializer(UPDATE_ROSTER_MEMBER_SCHEMA_ID, 1);
     public static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_DELETE_ROSTER_MEMBER_SERIALIZER = DeleteRosterMemberIQ.createSerializer(DELETE_ROSTER_MEMBER_SCHEMA_ID, 1);
     public static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ADD_ROSTER_PUBLIC_KEY_SERIALIZER = AddRosterPublicKeyIQ.createSerializer(ADD_ROSTER_PUBLIC_KEY_SCHEMA_ID, 1);
     private static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ON_ADD_ROSTER_MEMBER_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_ADD_ROSTER_MEMBER_SCHEMA_ID, 1);
     private static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ON_DELETE_ROSTER_MEMBER_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_DELETE_ROSTER_MEMBER_SCHEMA_ID, 1);
     private static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ON_ADD_ROSTER_PUBLIC_KEY_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_ADD_ROSTER_PUBLIC_KEY_SCHEMA_ID, 1);
+    private static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ON_UPDATE_ROSTER_MEMBER_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_UPDATE_ROSTER_MEMBER_SCHEMA_ID, 1);
     private static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_DELETE_ROSTER_SERIALIZER = SecureRosterIQ.createSerializer(DELETE_ROSTER_SCHEMA_ID, 1);
     private static final BinaryPacketIQ.BinaryPacketIQSerializer IQ_ON_DELETE_ROSTER_SERIALIZER = BinaryErrorPacketIQ.createSerializer(ON_DELETE_ROSTER_SCHEMA_ID, 1);
 
@@ -122,6 +126,7 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
         connection.addPacketListener(IQ_ON_ADD_ROSTER_MEMBER_SERIALIZER, this::onAddMemberRoster);
         connection.addPacketListener(IQ_ON_DELETE_ROSTER_MEMBER_SERIALIZER, this::onDeleteMemberRoster);
         connection.addPacketListener(IQ_ON_ADD_ROSTER_PUBLIC_KEY_SERIALIZER, this::onAddRosterPublicKey);
+        connection.addPacketListener(IQ_ON_UPDATE_ROSTER_MEMBER_SERIALIZER, this::onUpdateMemberRoster);
         connection.addPacketListener(IQ_ON_DELETE_ROSTER_SERIALIZER, this::onDeleteRoster);
     }
 
@@ -248,14 +253,14 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
             }
             permissions |= p.value;
         }
-        MemberToAdd member = new MemberToAdd(newMemberTwincodeId, new Permission(permissions), newMemberPublicKey);
-        List<MemberToAdd> members = List.of(member);
+        MemberIdentity member = new MemberIdentity(newMemberTwincodeId, new Permission(permissions), newMemberPublicKey);
+        List<MemberIdentity> members = List.of(member);
         addMembers(rosterId, currentMember, members, complete);
     }
 
     @Override
     public void addMembers(@NonNull RosterId rosterId, @NonNull TwincodeOutbound currentMember,
-                           @NonNull List<MemberToAdd> members, @NonNull Consumer<Void> complete) {
+                           @NonNull List<MemberIdentity> members, @NonNull Consumer<Void> complete) {
         if (DEBUG) {
             Log.d(LOG_TAG, "addMembers: rosterId=" + rosterId + " members=" + members);
         }
@@ -267,7 +272,7 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
 
         final List<AddRosterMemberIQ.MemberInfo> addMembers = new ArrayList<>(members.size());
         final CryptoService cryptoService = mTwinlifeImpl.getCryptoService();
-        for (MemberToAdd member : members) {
+        for (MemberIdentity member : members) {
             final long permissions = member.memberPermission.value & Permission.ALL_PERMISSIONS.value;
             final byte[] rawPublicKey = member.memberPublicKey.asBytes();
             final byte[] content;
@@ -336,7 +341,7 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
         }
 
         final List<ConversationService.GroupMemberConversation> members = groupConversation.getGroupMembers(ConversationService.MemberFilter.JOINED_MEMBERS);
-        final List<MemberToAdd> addMembers = new ArrayList<>(members.size() + 1);
+        final List<MemberIdentity> addMembers = new ArrayList<>(members.size() + 1);
         final CryptoService cryptoService = mTwinlifeImpl.getCryptoService();
 
         // Add the group owner (ie, ourselves).
@@ -345,7 +350,7 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
             Permission permission = groupConversation.getPermission().restrictPermission(Permission.ALL_PERMISSIONS);
             final byte[] publicKey = cryptoService.getRawPublicKey(ownerTwincode);
             if (publicKey != null) {
-                addMembers.add(new MemberToAdd(ownerTwincode.getId(), permission, CryptoService.PublicKeyData.create(publicKey)));
+                addMembers.add(new MemberIdentity(ownerTwincode.getId(), permission, CryptoService.PublicKeyData.create(publicKey)));
             } else if (rosterId.schemaId.equals(GroupProtocol.LEGACY_SCHEMA_ID)) {
                 // If this is a legacy secure roster group, add this member with an empty public key.
                 // We must also remove the right for that member to invite other members because it would not be able
@@ -354,7 +359,7 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
                     permission = permission.removePermission(Permission.INVITE_MEMBER);
                     mTwinlifeImpl.getConversationService().setPermissions(groupConversation.getSubject(), ownerTwincode.getId(), List.of(permission));
                 }
-                addMembers.add(new MemberToAdd(ownerTwincode.getId(), permission, CryptoService.PublicKeyData.create(new byte[]{})));
+                addMembers.add(new MemberIdentity(ownerTwincode.getId(), permission, CryptoService.PublicKeyData.create(new byte[]{})));
             }
         }
 
@@ -365,7 +370,7 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
                 Permission permission = member.getPermission().restrictPermission(Permission.ALL_PERMISSIONS);
                 final byte[] publicKey = cryptoService.getRawPublicKey(member.getPeerTwincodeOutbound());
                 if (publicKey != null) {
-                    addMembers.add(new MemberToAdd(memberTwincode.getId(), permission, CryptoService.PublicKeyData.create(publicKey)));
+                    addMembers.add(new MemberIdentity(memberTwincode.getId(), permission, CryptoService.PublicKeyData.create(publicKey)));
                 } else if (rosterId.schemaId.equals(GroupProtocol.LEGACY_SCHEMA_ID)) {
                     // If this is a legacy secure roster group, add this member with an empty public key.
                     // We must also remove the right for that member to invite other members because it would not be able
@@ -374,7 +379,7 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
                         permission = permission.removePermission(Permission.INVITE_MEMBER);
                         mTwinlifeImpl.getConversationService().setPermissions(groupConversation.getSubject(), memberTwincode.getId(), List.of(permission));
                     }
-                    addMembers.add(new MemberToAdd(memberTwincode.getId(), permission, CryptoService.PublicKeyData.create(new byte[]{})));
+                    addMembers.add(new MemberIdentity(memberTwincode.getId(), permission, CryptoService.PublicKeyData.create(new byte[]{})));
                 }
             }
         }
@@ -402,6 +407,77 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
         }
 
         addMember(rosterId, currentMember, newMemberTwincode.getId(), newMemberPermission, CryptoService.PublicKeyData.create(publicKey), complete);
+    }
+
+    @Override
+    public void updateMembers(@NonNull RosterId rosterId, @NonNull TwincodeOutbound signingMember,
+                              @NonNull List<MemberIdentity> members, @NonNull Consumer<Void> complete) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "updateMembers: rosterId=" + rosterId + " members=" + members);
+        }
+
+        if (!isServiceOn()) {
+            complete.onGet(ErrorCode.SERVICE_UNAVAILABLE, null);
+            return;
+        }
+
+        final List<UpdateRosterMemberIQ.MemberPermission> updateMembers = new ArrayList<>(members.size());
+        final CryptoService cryptoService = mTwinlifeImpl.getCryptoService();
+        for (MemberIdentity member : members) {
+            final long permissions = member.memberPermission.value & Permission.ALL_PERMISSIONS.value;
+            final byte[] rawPublicKey = member.memberPublicKey.asBytes();
+            final byte[] content;
+            try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
+                final BinaryEncoder encoder = new BinaryCompactEncoder(outputStream);
+                encoder.writeUUID(rosterId.id);
+                encoder.writeUUID(rosterId.schemaId);
+                encoder.writeUUID(member.memberTwincodeId);
+                encoder.writeLong(permissions);
+                encoder.writeBytes(rawPublicKey, 0, rawPublicKey.length);
+                content = outputStream.toByteArray();
+            } catch (Exception exception) {
+                if (Logger.ERROR) {
+                    Log.e(LOG_TAG, "updateMember content serialization failed", exception);
+                }
+                complete.onGet(ErrorCode.LIBRARY_ERROR, null);
+                return;
+            }
+
+            final byte[] signature = cryptoService.signContentRaw(signingMember, content);
+            if (signature == null) {
+                complete.onGet(ErrorCode.LIBRARY_ERROR, null);
+                return;
+            }
+
+            // If this member can invite other members, we also have to provide a valid signature
+            // to verify that member's public key to sign other members.
+            final byte[] rosterKeySignature;
+            if (member.memberPermission.hasPermission(Permission.INVITE_MEMBER)) {
+                final byte[] keyFingerprint = createKeyFingerprint(rosterId, member.memberTwincodeId, rawPublicKey);
+                if (keyFingerprint == null) {
+                    complete.onGet(ErrorCode.LIBRARY_ERROR, null);
+                    return;
+                }
+                rosterKeySignature = cryptoService.signContentRaw(signingMember, keyFingerprint);
+                if (rosterKeySignature == null) {
+                    complete.onGet(ErrorCode.LIBRARY_ERROR, null);
+                    return;
+                }
+            } else {
+                rosterKeySignature = null;
+            }
+
+            updateMembers.add(new UpdateRosterMemberIQ.MemberPermission(member.memberTwincodeId, permissions, signature, rosterKeySignature));
+        }
+
+        final long requestId = newRequestId();
+        synchronized (mPendingRequests) {
+            mPendingRequests.put(requestId, new RosterPendingRequest(complete));
+        }
+
+        final UpdateRosterMemberIQ updateRosterMemberIQ = new UpdateRosterMemberIQ(IQ_UPDATE_ROSTER_MEMBER_SERIALIZER, requestId,
+                rosterId.id, signingMember.getId(), updateMembers);
+        sendDataPacket(updateRosterMemberIQ, DEFAULT_REQUEST_TIMEOUT);
     }
 
     @Override
@@ -645,6 +721,26 @@ public class SecureRosterServiceImpl extends BaseServiceImpl<BaseService.Service
     private void onAddMemberRoster(@NonNull BinaryPacketIQ iq) {
         if (DEBUG) {
             Log.d(LOG_TAG, "onAddMemberRoster iq=" + iq);
+        }
+
+        final long requestId = iq.getRequestId();
+        receivedIQ(requestId);
+
+        final RosterPendingRequest request;
+        synchronized (mPendingRequests) {
+            request = (RosterPendingRequest) mPendingRequests.remove(requestId);
+        }
+        if (request == null) {
+            return;
+        }
+
+        final BinaryErrorPacketIQ response = (BinaryErrorPacketIQ) iq;
+        request.complete.onGet(response.getErrorCode(), null);
+    }
+
+    private void onUpdateMemberRoster(@NonNull BinaryPacketIQ iq) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "onUpdateMemberRoster iq=" + iq);
         }
 
         final long requestId = iq.getRequestId();

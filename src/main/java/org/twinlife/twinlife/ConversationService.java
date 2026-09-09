@@ -1103,10 +1103,13 @@ public interface ConversationService extends BaseService<ConversationService.Ser
      *
      * @param group the group repository object.
      * @param owner when set the group is created in the JOINED state otherwise it is in the CREATED state.
+     * @param permissions the list of permissions to set for the current group member.
+     * @param joinPermissions the list of permissions after a join.
      * @return the group conversation instance or null.
      */
     @Nullable
-    GroupConversation createGroup(@NonNull RepositoryObject group, boolean owner);
+    GroupConversation createGroup(@NonNull RepositoryObject group, boolean owner,
+                                  @NonNull Permission permissions, @NonNull Permission joinPermissions);
 
     /**
      * Send an invitation to the peer to join the group.

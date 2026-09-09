@@ -13,7 +13,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.twinlife.twinlife.BaseService;
+import org.twinlife.twinlife.Permission;
 import org.twinlife.twinlife.RosterId;
+import org.twinlife.twinlife.Twincode;
 import org.twinlife.twinlife.TwincodeOutbound;
 
 import java.util.List;
@@ -40,6 +42,7 @@ public class GroupProtocol {
     private static final String INVOKE_TWINCODE_ACTION_ADMIN_TWINCODE_ID = "adminTwincodeId";
     private static final String INVOKE_TWINCODE_ACTION_ADMIN_PERMISSIONS = "adminPermissions";
     private static final String INVOKE_TWINCODE_ACTION_MEMBER_PERMISSIONS = "memberPermissions";
+    private static final String JOIN_PERMISSIONS = "joinPermissions";
 
     public static void setInvokeTwincodeActionGroupSubscribeMemberTwincodeId(@NonNull List<BaseService.AttributeNameValue> attributes, @NonNull UUID memberTwincodeId) {
 
@@ -105,5 +108,34 @@ public class GroupProtocol {
         final UUID schemaId = UUID.fromString(parts[1]);
 
         return id != null && schemaId != null ? new RosterId(id, schemaId) : null;
+    }
+
+    public static void setSecureRosterId(@NonNull List<BaseService.AttributeNameValue> attributes, @NonNull RosterId rosterId) {
+
+        attributes.add(new BaseService.AttributeNameStringValue(Twincode.ROSTER_ID, rosterId.id + ":" + rosterId.schemaId));
+    }
+
+    public static void setJoinPermissions(@NonNull List<BaseService.AttributeNameValue> attributes, @NonNull Permission permissions) {
+
+        attributes.add(new BaseService.AttributeNameStringValue(JOIN_PERMISSIONS, Long.toString(permissions.value)));
+    }
+
+    public static Permission getJoinPermissions(@Nullable TwincodeOutbound twincodeOutbound) {
+
+        if (twincodeOutbound == null) {
+            return Permission.ALL_PERMISSIONS;
+        }
+
+        final String permissions = (String)twincodeOutbound.getAttribute(JOIN_PERMISSIONS);
+        if (permissions == null) {
+            return Permission.ALL_PERMISSIONS;
+        }
+
+        try {
+            long value = Long.parseLong(permissions);
+            return new Permission(value);
+        } catch (Exception ex) {
+            return Permission.ALL_PERMISSIONS;
+        }
     }
 }

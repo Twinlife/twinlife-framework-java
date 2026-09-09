@@ -39,8 +39,7 @@ public class NotificationDump implements DebugServiceImpl.DumpListGenerator {
     public List<String[]> getDump() {
 
         final NotificationServiceImpl notificationService = mTtwinlifeImpl.getNotificationServiceImpl();
-        final Filter filter = new Filter(null);
-        //noinspection unchecked
+        final Filter<Notification> filter = new Filter<>(null);
         final List<Notification> list = notificationService.getNotificationServiceProvider().loadNotifications(filter, 1000);
         final List<String[]> result = new ArrayList<>();
 

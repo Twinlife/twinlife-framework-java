@@ -54,19 +54,44 @@ public interface NotificationService extends BaseService<NotificationService.Ser
         UPDATED_ANNOTATION;
 
         private static final Set<NotificationType> MESSAGING_STYLE_NOTIFICATION_TYPES = Set.of(
-                NotificationType.NEW_TEXT_MESSAGE,
-                NotificationType.NEW_AUDIO_MESSAGE,
-                NotificationType.NEW_IMAGE_MESSAGE,
-                NotificationType.NEW_VIDEO_MESSAGE,
-                NotificationType.NEW_FILE_MESSAGE,
-                NotificationType.NEW_POLL_MESSAGE,
-                NotificationType.NEW_CONTACT_SHARE,
-                NotificationType.NEW_GEOLOCATION,
-                NotificationType.UPDATED_ANNOTATION
+                NEW_TEXT_MESSAGE,
+                NEW_AUDIO_MESSAGE,
+                NEW_IMAGE_MESSAGE,
+                NEW_VIDEO_MESSAGE,
+                NEW_FILE_MESSAGE,
+                NEW_POLL_MESSAGE,
+                NEW_CONTACT_SHARE,
+                NEW_GEOLOCATION,
+                UPDATED_ANNOTATION
         );
 
         public boolean isMessagingStyle() {
             return MESSAGING_STYLE_NOTIFICATION_TYPES.contains(this);
+        }
+
+        private static final Set<NotificationType> ACKNOWLEDGEABLE_NOTIFICATION_TYPES = Set.of(
+                NEW_TEXT_MESSAGE,
+                NEW_AUDIO_MESSAGE,
+                NEW_IMAGE_MESSAGE,
+                NEW_VIDEO_MESSAGE,
+                NEW_FILE_MESSAGE,
+                NEW_GEOLOCATION,
+                NEW_GROUP_INVITATION,
+                UPDATED_CONTACT,
+                UPDATED_AVATAR_CONTACT,
+                NEW_CONTACT,
+                NEW_GROUP_JOINED,
+                RESET_CONVERSATION,
+                UPDATED_ANNOTATION,
+                NEW_POLL_MESSAGE
+        );
+
+        /**
+         * Check if a notification type can be acknowledged. Acknowledged notifications are canceled
+         * when the user taps the notification or opens its conversation.
+         */
+        public boolean isAcknowledgeable() {
+            return ACKNOWLEDGEABLE_NOTIFICATION_TYPES.contains(this);
         }
     }
 

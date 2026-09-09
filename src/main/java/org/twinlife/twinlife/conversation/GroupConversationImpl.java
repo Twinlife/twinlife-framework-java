@@ -237,9 +237,10 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
      * Update the group state to join it with the given permissions.
      *
      * @param permissions the member's permissions
+     * @param joinPermissions the group join permissions.
      * @return true if the group is now joined and false if it is being deleted or leaving.
      */
-    synchronized boolean join(long permissions) {
+    synchronized boolean join(long permissions, long joinPermissions) {
 
         if ((mFlags & (FLAG_DELETED | FLAG_LEAVING)) != 0) {
             return false;
@@ -248,7 +249,7 @@ public class GroupConversationImpl extends DatabaseObjectImpl implements GroupCo
         mFlags |= FLAG_JOINED;
         mPermissions = permissions;
         mIncomingConversation.setPermissions(permissions);
-        mJoinPermissions = permissions;
+        mJoinPermissions = joinPermissions;
         return true;
     }
 

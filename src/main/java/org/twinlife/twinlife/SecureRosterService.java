@@ -70,12 +70,12 @@ public interface SecureRosterService extends BaseService<BaseService.ServiceObse
      */
     void listRoster(@NonNull RosterId rosterId, long afterCreationTime, @NonNull Consumer<SecureRoster> complete);
 
-    final class MemberToAdd {
+    final class MemberIdentity {
         public final UUID memberTwincodeId;
         public final Permission memberPermission;
         public final CryptoService.PublicKeyData memberPublicKey;
 
-        public MemberToAdd(@NonNull UUID memberTwincodeId, @NonNull Permission memberPermission, @NonNull CryptoService.PublicKeyData memberPublicKey) {
+        public MemberIdentity(@NonNull UUID memberTwincodeId, @NonNull Permission memberPermission, @NonNull CryptoService.PublicKeyData memberPublicKey) {
             this.memberTwincodeId = memberTwincodeId;
             this.memberPermission = memberPermission;
             this.memberPublicKey = memberPublicKey;
@@ -104,9 +104,19 @@ public interface SecureRosterService extends BaseService<BaseService.ServiceObse
                    @NonNull TwincodeOutbound newMemberTwincode, @NonNull List<Permission> newMemberPermission,
                    @NonNull Consumer<Void> complete);
     void addMembers(@NonNull RosterId rosterId, @NonNull TwincodeOutbound signingMember,
-                   @NonNull List<MemberToAdd> members, @NonNull Consumer<Void> complete);
+                    @NonNull List<MemberIdentity> members, @NonNull Consumer<Void> complete);
     void addMembers(@NonNull RosterId rosterId, @NonNull TwincodeOutbound signingMember,
                     @NonNull ConversationService.GroupConversation groupConversation, @NonNull Consumer<Void> complete);
+
+    /**
+     * Update the member permissions in the secure roster.
+     * @param rosterId the secure roster ID and roster schema ID.
+     * @param signingMember the twincode identifying the private key to sign the new member.
+     * @param members the list of members to update.
+     * @param complete the completion handler executed when the operation completes.
+     */
+    void updateMembers(@NonNull RosterId rosterId, @NonNull TwincodeOutbound signingMember,
+                       @NonNull List<MemberIdentity> members, @NonNull Consumer<Void> complete);
 
     /**
      * Remove a member from the secure roster. This operation is accepted by the server if:
