@@ -71,6 +71,11 @@ class SubscribeFeatureIQ extends BinaryPacketIQ {
                     encoder.writeEnum(2);
                     break;
 
+                case MERCHANT_HUAWEI:
+                    // Nonsequential value to match values defined in the Kreds branch
+                    encoder.writeEnum(5);
+                    break;
+
                 default:
                     throw new SerializerException();
             }

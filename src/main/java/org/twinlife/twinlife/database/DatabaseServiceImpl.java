@@ -29,7 +29,9 @@ import org.twinlife.twinlife.RepositoryObject;
 import org.twinlife.twinlife.TwincodeInbound;
 import org.twinlife.twinlife.TwincodeOutbound;
 import org.twinlife.twinlife.util.EventMonitor;
+import org.twinlife.twinlife.util.Utils;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -280,6 +282,63 @@ public class DatabaseServiceImpl implements BaseServiceProvider {
         } catch (Exception exception) {
             Log.e(LOG_TAG, "Database exception", exception);
         }
+    }
+
+    public boolean snapshotDatabase(@NonNull String snapshotPath) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "snapshotDatabase: snapshotPath=" + snapshotPath);
+        }
+
+        if (mDatabase == null) {
+            return false;
+        }
+
+        File snapshotFile = new File(snapshotPath);
+        Utils.deleteFile(LOG_TAG, snapshotFile);
+
+        boolean attached = false;
+        boolean success;
+
+        lock();
+
+        try {
+            Long userVersion = mDatabase.longQuery("PRAGMA user_version", null);
+
+            if (userVersion == null) {
+                return false;
+            }
+
+            // ATTACH without KEY -> SQLCipher will use the main DB's key.
+            mDatabase.execSQLWithArgs("ATTACH DATABASE ? AS 'snapshot'", new String[]{snapshotPath});
+            attached = true;
+
+            // No PRAGMA cipher_plaintext_header_size. It is not currently applied on iOS nor Android,
+            // so applying it here makes the DB unreadable on both.
+            // It will be needed here and in Cipher5Hook when we enable it on iOS.
+
+            // Make sure the snapshot is synced when we detach it.
+            mDatabase.execSQL("PRAGMA snapshot.journal_mode = DELETE");
+
+            mDatabase.execSQL("SELECT sqlcipher_export('snapshot');");
+            mDatabase.execSQL("PRAGMA snapshot.user_version = " + userVersion);
+            success = true;
+        } catch (DatabaseException e) {
+            Log.e(LOG_TAG, "Could not snapshot database", e);
+            success = false;
+        } finally {
+            if (attached) {
+                try {
+                    mDatabase.execSQL("DETACH DATABASE 'snapshot';");
+
+                } catch (DatabaseException e) {
+                    Log.e(LOG_TAG, "Could not detach snapshot", e);
+                    success = false;
+                }
+            }
+            unlock();
+        }
+
+        return success;
     }
 
     private void configureDatabase(@NonNull Database database) {

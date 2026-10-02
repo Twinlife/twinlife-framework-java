@@ -308,6 +308,21 @@ public class EngineTwinlifeImpl extends TwinlifeImpl implements Runnable {
         }
     }
 
+    public boolean commitRestoredDatabase() {
+        return false;
+    }
+
+    public boolean deleteRestoredDatabase() {
+        return false;
+    }
+
+    public boolean snapshotDatabase(@NonNull String snapshotPath) {
+        return false;
+    }
+
+    public void deleteDatabaseForMigration() {
+    }
+
     //
     // Protected Methods
     //

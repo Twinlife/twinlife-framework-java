@@ -70,6 +70,10 @@ class CancelFeatureIQ extends BinaryPacketIQ {
                     encoder.writeEnum(2);
                     break;
 
+                case MERCHANT_HUAWEI:
+                    encoder.writeEnum(3);
+                    break;
+
                 default:
                     throw new SerializerException();
             }

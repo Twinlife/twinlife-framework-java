@@ -1,10 +1,11 @@
 /*
- *  Copyright (c) 2020-2025 twinlife SA.
+ *  Copyright (c) 2020-2026 twinlife SA.
  *  SPDX-License-Identifier: AGPL-3.0-only
  *
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.accountMigration;
@@ -41,6 +42,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -118,12 +120,14 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
     static final String MIGRATION_PREFIX = "Migration";
 
     static final String MIGRATION_DATABASE_NAME = "migration.db";
+    static final String MIGRATION_SNAPSHOT_NAME = "migration-snapshot-4.sqlcipher";
     static final String MIGRATION_DATABASE_CIPHER_V3_NAME = "migration-3.sqlcipher";
     static final String MIGRATION_DATABASE_CIPHER_V4_NAME = "migration-4.sqlcipher";
 
     static final String MIGRATION_DIR = "Migration";
     static final String MIGRATION_DONE = "migration-done";
     static final String MIGRATION_ID = "migration-id";
+    static final String MIGRATION_INITIATOR = "migration-initiator";
 
     // Web-RTC can hang while transmitting data (See webrtc 11824 and 11547).  We setup a timer that
     // fires to detect regularly if we received responses to our requests.  The timer fires two times
@@ -203,8 +207,7 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
     @NonNull
     private final File mDatabaseFile;
     @NonNull
-    private final DatabaseServiceImpl mDatabase;
-    private final int mDatabaseFileIndex;
+    private final File mSnapshotFile;
     private int mFileIndex = FIRST_FILE_INDEX;
     private long mMaxFileSize = Long.MAX_VALUE;
     private long mSent = 0;
@@ -215,8 +218,12 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
     private long mReceivePending = 0;
     private boolean mAccountReceived = false;
     private boolean mAccountSent = false;
+    /**
+     * Track our AccountIQ request ID, needed because the other device
+     * may use a different request ID when it sends its AccountIQ.
+     */
+    private long mAccountRequestId = -1;
     private boolean mSettingsReceived = false;
-    private boolean mSettingsSent = false;
     private boolean mRequestTimeoutExpired = false;
     private boolean mNeedRestart = false;
     private int mReceiveErrorCount = 0;
@@ -268,19 +275,12 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
         mReceivingStreams = new HashMap<>();
         mPendingIQRequests = new HashSet<>();
         mRootDirectory = rootDirectory;
-        mDatabase = database;
 
         String path = database.getDatabasePath();
         mDatabaseFile = new File(path);
+        mSnapshotFile = new File(mDatabaseFile.getParentFile(), MIGRATION_SNAPSHOT_NAME);
         mOffsetRequestId = 0;
 
-        if (!path.endsWith(".cipher")) {
-            mDatabaseFileIndex = DATABASE_FILE_INDEX;
-        } else if (path.endsWith("-4.cipher")) {
-            mDatabaseFileIndex = DATABASE_CIPHER_4_FILE_INDEX;
-        } else {
-            mDatabaseFileIndex = DATABASE_CIPHER_3_FILE_INDEX;
-        }
         mMigrationDirectory = new File(mRootDirectory, MIGRATION_DIR);
 
         // Register the binary IQ handlers for the query and responses.
@@ -365,6 +365,8 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
 
         setState(State.STOPPED);
         finish();
+
+        Utils.deleteFile(LOG_TAG, mSnapshotFile);
 
         cleanup();
     }
@@ -544,6 +546,15 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
             sendPeerPacket(StatType.IQ_ERROR, startIQ);
             setState(State.ERROR);
             return;
+        }
+
+        // Remember we are the initiator: we are responsible for starting the termination phase and
+        // this must survive an application restart.
+        File f = new File(mMigrationDirectory, MIGRATION_INITIATOR);
+        try (FileOutputStream outputStream = new FileOutputStream(f)) {
+            outputStream.write(mAccountMigrationId.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception exception) {
+                Logger.error(LOG_TAG, "Cannot create ", f);
         }
 
         if (mLocalInfo != null) {
@@ -887,6 +898,9 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
 
         if (mOffsetRequestId == 0) {
             mOffsetRequestId = REQUEST_ID_OFFSET_CLIENT;
+
+            // The peer started the migration: we are not the initiator, even if we were before a restart.
+            Utils.deleteFile(LOG_TAG, new File(mMigrationDirectory, MIGRATION_INITIATOR));
         }
 
         // Check that we have enough space to receive the files.
@@ -977,6 +991,11 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
             mReceivingFiles.put(fileInfo.getIndex(), fileInfo);
             if (fileInfo.getIndex() >= FIRST_FILE_INDEX) {
                 mReceiveTotal += fileInfo.getSize();
+            } else {
+                // DB file: replace the size of the peer's live DB with the actual size of the
+                // peer's snapshot.
+                long peerLiveDBSize = mPeerInfo != null ? mPeerInfo.getDatabaseFileSize() : 0;
+                mReceiveTotal += fileInfo.getSize() - peerLiveDBSize;
             }
 
             FileState state = new FileState(fileInfo.getIndex(), offset);
@@ -1028,7 +1047,14 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
                 } else {
                     fileInfo.setRemoteOffset(0);
                 }
-                mSendTotal += fileInfo.getSize();
+                if (fileInfo.getIndex() >= FIRST_FILE_INDEX) {
+                    mSendTotal += fileInfo.getSize();
+                } else {
+                    // DB file: replace the size of the live DB (used in startMigration(), before we
+                    // make the snapshot) with the actual size of the snapshot.
+                    long liveDBSize = mLocalInfo != null ? mLocalInfo.getDatabaseFileSize() : 0;
+                    mSendTotal += fileInfo.getSize() - liveDBSize;
+                }
                 mSendingFiles.put(fileInfo.getIndex(), fileInfo);
             } else {
                 Log.w(LOG_TAG, "File " + state.mFileId + " was not found");
@@ -1241,13 +1267,11 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
             return;
         }
 
-        if (mPendingIQRequests.remove(iq.getRequestId())) {
-            mSettingsSent = true;
-        }
+        mPendingIQRequests.remove(iq.getRequestId());
 
         mSettingsReceived = true;
         if (!iq.hasPeerSettings) {
-            iq = sendSettings();
+            iq = sendSettings(iq.getRequestId());
             sendPeerPacket(IQ_STAT_SETTINGS, iq);
         }
 
@@ -1273,6 +1297,10 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
         boolean isKnown = mPendingIQRequests.remove(iq.getRequestId());
         if (isKnown || iq.hasPeerAccount) {
             mAccountSent = true;
+
+            // The peer has our account: our account request is answered even when the peer did not
+            // respond with its request id (it received our account before it was ready to send its own).
+            mPendingIQRequests.remove(mAccountRequestId);
         }
         mAccountReceived = true;
 
@@ -1405,15 +1433,24 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
                 }
 
                 case SEND_SETTINGS: {
-                    SettingsIQ settingsIQ = sendSettings();
-                    sendIQRequest(IQ_STAT_SETTINGS, settingsIQ);
+                    // If we already received the peer settings, we have also sent ours (either as a response
+                    // to the peer request, or because the peer settings are the response to our request):
+                    // sending them again would register a request for which the peer never responds.
+                    if (!mSettingsReceived) {
+                        SettingsIQ settingsIQ = sendSettings(newRequestId());
+                        sendIQRequest(IQ_STAT_SETTINGS, settingsIQ);
+                    }
 
                     setState(State.SEND_DATABASE);
 
-                    // Force another database sync to flush the WAL file before sending the database file in the next step.
-                    mDatabase.syncDatabase();
+                    if (!mSnapshotFile.exists() && !mTwinlifeImpl.snapshotDatabase(mSnapshotFile.getPath())) {
+                        ErrorIQ errorIQ = sendError(newRequestId(), ErrorCode.NO_SPACE_LEFT);
+                        sendPeerPacket(IQ_STAT_ERROR, errorIQ);
+                        setState(State.ERROR);
+                        return;
+                    }
 
-                    FileInfoImpl fileInfo = new FileInfoImpl(mDatabaseFileIndex, "fake.db", mDatabaseFile.length(), mDatabaseFile.lastModified());
+                    FileInfoImpl fileInfo = new FileInfoImpl(DATABASE_CIPHER_4_FILE_INDEX, "fake.db", mSnapshotFile.length(), mSnapshotFile.lastModified());
                     mListFiles.add(fileInfo);
 
                     // Log.e(LOG_TAG, "Adding database file " + mDatabaseFile.getPath());
@@ -1458,8 +1495,9 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
 
                 case SEND_ACCOUNT: {
                     AccountIQ accountIQ = sendAccount(newRequestId());
-                    Log.e(LOG_TAG, "Send account iq=" + accountIQ);
+                    // Log.e(LOG_TAG, "Send account iq=" + accountIQ);
                     if (accountIQ != null) {
+                        mAccountRequestId = accountIQ.getRequestId();
                         sendIQRequest(IQ_STAT_ACCOUNT, accountIQ);
                         setState(State.WAIT_ACCOUNT);
                         return;
@@ -1642,10 +1680,8 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
                 mWaitAckFiles.put(sendFile.getIndex(), sendFile);
 
                 File file;
-                if (sendFile.getIndex() == DATABASE_FILE_INDEX
-                        || sendFile.getIndex() == DATABASE_CIPHER_3_FILE_INDEX
-                        || sendFile.getIndex() == DATABASE_CIPHER_4_FILE_INDEX) {
-                    file = mDatabaseFile;
+                if (sendFile.getIndex() == DATABASE_CIPHER_4_FILE_INDEX) {
+                    file = mSnapshotFile;
                 } else {
                     file = new File(mRootDirectory, sendFile.getPath());
                 }
@@ -1692,7 +1728,7 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
      * @return the settings IQ to send or null if there is nothing to send.
      */
     @NonNull
-    private SettingsIQ sendSettings() {
+    private SettingsIQ sendSettings(long requestId) {
         if (DEBUG) {
             Log.d(LOG_TAG, "sendSettings");
         }
@@ -1711,7 +1747,6 @@ class AccountMigrationExecutor extends PeerConnectionObserver {
             }
         }
 
-        long requestId = newRequestId();
         return new SettingsIQ(IQ_SETTINGS_SERIALIZER, requestId, mSettingsReceived, settings);
     }
 

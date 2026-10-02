@@ -130,7 +130,7 @@ class UpdateGeolocationIQ extends BinaryPacketIQ {
             encoder.writeDouble(updateGeolocationIQ.latitude);
             encoder.writeDouble(updateGeolocationIQ.altitude);
             encoder.writeDouble(updateGeolocationIQ.mapLongitudeDelta);
-            encoder.writeDouble(updateGeolocationIQ.mapLongitudeDelta);
+            encoder.writeDouble(updateGeolocationIQ.mapLatitudeDelta);
         }
 
         @Override

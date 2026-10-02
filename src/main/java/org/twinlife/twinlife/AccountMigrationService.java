@@ -5,6 +5,7 @@
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife;
@@ -174,6 +175,15 @@ public interface AccountMigrationService extends BaseService<AccountMigrationSer
      */
     @Nullable
     UUID getActiveDeviceMigrationId();
+
+    /**
+     * Check if this device started the given account migration (the user tapped "Start" on it).
+     * The information is saved in the migration directory so that it survives an application restart.
+     *
+     * @param accountMigrationId the account migration identifier.
+     * @return true if this device is the initiator of the account migration.
+     */
+    boolean isInitiator(@NonNull UUID accountMigrationId);
 
     /**
      * Start the device migration process by setting up and opening the P2P connection to the peer twincode outboundid.

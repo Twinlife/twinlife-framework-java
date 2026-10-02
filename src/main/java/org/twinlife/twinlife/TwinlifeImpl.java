@@ -1424,7 +1424,11 @@ public abstract class TwinlifeImpl implements Twinlife, ConnectionListener, Base
 
     protected abstract Connection getConnection(@NonNull TwinlifeConfiguration configuration);
 
+    public abstract boolean snapshotDatabase(@NonNull String snapshotPath);
+
     public abstract boolean commitRestoredDatabase();
 
     public abstract boolean deleteRestoredDatabase();
+
+    public abstract void deleteDatabaseForMigration();
 }

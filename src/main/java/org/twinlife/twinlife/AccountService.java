@@ -36,7 +36,10 @@ public interface AccountService extends BaseService<AccountService.ServiceObserv
         MERCHANT_GOOGLE,
 
         // Purchase is made using an external platform.
-        MERCHANT_EXTERNAL
+        MERCHANT_EXTERNAL,
+
+        // Purchase is made using Huawei platform.
+        MERCHANT_HUAWEI
     }
 
     class AccountServiceConfiguration extends BaseServiceConfiguration {

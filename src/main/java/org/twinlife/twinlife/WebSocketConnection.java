@@ -199,27 +199,31 @@ public class WebSocketConnection extends Connection implements Observer {
             Log.d(LOG_TAG, "connect");
         }
 
+        final long sessionId;
         synchronized (mConnectionLock) {
             if (mIsConnected) {
                 return;
             }
             final long now = System.currentTimeMillis();
             if (mConnecting) {
-                // Early detection of timeout when we try to connect.
-                if (mStartConnect + CONNECTION_TIMEOUT < now && mSession != null) {
-                    mSession.close();
-                    mSession = null;
+                // Early detection of timeout when we try to connect.  Reset the state even when
+                // there is no session so that we never remain stuck in the connecting state.
+                if (mStartConnect + CONNECTION_TIMEOUT < now) {
+                    if (mSession != null) {
+                        mSession.close();
+                        mSession = null;
+                    }
                     mConnecting = false;
                 }
                 return;
             }
             mConnecting = true;
             mStartConnect = now;
-            mSessionId++;
+            sessionId = ++mSessionId;
         }
 
         if (INFO) {
-            Log.i(LOG_TAG, "connecting to " + mConfig.getHost() + " as session " + mSessionId);
+            Log.i(LOG_TAG, "connecting to " + mConfig.getHost() + " as session " + sessionId);
         }
         mCreateSocketCounter.incrementAndGet();
 
@@ -257,13 +261,22 @@ public class WebSocketConnection extends Connection implements Observer {
                 proxies[i] = SocketProxyDescriptor.createKeyProxy(proxy.getAddress(), proxy.getPort(), path);
             }
         }
-        mSession = mContainer.create(this, mSessionId, mConfig.getPort(), mConfig.getHost(), null,
+        final Session session = mContainer.create(this, sessionId, mConfig.getPort(), mConfig.getHost(), null,
                 mConfig.getPath(), method, 20000, proxies);
 
-        if (mSession == null) {
-            synchronized (mConnectionLock) {
+        synchronized (mConnectionLock) {
+            if (session != null && mConnecting && sessionId == mSessionId) {
+                mSession = session;
+                return;
+            }
+            if (sessionId == mSessionId) {
                 mConnecting = false;
             }
+        }
+
+        // disconnect() or a connection timeout occurred while creating the session: drop it.
+        if (session != null) {
+            session.close();
         }
     }
 
@@ -281,6 +294,7 @@ public class WebSocketConnection extends Connection implements Observer {
         synchronized (mConnectionLock) {
             mDisconnecting = mIsConnected;
             mIsConnected = false;
+            mConnecting = false;
             if (mSession != null) {
                 closed = mSession.close();
                 mSession = null;
@@ -320,12 +334,14 @@ public class WebSocketConnection extends Connection implements Observer {
         synchronized (mConnectionLock) {
             if (mIsConnected) {
                 result = ConnectionStatus.CONNECTED;
-            } else if (mConnecting && mSession != null) {
+            } else if (mConnecting) {
                 // Early detection of timeout when we try to connect.
                 final long now = System.currentTimeMillis();
                 if (mStartConnect + CONNECTION_TIMEOUT < now) {
-                    mSession.close();
-                    mSession = null;
+                    if (mSession != null) {
+                        mSession.close();
+                        mSession = null;
+                    }
                     mConnecting = false;
                     result = ConnectionStatus.NO_SERVICE;
                 } else {
@@ -366,6 +382,13 @@ public class WebSocketConnection extends Connection implements Observer {
 
         final ProxyDescriptor proxyDescriptor;
         synchronized (mConnectionLock) {
+            // Ignore a previous session closed by disconnect() or a connection timeout: it is being closed natively.
+            if (sessionId != mSessionId || mSession == null) {
+                if (INFO) {
+                    Log.i(LOG_TAG, "ignoring connection of stale session " + sessionId);
+                }
+                return;
+            }
             mConnecting = false;
             mIsConnected = true;
             mConnectStats = stats[active];
@@ -404,9 +427,12 @@ public class WebSocketConnection extends Connection implements Observer {
         }
         recordError(errorCategory);
         synchronized (mConnectionLock) {
-            mSession = null;
-            mConnecting = false;
-            mIsConnected = false;
+            // Ignore the state change for a previous session: we must not drop a newer session.
+            if (sessionId == mSessionId) {
+                mSession = null;
+                mConnecting = false;
+                mIsConnected = false;
+            }
             mDisconnecting = true;
         }
         mConnectionListener.onDisconnect(errorCategory);
@@ -428,9 +454,12 @@ public class WebSocketConnection extends Connection implements Observer {
         }
 
         synchronized (mConnectionLock) {
-            mSession = null;
-            mConnecting = false;
-            mIsConnected = false;
+            // Ignore the state change for a previous session: we must not drop a newer session.
+            if (sessionId == mSessionId) {
+                mSession = null;
+                mConnecting = false;
+                mIsConnected = false;
+            }
             mDisconnecting = true;
         }
         if (INFO) {

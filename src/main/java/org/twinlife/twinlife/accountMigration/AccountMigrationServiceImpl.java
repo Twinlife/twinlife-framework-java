@@ -5,6 +5,7 @@
  *  Contributors:
  *   Christian Jacquemot (Christian.Jacquemot@twinlife-systems.com)
  *   Stephane Carrez (Stephane.Carrez@twin.life)
+ *   Romain Kolb (romain.kolb@skyrock.com)
  */
 
 package org.twinlife.twinlife.accountMigration;
@@ -174,6 +175,35 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
     }
 
     /**
+     * Check if this device started the given account migration (the user tapped "Start" on it).
+     *
+     * @param accountMigrationId the account migration identifier.
+     * @return true if this device is the initiator of the account migration.
+     */
+    @Override
+    public boolean isInitiator(@NonNull UUID accountMigrationId) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "isInitiator accountMigrationId=" + accountMigrationId);
+        }
+
+        final File migrationDirectory = new File(mTwinlifeImpl.getFilesDir(), AccountMigrationExecutor.MIGRATION_DIR);
+        final File file = new File(migrationDirectory, AccountMigrationExecutor.MIGRATION_INITIATOR);
+        if (!file.exists()) {
+            return false;
+        }
+
+        try (FileInputStream input = new FileInputStream(file)) {
+
+            byte[] data = new byte[256];
+            int size = input.read(data);
+            return size > 0 && accountMigrationId.equals(Utils.UUIDFromString(Utf8.create(data, size)));
+
+        } catch (Exception exception) {
+            return false;
+        }
+    }
+
+    /**
      * Start the device migration process by setting up and opening the P2P connection to the peer twincode outboundid.
      *
      * @param requestId the request identifier.
@@ -193,10 +223,6 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         }
 
         final File filesDir = mTwinlifeImpl.getFilesDir();
-
-        // Force a database sync before starting the migration to flush the WAL file
-        // (another one will be made before sending the database in case it was changed).
-        mDatabase.syncDatabase();
 
         final AccountMigrationExecutor accountMigration;
         final String peerId = mTwinlifeImpl.getTwincodeOutboundService().getPeerId(peerTwincodeOutboundId, twincodeOutboundId);
@@ -252,10 +278,6 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
 
             return;
         }
-
-        // Force a database sync before starting the migration to flush the WAL file
-        // (another one will be made before sending the database in case it was changed).
-        mDatabase.syncDatabase();
 
         final String peerId = mTwinlifeImpl.getTwincodeOutboundService().getPeerId(peerTwincodeOutboundId, twincodeOutboundId);
 
@@ -522,6 +544,14 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         }
     }
 
+    private static final String[] DB_FILES = {
+            AccountMigrationExecutor.MIGRATION_DATABASE_CIPHER_V4_NAME,
+            AccountMigrationExecutor.MIGRATION_DATABASE_CIPHER_V3_NAME,
+            AccountMigrationExecutor.MIGRATION_DATABASE_NAME,
+            AccountMigrationExecutor.MIGRATION_SNAPSHOT_NAME,
+            AccountMigrationExecutor.MIGRATION_SNAPSHOT_NAME + ".tmp"
+    };
+
     /**
      * Cancel a possible account migration.
      *
@@ -536,22 +566,11 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         final File migrationDirectory = new File(rootDirectory, AccountMigrationExecutor.MIGRATION_DIR);
         Utils.deleteDirectory(migrationDirectory);
 
-        // Cleanup a database that was migrated (use distinct code blocks to reduce errors).
+        // Cleanup a database that was migrated as well as the snapshot.
         if (databaseDirectory != null) {
-            {
-                File migratedSQLCipher4File = new File(databaseDirectory, AccountMigrationExecutor.MIGRATION_DATABASE_CIPHER_V4_NAME);
-
-                Utils.deleteFile(LOG_TAG, migratedSQLCipher4File);
-            }
-            {
-                File migratedSQLCipher3File = new File(databaseDirectory, AccountMigrationExecutor.MIGRATION_DATABASE_CIPHER_V3_NAME);
-
-                Utils.deleteFile(LOG_TAG, migratedSQLCipher3File);
-            }
-            {
-                File migratedSQLFile = new File(databaseDirectory, AccountMigrationExecutor.MIGRATION_DATABASE_NAME);
-
-                Utils.deleteFile(LOG_TAG, migratedSQLFile);
+            for (String filename : DB_FILES) {
+                File file = new File(databaseDirectory, filename);
+                Utils.deleteFile(LOG_TAG, file);
             }
         }
 
@@ -641,10 +660,8 @@ public class AccountMigrationServiceImpl extends BaseServiceImpl<AccountMigratio
         configurationService.saveSecuredConfiguration(secureConfig);
         configurationService.saveSecuredConfiguration(accountConfig);
 
-        // Erase the existing database (if one of them remain, we could have some trouble when we restart).
-        Utils.deleteFile(LOG_TAG, context.getDatabasePath(TwinlifeImpl.CIPHER_V4_DATABASE_NAME));
-        Utils.deleteFile(LOG_TAG, context.getDatabasePath(TwinlifeImpl.CIPHER_V3_DATABASE_NAME));
-        Utils.deleteFile(LOG_TAG, context.getDatabasePath(TwinlifeImpl.DATABASE_NAME));
+        // Close and erase the existing database (if one of them remain, we could have some trouble when we restart).
+        mTwinlifeImpl.deleteDatabaseForMigration();
 
         boolean result;
         if (migratedSQLCipher4File.exists()) {

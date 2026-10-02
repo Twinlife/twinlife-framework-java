@@ -822,6 +822,22 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
         }
     }
 
+    public boolean snapshotDatabase(@NonNull String snapshotPath) {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "snapshotDatabase: snapshotPath=" + snapshotPath);
+        }
+
+        File tmp = new File(snapshotPath + ".tmp");
+
+        boolean success = getDatabaseService().snapshotDatabase(tmp.getPath()) && tmp.renameTo(new File(snapshotPath));
+
+        if (!success) {
+            android.database.sqlite.SQLiteDatabase.deleteDatabase(tmp);
+        }
+
+        return success;
+    }
+
     public boolean commitRestoredDatabase() {
         if (DEBUG) {
             Log.d(LOG_TAG, "commitRestoredDatabase");
@@ -889,6 +905,18 @@ public class AndroidTwinlifeImpl extends TwinlifeImpl implements Runnable {
 
 
         return true;
+    }
+
+    @Override
+    public void deleteDatabaseForMigration() {
+        if (DEBUG) {
+            Log.d(LOG_TAG, "deleteDatabaseForMigration");
+        }
+
+        closeDatabase();
+        mContext.deleteDatabase(CIPHER_V4_DATABASE_NAME);
+        mContext.deleteDatabase(CIPHER_V3_DATABASE_NAME);
+        mContext.deleteDatabase(DATABASE_NAME);
     }
 
     private int getDatabaseVersion(boolean restoreMode) {
